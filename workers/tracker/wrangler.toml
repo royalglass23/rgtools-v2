@@ -1,0 +1,14 @@
+name = "rg-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# DATABASE_URL is stored as an encrypted secret, not a plain var.
+# After creating your Cloudflare account, run:
+#   wrangler secret put DATABASE_URL
+# Then paste your Neon DATABASE_URL when prompted.
+
+# Uncomment and update after linking your Cloudflare account:
+# [[routes]]
+# pattern = "tracker.rgtools.co.nz/*"
+# zone_name = "rgtools.co.nz"
