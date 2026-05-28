@@ -1,0 +1,107 @@
+<h2>Section 2 — Database Schema (revised)</h2>
+<p class="subtitle">7 tables · additions highlighted in green</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748">
+    <div class="label" style="color:#68d391">users</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id · username · password_hash · role · created_at · updated_at
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:6px">Unchanged</div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748">
+    <div class="label" style="color:#f6ad55">sessions</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id · user_id → users · expires_at · created_at
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:6px">Unchanged</div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748;grid-column:1/-1">
+    <div class="label" style="color:#fc8181">quotes <span style="color:#68d391;margin-left:8px">+ pipeline + scoring fields</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      <div>
+        id <span style="color:#63b3ed">uuid PK</span><br>
+        servicem8_uuid <span style="color:#63b3ed">text unique</span><br>
+        token <span style="color:#63b3ed">uuid unique</span><br>
+        client_name <span style="color:#63b3ed">text</span><br>
+        company_name <span style="color:#63b3ed">text</span><br>
+        job_description <span style="color:#63b3ed">text</span><br>
+        quote_value <span style="color:#63b3ed">numeric(10,2)</span><br>
+        internal_notes <span style="color:#63b3ed">text</span><br>
+        sent_at <span style="color:#63b3ed">timestamptz</span><br>
+        archived_at <span style="color:#63b3ed">timestamptz nullable</span><br>
+        created_at · updated_at
+      </div>
+      <div>
+        <span style="color:#68d391">pipeline_stage</span> <span style="color:#63b3ed">enum</span><br>
+        <span style="color:#718096;font-size:11px">&nbsp;estimate | pending_quote | quote_sent<br>&nbsp;intent_scoring | closed</span><br>
+        <span style="color:#68d391">outcome</span> <span style="color:#63b3ed">enum(won,lost) nullable</span><br>
+        <span style="color:#68d391">work_order_id</span> <span style="color:#63b3ed">text nullable</span><br>
+        <span style="color:#68d391">converted_at</span> <span style="color:#63b3ed">timestamptz nullable</span><br>
+        <span style="color:#68d391">closed_at</span> <span style="color:#63b3ed">timestamptz nullable</span><br>
+        status_tag <span style="color:#63b3ed">enum(hot,warm,cold,dead)</span><br>
+        client_type <span style="color:#63b3ed">enum(builder,homeowner,architect)</span><br>
+        <span style="color:#68d391">ai_score</span> <span style="color:#63b3ed">int (0–100)</span><br>
+        ai_confidence <span style="color:#63b3ed">numeric(4,3)</span><br>
+        <span style="color:#68d391">ai_complexity</span> <span style="color:#63b3ed">enum(low,medium,high)</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748">
+    <div class="label" style="color:#b794f4">quote_events</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id <span style="color:#63b3ed">uuid PK</span><br>
+      quote_id <span style="color:#63b3ed">uuid → quotes</span><br>
+      event_type <span style="color:#63b3ed">enum(open,scroll,close)</span><br>
+      device_type · session_id<br>
+      scroll_depth · duration_ms<br>
+      ip_hash · created_at
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:8px">Raw beacon events from Cloudflare Worker</div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #68d391;border-width:2px">
+    <div class="label" style="color:#68d391">quote_engagement ★ NEW</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id <span style="color:#63b3ed">uuid PK</span><br>
+      quote_id <span style="color:#63b3ed">uuid unique → quotes</span><br>
+      total_opens <span style="color:#63b3ed">int default 0</span><br>
+      total_time_ms <span style="color:#63b3ed">bigint default 0</span><br>
+      max_scroll_depth <span style="color:#63b3ed">int default 0</span><br>
+      unique_sessions <span style="color:#63b3ed">int default 0</span><br>
+      unique_devices <span style="color:#63b3ed">int default 0</span><br>
+      forwarding_suspected <span style="color:#63b3ed">boolean default false</span><br>
+      last_opened_at <span style="color:#63b3ed">timestamptz nullable</span><br>
+      updated_at <span style="color:#63b3ed">timestamptz</span>
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:8px">Aggregated per-quote — powers dashboard without scanning all events. Updated by n8n after each beacon batch.</div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748">
+    <div class="label" style="color:#76e4f7">tag_overrides</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id · quote_id → quotes<br>
+      overridden_by → users<br>
+      previous_tag · new_tag · created_at
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:8px">Unchanged — AI override audit log</div>
+  </div>
+
+  <div style="background:#1a1a2e;border-radius:8px;padding:16px;border:1px solid #2d3748">
+    <div class="label" style="color:#fbd38d">settings</div>
+    <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:2;margin-top:8px">
+      id · key · value<br>
+      updated_by → users · updated_at
+    </div>
+    <div style="font-size:11px;color:#718096;margin-top:8px">Unchanged — Telegram, email, alert frequencies</div>
+  </div>
+
+</div>
+
+<div style="margin-top:16px;padding:12px;background:#1a202c;border-radius:6px;border-left:3px solid #68d391;font-size:13px;color:#a0aec0">
+  <strong style="color:#e2e8f0">Key additions:</strong> <code>pipeline_stage</code> tracks the 5-stage funnel on every quote. <code>outcome + work_order_id + converted_at</code> closes the loop on won/lost/converted. <code>ai_score (0–100)</code> + <code>ai_complexity</code> give the scoring engine numeric values to threshold against. <code>quote_engagement</code> is a new aggregated table — the dashboard reads this instead of counting raw events every query.
+</div>

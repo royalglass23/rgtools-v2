@@ -1,0 +1,85 @@
+<h2>How should we scaffold this?</h2>
+<p class="subtitle">Three approaches — pick the one that fits how you want to build</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Minimal Foundation</h3>
+      <p>Next.js app + NextAuth + Neon schema. Auth and database only. Get something working fast, build the rest on top.</p>
+      <div style="margin-top:12px;font-family:monospace;font-size:12px;background:#1a1a2e;padding:10px;border-radius:6px;color:#a0aec0;line-height:1.7">
+        quote-tracker/<br>
+        ├── app/<br>
+        │&nbsp;&nbsp; ├── (auth)/login/<br>
+        │&nbsp;&nbsp; ├── dashboard/<br>
+        │&nbsp;&nbsp; └── api/auth/<br>
+        ├── lib/<br>
+        │&nbsp;&nbsp; ├── db.ts<br>
+        │&nbsp;&nbsp; └── auth.ts<br>
+        └── drizzle/ <span style="color:#68d391">(schema + migrations)</span>
+      </div>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Fastest to get running</li><li>Low complexity upfront</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Cloudflare Worker not included</li><li>No thought given to future modules yet</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Full Week 1 Scaffold</h3>
+      <p>Everything in A, plus Cloudflare Worker skeleton and ServiceM8 email template. Complete Week 1 code in one session.</p>
+      <div style="margin-top:12px;font-family:monospace;font-size:12px;background:#1a1a2e;padding:10px;border-radius:6px;color:#a0aec0;line-height:1.7">
+        quote-tracker/<br>
+        ├── app/<br>
+        │&nbsp;&nbsp; ├── (auth)/login/<br>
+        │&nbsp;&nbsp; ├── dashboard/<br>
+        │&nbsp;&nbsp; └── api/auth/<br>
+        ├── lib/<br>
+        │&nbsp;&nbsp; ├── db.ts<br>
+        │&nbsp;&nbsp; └── auth.ts<br>
+        ├── workers/ <span style="color:#68d391">(Cloudflare Worker)</span><br>
+        │&nbsp;&nbsp; └── tracker/index.ts<br>
+        ├── drizzle/ <span style="color:#68d391">(schema + migrations)</span><br>
+        └── templates/ <span style="color:#68d391">(ServiceM8 email)</span>
+      </div>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Week 2 can start immediately</li><li>All the code pieces in one go</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More to set up in one session</li><li>Still no structure for future modules</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Platform-Aware Scaffold ★ Recommended</h3>
+      <p>Everything in B, but structured from day one as the rgtools.co.nz platform — not just a quote tracker. No restructuring needed when Calculator, PS1/PS3, and other modules arrive.</p>
+      <div style="margin-top:12px;font-family:monospace;font-size:12px;background:#1a1a2e;padding:10px;border-radius:6px;color:#a0aec0;line-height:1.7">
+        quote-tracker/<br>
+        ├── app/<br>
+        │&nbsp;&nbsp; ├── (auth)/login/<br>
+        │&nbsp;&nbsp; ├── (dashboard)/<br>
+        │&nbsp;&nbsp; │&nbsp;&nbsp; └── quote-tracker/ <span style="color:#68d391">← module route</span><br>
+        │&nbsp;&nbsp; └── api/<br>
+        ├── modules/<br>
+        │&nbsp;&nbsp; ├── quote-tracker/ <span style="color:#68d391">← module logic</span><br>
+        │&nbsp;&nbsp; └── _shared/ <span style="color:#68d391">← future modules share this</span><br>
+        ├── lib/<br>
+        │&nbsp;&nbsp; ├── db.ts <span style="color:#68d391">← shared DB client</span><br>
+        │&nbsp;&nbsp; └── auth.ts <span style="color:#68d391">← shared auth</span><br>
+        ├── workers/<br>
+        │&nbsp;&nbsp; └── tracker/index.ts<br>
+        ├── drizzle/<br>
+        └── templates/
+      </div>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>README says this is a platform — build it that way</li><li>Auth, DB, types shared across modules</li><li>No painful restructuring later</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Slightly more upfront structure to set up</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>
