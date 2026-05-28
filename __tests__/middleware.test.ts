@@ -1,0 +1,32 @@
+import { describe, it, expect } from 'vitest'
+
+function matchesMiddleware(pathname: string): boolean {
+  // Mirrors the Next.js matcher: /((?!login|api/auth|q/|_next/static|_next/image|favicon.ico).*)
+  return !/^\/(login|api\/auth|q\/|_next\/static|_next\/image|favicon\.ico)/.test(pathname)
+}
+
+describe('middleware route matching', () => {
+  it('skips login page', () => {
+    expect(matchesMiddleware('/login')).toBe(false)
+  })
+
+  it('skips NextAuth API routes', () => {
+    expect(matchesMiddleware('/api/auth/callback/credentials')).toBe(false)
+  })
+
+  it('skips client quote pages', () => {
+    expect(matchesMiddleware('/q/some-uuid-token')).toBe(false)
+  })
+
+  it('protects dashboard root', () => {
+    expect(matchesMiddleware('/quote-tracker')).toBe(true)
+  })
+
+  it('protects nested dashboard routes', () => {
+    expect(matchesMiddleware('/quote-tracker/abc-123')).toBe(true)
+  })
+
+  it('protects root path', () => {
+    expect(matchesMiddleware('/')).toBe(true)
+  })
+})
