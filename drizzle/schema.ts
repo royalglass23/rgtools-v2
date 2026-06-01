@@ -112,7 +112,7 @@ export const modules = pgTable('modules', {
 export const userModuleAccess = pgTable('user_module_access', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   moduleId: uuid('module_id').notNull().references(() => modules.id, { onDelete: 'cascade' }),
-  grantedBy: uuid('granted_by').references(() => users.id),
+  grantedBy: uuid('granted_by').references(() => users.id, { onDelete: 'set null' }),
   grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.userId, table.moduleId] }),
@@ -120,7 +120,7 @@ export const userModuleAccess = pgTable('user_module_access', {
 
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
-  actorId: uuid('actor_id').notNull().references(() => users.id),
+  actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
   action: text('action').notNull(),
   targetId: uuid('target_id'),
   detail: jsonb('detail'),
