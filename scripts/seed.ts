@@ -4,21 +4,50 @@ config({ path: '.env.local' })
 async function seed() {
   const bcrypt = await import('bcryptjs')
   const { db } = await import('../lib/db')
-  const { users } = await import('../drizzle/schema')
+  const { users, modules } = await import('../drizzle/schema')
   const { eq } = await import('drizzle-orm')
 
   const username = 'rgadmin'
   const password = '*royalglass23'
 
+  // Upsert rgadmin user
   const existing = await db.select().from(users).where(eq(users.username, username))
   if (existing.length > 0) {
-    console.log(`User '${username}' already exists — skipping.`)
-    process.exit(0)
+    // User exists; update isProtected and role
+    await db
+      .update(users)
+      .set({ role: 'admin', isProtected: true })
+      .where(eq(users.username, username))
+    console.log(`Updated user '${username}' to role=admin, isProtected=true`)
+  } else {
+    // User does not exist; create with role=admin and isProtected=true
+    const passwordHash = await bcrypt.default.hash(password, 12)
+    await db.insert(users).values({
+      username,
+      passwordHash,
+      role: 'admin',
+      isProtected: true,
+    })
+    console.log(`Created admin user: ${username}`)
   }
 
-  const passwordHash = await bcrypt.default.hash(password, 12)
-  await db.insert(users).values({ username, passwordHash, role: 'admin' })
-  console.log(`Created admin user: ${username}`)
+  // Upsert modules
+  const modulesToSeed = [
+    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 1 },
+    { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
+  ]
+
+  for (const module of modulesToSeed) {
+    const existing = await db.select().from(modules).where(eq(modules.slug, module.slug))
+    if (existing.length > 0) {
+      console.log(`Module '${module.slug}' already exists`)
+    } else {
+      await db.insert(modules).values(module)
+      console.log(`Created module: ${module.slug}`)
+    }
+  }
+
+  console.log('Seed completed successfully')
   process.exit(0)
 }
 
