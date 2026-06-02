@@ -49,6 +49,15 @@ describe('assertCanManageUser', () => {
     expect(() => assertCanManageUser(admin, otherAdmin)).toThrow()
   })
 
+  it('staff trying to manage another staff → throws', () => {
+    const anotherStaff = { id: 'u4', username: 'dave', role: 'staff' as const, isProtected: false }
+    expect(() => assertCanManageUser(staff, anotherStaff)).toThrow()
+  })
+
+  it('staff trying to manage an admin → throws', () => {
+    expect(() => assertCanManageUser(staff, admin)).toThrow()
+  })
+
   it('protected super-user managing an admin → ok', () => {
     expect(() => assertCanManageUser(superAdmin, admin)).not.toThrow()
   })
@@ -62,6 +71,11 @@ describe('assertCanManageUser', () => {
 // ── buildAuditDetail ───────────────────────────────────────────────────────────
 
 describe('buildAuditDetail', () => {
+  it('strips extra fields for USER_CREATE', () => {
+    const detail = buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username: 'x', role: 'admin' })
+    expect(Object.keys(detail)).toEqual(['username', 'role'])
+  })
+
   it('USER_CREATE shape', () => {
     const detail = buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username: 'bob', role: 'staff' })
     expect(detail).toEqual({ username: 'bob', role: 'staff' })

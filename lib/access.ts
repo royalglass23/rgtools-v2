@@ -38,6 +38,8 @@ export function canAccessModule(
   module: AccessModule,
   grantSet: Set<string>,
 ): boolean {
+  if (!module.isActive) return false
+
   if (module.adminOnly) {
     return user.role === 'admin'
   }
