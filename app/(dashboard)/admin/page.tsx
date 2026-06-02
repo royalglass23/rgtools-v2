@@ -133,11 +133,12 @@ export default async function AdminPage() {
               </thead>
               <tbody>
                 {auditRows.map((row) => {
-                  // Resolve actor: use actorId → username if present; fall back to detail.username or 'deleted user'
+                  // Resolve actor: use actorId → username if present; fall back to 'deleted user'
+                  // Note: detail.username is the TARGET user's name, not the actor's
                   const detail = row.detail as Record<string, unknown> | null
                   const actorName = row.actorId
-                    ? (usernameById.get(row.actorId) ?? detail?.username ?? 'deleted user')
-                    : (detail?.username ?? 'deleted user')
+                    ? (usernameById.get(row.actorId) ?? 'deleted user')
+                    : 'deleted user'
 
                   // Target: detail.username or targetId
                   const targetName = detail?.username ?? row.targetId ?? '—'
