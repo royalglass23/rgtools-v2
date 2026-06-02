@@ -66,18 +66,19 @@ export async function createUser(data: {
     // 2. Hash password
     const passwordHash = await bcrypt.hash(password, 12)
 
-    // 3. Insert user
-    const [newUser] = await db
-      .insert(users)
-      .values({ username, passwordHash, role })
-      .returning()
+    // 3. Insert user + audit in a transaction
+    await db.transaction(async (tx) => {
+      const [newUser] = await tx
+        .insert(users)
+        .values({ username, passwordHash, role })
+        .returning()
 
-    // 4. Audit
-    await db.insert(auditLog).values({
-      actorId: session.user.id as string,
-      action: AUDIT_ACTIONS.USER_CREATE,
-      targetId: newUser.id,
-      detail: buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username, role }),
+      await tx.insert(auditLog).values({
+        actorId: session.user.id as string,
+        action: AUDIT_ACTIONS.USER_CREATE,
+        targetId: newUser.id,
+        detail: buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username, role }),
+      })
     })
 
     return { success: true }
@@ -126,25 +127,31 @@ export async function updateUserRole(
 
   const fromRole = targetRow.role
 
-  // 4. Update
-  await db
-    .update(users)
-    .set({ role, updatedAt: new Date() })
-    .where(eq(users.id, userId))
+  // 4. Update + audit in a transaction
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ role, updatedAt: new Date() })
+        .where(eq(users.id, userId))
 
-  // 5. Audit
-  await db.insert(auditLog).values({
-    actorId: session.user.id as string,
-    action: AUDIT_ACTIONS.USER_ROLE_CHANGE,
-    targetId: userId,
-    detail: buildAuditDetail(AUDIT_ACTIONS.USER_ROLE_CHANGE, {
-      username: targetRow.username,
-      fromRole,
-      toRole: role,
-    }),
-  })
+      await tx.insert(auditLog).values({
+        actorId: session.user.id as string,
+        action: AUDIT_ACTIONS.USER_ROLE_CHANGE,
+        targetId: userId,
+        detail: buildAuditDetail(AUDIT_ACTIONS.USER_ROLE_CHANGE, {
+          username: targetRow.username,
+          fromRole,
+          toRole: role,
+        }),
+      })
+    })
 
-  return { success: true }
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { error: message }
+  }
 }
 
 // ── deleteUser ────────────────────────────────────────────────────────────────
@@ -186,18 +193,26 @@ export async function deleteUser(
     return { error: message }
   }
 
-  // 4. Delete (cascades userModuleAccess via FK)
-  await db.delete(users).where(eq(users.id, userId))
+  // 4. Delete + audit in a transaction
+  try {
+    await db.transaction(async (tx) => {
+      // Delete cascades userModuleAccess via FK
+      await tx.delete(users).where(eq(users.id, userId))
 
-  // 5. Audit (username captured above is still in scope)
-  await db.insert(auditLog).values({
-    actorId: session.user.id as string,
-    action: AUDIT_ACTIONS.USER_DELETE,
-    targetId: userId,
-    detail: buildAuditDetail(AUDIT_ACTIONS.USER_DELETE, { username, role }),
-  })
+      // username captured above is still in scope
+      await tx.insert(auditLog).values({
+        actorId: session.user.id as string,
+        action: AUDIT_ACTIONS.USER_DELETE,
+        targetId: userId,
+        detail: buildAuditDetail(AUDIT_ACTIONS.USER_DELETE, { username, role }),
+      })
+    })
 
-  return { success: true }
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { error: message }
+  }
 }
 
 // ── setModuleAccess ───────────────────────────────────────────────────────────
@@ -223,7 +238,22 @@ export async function setModuleAccess(
     return { error: 'User not found' }
   }
 
-  // 3. Fetch module
+  const target: AccessUser = {
+    id: targetRow.id,
+    username: targetRow.username,
+    role: targetRow.role,
+    isProtected: targetRow.isProtected,
+  }
+
+  // 3. Access guard — must come before any mutation
+  try {
+    assertCanManageUser(actor, target)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { error: message }
+  }
+
+  // 4. Fetch module
   const moduleRow = await db.query.modules.findFirst({
     where: eq(modules.id, moduleId),
   })
@@ -232,51 +262,69 @@ export async function setModuleAccess(
     return { error: 'Module not found' }
   }
 
-  // 4. Refuse adminOnly modules
+  // 5. Refuse adminOnly modules
   if (moduleRow.adminOnly) {
     return { error: 'Cannot alter access for admin-only modules — access is role-driven' }
   }
 
-  // 5. Perform grant or revoke
-  if (grant) {
-    await db
-      .insert(userModuleAccess)
-      .values({
-        userId,
-        moduleId,
-        grantedBy: session.user.id as string,
+  // 6. Perform grant or revoke in a transaction
+  try {
+    if (grant) {
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(userModuleAccess)
+          .values({
+            userId,
+            moduleId,
+            grantedBy: session.user.id as string,
+          })
+          .onConflictDoNothing()
+
+        await tx.insert(auditLog).values({
+          actorId: session.user.id as string,
+          action: AUDIT_ACTIONS.ACCESS_GRANT,
+          targetId: userId,
+          detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_GRANT, {
+            username: targetRow.username,
+            moduleSlug: moduleRow.slug,
+          }),
+        })
       })
-      .onConflictDoNothing()
+    } else {
+      // Check if a grant row actually exists before deleting
+      const existingGrant = await db.query.userModuleAccess.findFirst({
+        where: and(eq(userModuleAccess.userId, userId), eq(userModuleAccess.moduleId, moduleId)),
+      })
 
-    await db.insert(auditLog).values({
-      actorId: session.user.id as string,
-      action: AUDIT_ACTIONS.ACCESS_GRANT,
-      targetId: userId,
-      detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_GRANT, {
-        username: targetRow.username,
-        moduleSlug: moduleRow.slug,
-      }),
-    })
-  } else {
-    await db
-      .delete(userModuleAccess)
-      .where(
-        and(
-          eq(userModuleAccess.userId, userId),
-          eq(userModuleAccess.moduleId, moduleId),
-        ),
-      )
+      if (!existingGrant) {
+        return { success: true } // nothing to revoke, no audit needed
+      }
 
-    await db.insert(auditLog).values({
-      actorId: session.user.id as string,
-      action: AUDIT_ACTIONS.ACCESS_REVOKE,
-      targetId: userId,
-      detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_REVOKE, {
-        username: targetRow.username,
-        moduleSlug: moduleRow.slug,
-      }),
-    })
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(userModuleAccess)
+          .where(
+            and(
+              eq(userModuleAccess.userId, userId),
+              eq(userModuleAccess.moduleId, moduleId),
+            ),
+          )
+
+        await tx.insert(auditLog).values({
+          actorId: session.user.id as string,
+          action: AUDIT_ACTIONS.ACCESS_REVOKE,
+          targetId: userId,
+          detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_REVOKE, {
+            username: targetRow.username,
+            moduleSlug: moduleRow.slug,
+          }),
+        })
+      })
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { error: message }
   }
-
-  return { success: true }
 }
