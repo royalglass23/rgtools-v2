@@ -29,4 +29,12 @@ describe('middleware route matching', () => {
   it('protects root path', () => {
     expect(matchesMiddleware('/')).toBe(true)
   })
+
+  it('protects admin root', () => {
+    expect(matchesMiddleware('/admin')).toBe(true)
+  })
+
+  it('protects nested admin routes', () => {
+    expect(matchesMiddleware('/admin/users')).toBe(true)
+  })
 })

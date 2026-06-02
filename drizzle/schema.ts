@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum, uuid, text, timestamp, boolean,
-  integer, bigint, numeric,
+  integer, bigint, numeric, jsonb, primaryKey, index,
 } from 'drizzle-orm/pg-core'
 
 export const roleEnum = pgEnum('role', ['admin', 'staff'])
@@ -18,6 +18,7 @@ export const users = pgTable('users', {
   username: text('username').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: roleEnum('role').notNull().default('staff'),
+  isProtected: boolean('is_protected').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
@@ -95,3 +96,36 @@ export const settings = pgTable('settings', {
   updatedBy: uuid('updated_by').references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+export const modules = pgTable('modules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').unique().notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  adminOnly: boolean('admin_only').default(false).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const userModuleAccess = pgTable('user_module_access', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  moduleId: uuid('module_id').notNull().references(() => modules.id, { onDelete: 'cascade' }),
+  grantedBy: uuid('granted_by').references(() => users.id, { onDelete: 'set null' }),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.moduleId] }),
+])
+
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  targetId: uuid('target_id'),
+  detail: jsonb('detail'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('audit_log_created_at_idx').on(table.createdAt),
+  index('audit_log_actor_id_idx').on(table.actorId),
+])
