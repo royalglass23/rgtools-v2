@@ -1,10 +1,11 @@
 'use server'
 
 import { signIn } from '@/lib/auth'
-import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
 
-export async function loginAction(_: unknown, formData: FormData) {
+type LoginResult = { error: string } | { redirectTo: string }
+
+export async function loginAction(_: unknown, formData: FormData): Promise<LoginResult> {
   try {
     await signIn('credentials', {
       username: formData.get('username') as string,
@@ -17,5 +18,5 @@ export async function loginAction(_: unknown, formData: FormData) {
     }
     throw error
   }
-  redirect('/')
+  return { redirectTo: '/' }
 }

@@ -1,24 +1,132 @@
 import { requireModule } from '@/lib/guard'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { users, modules, userModuleAccess, auditLog } from '@/drizzle/schema'
-import { desc } from 'drizzle-orm'
+import { users, modules, userModuleAccess, auditLog, errorLog } from '@/drizzle/schema'
+import { count, desc } from 'drizzle-orm'
+import Link from 'next/link'
 import { CreateUserForm } from './CreateUserForm'
+import { TestErrorButton } from './TestErrorButton'
 import { UserRow } from './UserRow'
+import { ExportDropdown } from './ExportDropdown'
 
-export default async function AdminPage() {
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+
+function parsePage(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = Number(raw ?? '1')
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function parsePageSize(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = Number(raw ?? '10')
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : 10
+}
+
+function buildHref(
+  params: Record<string, string | string[] | undefined>,
+  overrides: Record<string, string>,
+) {
+  const query = new URLSearchParams()
+  for (const [key, val] of Object.entries(params)) {
+    const v = Array.isArray(val) ? val[0] : val
+    if (v) query.set(key, v)
+  }
+  for (const [key, val] of Object.entries(overrides)) {
+    query.set(key, val)
+  }
+  return `/admin?${query.toString()}`
+}
+
+function Pagination({
+  currentPage,
+  pageSize,
+  totalRows,
+  pageParam,
+  sizeParam,
+  searchParams,
+}: {
+  currentPage: number
+  pageSize: number
+  totalRows: number
+  pageParam: string
+  sizeParam: string
+  searchParams: Record<string, string | string[] | undefined>
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-400">Per page:</span>
+        {PAGE_SIZE_OPTIONS.map((size) => (
+          <Link
+            key={size}
+            href={buildHref(searchParams, { [pageParam]: '1', [sizeParam]: String(size) })}
+            className={`text-xs border rounded px-2 py-1 ${pageSize === size ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+          >
+            {size}
+          </Link>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-gray-500 text-xs">
+          Page {currentPage} of {totalPages}
+        </span>
+        <Link
+          href={buildHref(searchParams, { [pageParam]: String(Math.max(1, currentPage - 1)) })}
+          className={`border border-gray-200 rounded px-3 py-1 ${currentPage <= 1 ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+          Previous
+        </Link>
+        <Link
+          href={buildHref(searchParams, { [pageParam]: String(Math.min(totalPages, currentPage + 1)) })}
+          className={`border border-gray-200 rounded px-3 py-1 ${currentPage >= totalPages ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+          Next
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   // Guard: admin-only module
   await requireModule('admin')
 
   const session = await auth()
+  const params = await searchParams
+  const errorPage = parsePage(params.errorPage)
+  const auditPage = parsePage(params.auditPage)
+  const errorSize = parsePageSize(params.errorSize)
+  const auditSize = parsePageSize(params.auditSize)
 
   // Fetch all data server-side
-  const [allUsers, allModules, allGrants, auditRows] = await Promise.all([
+  const [allUsers, allModules, allGrants, auditRows, auditCountRows] = await Promise.all([
     db.select().from(users).orderBy(users.createdAt),
     db.select().from(modules).orderBy(modules.sortOrder),
     db.select().from(userModuleAccess),
-    db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(100),
+    db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(auditSize).offset((auditPage - 1) * auditSize),
+    db.select({ value: count() }).from(auditLog),
   ])
+  const auditTotalRows = auditCountRows[0]?.value ?? 0
+
+  let errorRows: (typeof errorLog.$inferSelect)[] = []
+  let errorTotalRows = 0
+  try {
+    const [rows, countRows] = await Promise.all([
+      db.select().from(errorLog).orderBy(desc(errorLog.createdAt)).limit(errorSize).offset((errorPage - 1) * errorSize),
+      db.select({ value: count() }).from(errorLog),
+    ])
+    errorRows = rows
+    errorTotalRows = countRows[0]?.value ?? 0
+  } catch (err) {
+    console.error('[admin.errorLog.read]', err)
+  }
 
   // Build a map of userId → Set<moduleId> for quick grant lookups
   const grantsByUser = new Map<string, Set<string>>()
@@ -100,12 +208,114 @@ export default async function AdminPage() {
         </div>
       </section>
 
+      <section>
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Diagnostics</h2>
+        <div className="bg-white border border-gray-200 rounded shadow-sm p-5">
+          <TestErrorButton />
+        </div>
+      </section>
+
       {/* ── Audit Log ─────────────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">
-          Audit Log
-          <span className="ml-2 text-sm font-normal text-gray-400">(last 100 entries, newest first — read-only)</span>
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-800">
+            System Errors
+            <span className="ml-2 text-sm font-normal text-gray-400">({errorTotalRows} total)</span>
+          </h2>
+          <ExportDropdown kind="system" />
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded shadow-sm overflow-x-auto">
+          {errorRows.length === 0 ? (
+            <p className="py-6 px-4 text-sm text-gray-500">No system errors logged.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                    Timestamp
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Ref
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Source
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Message
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Context
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {errorRows.map((row) => {
+                  const metadata = row.metadata as Record<string, unknown> | null
+                  const ts = new Date(row.createdAt)
+                  const formatted = ts.toLocaleDateString('en-AU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  }) + ' ' + ts.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                  })
+
+                  return (
+                    <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50 align-top">
+                      <td className="py-2 px-4 text-gray-500 whitespace-nowrap font-mono text-xs">
+                        {formatted}
+                      </td>
+                      <td className="py-2 px-4 font-mono text-xs text-gray-600 whitespace-nowrap">
+                        {row.id}
+                      </td>
+                      <td className="py-2 px-4">
+                        <span className="font-mono text-xs bg-red-50 px-1.5 py-0.5 rounded text-red-700">
+                          {row.source}
+                        </span>
+                      </td>
+                      <td className="py-2 px-4 text-gray-700 min-w-64">
+                        {row.message}
+                        {row.stack && (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-xs text-gray-400">Stack</summary>
+                            <pre className="mt-2 max-w-xl whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs text-gray-500">
+                              {row.stack}
+                            </pre>
+                          </details>
+                        )}
+                      </td>
+                      <td className="py-2 px-4 text-gray-500 text-xs min-w-56">
+                        {metadata ? JSON.stringify(metadata) : '-'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+          <Pagination
+            currentPage={errorPage}
+            pageSize={errorSize}
+            totalRows={errorTotalRows}
+            pageParam="errorPage"
+            sizeParam="errorSize"
+            searchParams={params}
+          />
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-800">
+            Audit Log
+            <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
+          </h2>
+          <ExportDropdown kind="audit" />
+        </div>
 
         <div className="bg-white border border-gray-200 rounded shadow-sm overflow-x-auto">
           {auditRows.length === 0 ? (
@@ -188,6 +398,14 @@ export default async function AdminPage() {
               </tbody>
             </table>
           )}
+          <Pagination
+            currentPage={auditPage}
+            pageSize={auditSize}
+            totalRows={auditTotalRows}
+            pageParam="auditPage"
+            sizeParam="auditSize"
+            searchParams={params}
+          />
         </div>
       </section>
     </div>

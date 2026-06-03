@@ -1,0 +1,19 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "rgtools" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e6]:
+          - link "Quote Tracker" [ref=e7] [cursor=pointer]:
+            - /url: /quote-tracker
+          - link "Administration" [ref=e8] [cursor=pointer]:
+            - /url: /admin
+      - generic [ref=e9]:
+        - generic [ref=e10]: rgadmin(admin)
+        - button "Sign out" [ref=e12]
+    - main [ref=e13]:
+      - generic [ref=e14]:
+        - heading "Quote Tracker" [level=1] [ref=e15]
+        - paragraph [ref=e16]: Dashboard UI coming in Week 4.
+  - alert [ref=e17]

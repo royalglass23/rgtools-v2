@@ -37,13 +37,13 @@ async function seed() {
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
   ]
 
-  for (const module of modulesToSeed) {
-    const existing = await db.select().from(modules).where(eq(modules.slug, module.slug))
+  for (const moduleSeed of modulesToSeed) {
+    const existing = await db.select().from(modules).where(eq(modules.slug, moduleSeed.slug))
     if (existing.length > 0) {
-      console.log(`Module '${module.slug}' already exists`)
+      console.log(`Module '${moduleSeed.slug}' already exists`)
     } else {
-      await db.insert(modules).values(module)
-      console.log(`Created module: ${module.slug}`)
+      await db.insert(modules).values(moduleSeed)
+      console.log(`Created module: ${moduleSeed.slug}`)
     }
   }
 

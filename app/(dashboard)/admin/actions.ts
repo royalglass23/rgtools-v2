@@ -9,6 +9,7 @@ import { users, modules, userModuleAccess, auditLog } from '@/drizzle/schema'
 import { assertCanManageUser } from '@/lib/access'
 import type { AccessUser } from '@/lib/access'
 import { AUDIT_ACTIONS, buildAuditDetail } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 // ── Helper: resolve the calling actor as an AccessUser ────────────────────────
 
@@ -58,33 +59,47 @@ export async function createUser(data: {
   role: 'admin' | 'staff'
 }): Promise<{ success: true } | { error: string }> {
   const { username, password, role } = data
+  let actorId: string | null = null
 
-  // 1. Auth guard — throws if not admin
-  const { session, actor } = await getActorOrThrow()
+  if (!username.trim() || password.length < 6) {
+    return { error: 'Username is required and password must be at least 6 characters.' }
+  }
 
   try {
-    // 2. Hash password
+    const { session } = await getActorOrThrow()
+    actorId = session.user.id as string
+
     const passwordHash = await bcrypt.hash(password, 12)
 
-    // 3. Insert user + audit in a transaction
     await db.transaction(async (tx) => {
       const [newUser] = await tx
         .insert(users)
-        .values({ username, passwordHash, role })
+        .values({ username: username.trim(), passwordHash, role })
         .returning()
 
       await tx.insert(auditLog).values({
         actorId: session.user.id as string,
         action: AUDIT_ACTIONS.USER_CREATE,
         targetId: newUser.id,
-        detail: buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username, role }),
+        detail: buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username: username.trim(), role }),
       })
     })
 
     return { success: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
+    const cause = (err as { cause?: unknown }).cause
+    const pgCode = (err as { code?: string }).code ?? (cause as { code?: string } | undefined)?.code
+    const msg = err instanceof Error ? err.message : String(err)
+    const causeMsg = cause instanceof Error ? cause.message : ''
+    if (pgCode === '23505' || msg.includes('duplicate key') || causeMsg.includes('duplicate key') || msg.includes('unique constraint') || causeMsg.includes('unique constraint')) {
+      return { error: `Username "${username.trim()}" is already taken.` }
+    }
+    if (msg === 'Forbidden' || msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.createUser', err, {
+      userId: actorId,
+      metadata: { username: username.trim(), role },
+    })
+    return { error: `Failed to create user. Please try again. Ref: ${errorId}` }
   }
 }
 
@@ -98,42 +113,26 @@ export async function updateUserRole(
   userId: string,
   role: 'admin' | 'staff',
 ): Promise<{ success: true } | { error: string }> {
-  // 1. Auth guard
-  const { session, actor } = await getActorOrThrow()
+  let actorId: string | null = null
 
-  // 2. Fetch target
-  const targetRow = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  })
-
-  if (!targetRow) {
-    return { error: 'User not found' }
-  }
-
-  const target: AccessUser = {
-    id: targetRow.id,
-    username: targetRow.username,
-    role: targetRow.role,
-    isProtected: targetRow.isProtected,
-  }
-
-  // 3. Access guard
   try {
+    const { session, actor } = await getActorOrThrow()
+    actorId = session.user.id as string
+
+    const targetRow = await db.query.users.findFirst({ where: eq(users.id, userId) })
+    if (!targetRow) return { error: 'User not found' }
+
+    const target: AccessUser = {
+      id: targetRow.id,
+      username: targetRow.username,
+      role: targetRow.role,
+      isProtected: targetRow.isProtected,
+    }
+
     assertCanManageUser(actor, target)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
-  }
 
-  const fromRole = targetRow.role
-
-  // 4. Update + audit in a transaction
-  try {
     await db.transaction(async (tx) => {
-      await tx
-        .update(users)
-        .set({ role, updatedAt: new Date() })
-        .where(eq(users.id, userId))
+      await tx.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId))
 
       await tx.insert(auditLog).values({
         actorId: session.user.id as string,
@@ -141,7 +140,7 @@ export async function updateUserRole(
         targetId: userId,
         detail: buildAuditDetail(AUDIT_ACTIONS.USER_ROLE_CHANGE, {
           username: targetRow.username,
-          fromRole,
+          fromRole: targetRow.role,
           toRole: role,
         }),
       })
@@ -149,8 +148,13 @@ export async function updateUserRole(
 
     return { success: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.updateUserRole', err, {
+      userId: actorId,
+      metadata: { targetUserId: userId, role },
+    })
+    return { error: `Failed to update role. Please try again. Ref: ${errorId}` }
   }
 }
 
@@ -163,43 +167,29 @@ export async function updateUserRole(
 export async function deleteUser(
   userId: string,
 ): Promise<{ success: true } | { error: string }> {
-  // 1. Auth guard
-  const { session, actor } = await getActorOrThrow()
+  let actorId: string | null = null
 
-  // 2. Fetch target BEFORE deletion
-  const targetRow = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  })
-
-  if (!targetRow) {
-    return { error: 'User not found' }
-  }
-
-  const target: AccessUser = {
-    id: targetRow.id,
-    username: targetRow.username,
-    role: targetRow.role,
-    isProtected: targetRow.isProtected,
-  }
-
-  // Capture these before the row is gone
-  const { username, role } = targetRow
-
-  // 3. Access guard
   try {
+    const { session, actor } = await getActorOrThrow()
+    actorId = session.user.id as string
+
+    const targetRow = await db.query.users.findFirst({ where: eq(users.id, userId) })
+    if (!targetRow) return { error: 'User not found' }
+
+    const target: AccessUser = {
+      id: targetRow.id,
+      username: targetRow.username,
+      role: targetRow.role,
+      isProtected: targetRow.isProtected,
+    }
+
     assertCanManageUser(actor, target)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
-  }
 
-  // 4. Delete + audit in a transaction
-  try {
+    const { username, role } = targetRow
+
     await db.transaction(async (tx) => {
-      // Delete cascades userModuleAccess via FK
       await tx.delete(users).where(eq(users.id, userId))
 
-      // username captured above is still in scope
       await tx.insert(auditLog).values({
         actorId: session.user.id as string,
         action: AUDIT_ACTIONS.USER_DELETE,
@@ -210,8 +200,13 @@ export async function deleteUser(
 
     return { success: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.deleteUser', err, {
+      userId: actorId,
+      metadata: { targetUserId: userId },
+    })
+    return { error: `Failed to delete user. Please try again. Ref: ${errorId}` }
   }
 }
 
@@ -226,58 +221,36 @@ export async function setModuleAccess(
   moduleId: string,
   grant: boolean,
 ): Promise<{ success: true } | { error: string }> {
-  // 1. Auth guard
-  const { session, actor } = await getActorOrThrow()
+  let actorId: string | null = null
 
-  // 2. Fetch target user
-  const targetRow = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  })
-
-  if (!targetRow) {
-    return { error: 'User not found' }
-  }
-
-  const target: AccessUser = {
-    id: targetRow.id,
-    username: targetRow.username,
-    role: targetRow.role,
-    isProtected: targetRow.isProtected,
-  }
-
-  // 3. Access guard — must come before any mutation
   try {
+    const { session, actor } = await getActorOrThrow()
+    actorId = session.user.id as string
+
+    const targetRow = await db.query.users.findFirst({ where: eq(users.id, userId) })
+    if (!targetRow) return { error: 'User not found' }
+
+    const target: AccessUser = {
+      id: targetRow.id,
+      username: targetRow.username,
+      role: targetRow.role,
+      isProtected: targetRow.isProtected,
+    }
+
     assertCanManageUser(actor, target)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
-  }
 
-  // 4. Fetch module
-  const moduleRow = await db.query.modules.findFirst({
-    where: eq(modules.id, moduleId),
-  })
+    const moduleRow = await db.query.modules.findFirst({ where: eq(modules.id, moduleId) })
+    if (!moduleRow) return { error: 'Module not found' }
 
-  if (!moduleRow) {
-    return { error: 'Module not found' }
-  }
+    if (moduleRow.adminOnly) {
+      return { error: 'Cannot alter access for admin-only modules — access is role-driven' }
+    }
 
-  // 5. Refuse adminOnly modules
-  if (moduleRow.adminOnly) {
-    return { error: 'Cannot alter access for admin-only modules — access is role-driven' }
-  }
-
-  // 6. Perform grant or revoke in a transaction
-  try {
     if (grant) {
       await db.transaction(async (tx) => {
         await tx
           .insert(userModuleAccess)
-          .values({
-            userId,
-            moduleId,
-            grantedBy: session.user.id as string,
-          })
+          .values({ userId, moduleId, grantedBy: session.user.id as string })
           .onConflictDoNothing()
 
         await tx.insert(auditLog).values({
@@ -291,24 +264,16 @@ export async function setModuleAccess(
         })
       })
     } else {
-      // Check if a grant row actually exists before deleting
       const existingGrant = await db.query.userModuleAccess.findFirst({
         where: and(eq(userModuleAccess.userId, userId), eq(userModuleAccess.moduleId, moduleId)),
       })
 
-      if (!existingGrant) {
-        return { success: true } // nothing to revoke, no audit needed
-      }
+      if (!existingGrant) return { success: true }
 
       await db.transaction(async (tx) => {
         await tx
           .delete(userModuleAccess)
-          .where(
-            and(
-              eq(userModuleAccess.userId, userId),
-              eq(userModuleAccess.moduleId, moduleId),
-            ),
-          )
+          .where(and(eq(userModuleAccess.userId, userId), eq(userModuleAccess.moduleId, moduleId)))
 
         await tx.insert(auditLog).values({
           actorId: session.user.id as string,
@@ -324,7 +289,30 @@ export async function setModuleAccess(
 
     return { success: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { error: message }
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.setModuleAccess', err, {
+      userId: actorId,
+      metadata: { targetUserId: userId, moduleId, grant },
+    })
+    return { error: `Failed to update access. Please try again. Ref: ${errorId}` }
+  }
+}
+
+export async function createTestError(): Promise<{ success: true; errorId: string } | { error: string }> {
+  try {
+    const { session } = await getActorOrThrow()
+    const errorId = await logError('admin.testError', new Error('Deliberate test error from Admin Panel'), {
+      userId: session.user.id as string,
+      metadata: {
+        purpose: 'manual reproduction test',
+        triggeredAt: new Date().toISOString(),
+      },
+    })
+
+    return { success: true, errorId }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { error: msg }
   }
 }

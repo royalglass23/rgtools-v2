@@ -16,8 +16,12 @@ export function CreateUserForm() {
     setError(null)
     setSuccess(false)
 
-    if (!username.trim() || !password.trim()) {
-      setError('Username and password are required.')
+    if (!username.trim()) {
+      setError('Username is required.')
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
       return
     }
 
@@ -73,7 +77,7 @@ export function CreateUserForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Min. 1 character"
+            placeholder="Min. 6 characters"
             autoComplete="new-password"
           />
         </div>

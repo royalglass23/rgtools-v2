@@ -1,0 +1,12 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - heading "rgtools" [level=1] [ref=e5]
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: Username
+        - textbox "Username" [ref=e9]: rgadmin
+      - generic [ref=e10]:
+        - generic [ref=e11]: Password
+        - textbox "Password" [active] [ref=e12]: "*royalglass23"
+      - button "Sign in" [ref=e13]
+  - alert [ref=e14]

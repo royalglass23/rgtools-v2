@@ -129,3 +129,19 @@ export const auditLog = pgTable('audit_log', {
   index('audit_log_created_at_idx').on(table.createdAt),
   index('audit_log_actor_id_idx').on(table.actorId),
 ])
+
+export const errorLog = pgTable('error_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  level: text('level').notNull().default('error'),
+  source: text('source').notNull(),
+  message: text('message').notNull(),
+  stack: text('stack'),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  requestId: text('request_id'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('error_log_created_at_idx').on(table.createdAt),
+  index('error_log_source_idx').on(table.source),
+  index('error_log_user_id_idx').on(table.userId),
+])
