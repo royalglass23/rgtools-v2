@@ -17,5 +17,5 @@ export async function loginAction(_: unknown, formData: FormData) {
     }
     throw error
   }
-  redirect('/quote-tracker')
+  redirect('/')
 }
