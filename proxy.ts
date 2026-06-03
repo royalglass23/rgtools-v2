@@ -9,7 +9,7 @@ const PATH_TO_SLUG: Record<string, string> = {
   'admin': 'admin',
 }
 
-export default auth(async (req) => {
+export const proxy = auth(async (req) => {
   if (!req.auth) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
@@ -31,8 +31,6 @@ export default auth(async (req) => {
       return NextResponse.redirect(loginUrl)
     }
 
-    // DB-backed access check via Neon HTTP — compatible with edge runtime.
-    // Encoding slugs in the JWT is NOT needed because Neon HTTP works on edge.
     const allowed = await userCanAccessSlug(userId, slug)
 
     if (!allowed) {
