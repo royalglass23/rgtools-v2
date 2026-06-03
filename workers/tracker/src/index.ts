@@ -6,6 +6,42 @@ export interface Env {
   DATABASE_URL: string
 }
 
+function normalizeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    }
+  }
+
+  return {
+    message: String(error),
+    stack: null,
+    name: typeof error,
+  }
+}
+
+function logWorkerError(source: string, error: unknown, metadata: Record<string, unknown> = {}): string {
+  const errorId = crypto.randomUUID()
+  const normalized = normalizeError(error)
+
+  console.error(JSON.stringify({
+    id: errorId,
+    level: 'error',
+    source,
+    message: normalized.message,
+    stack: normalized.stack,
+    metadata: {
+      errorName: normalized.name,
+      ...metadata,
+    },
+    createdAt: new Date().toISOString(),
+  }))
+
+  return errorId
+}
+
 async function hashIp(ip: string): Promise<string> {
   const data = new TextEncoder().encode(ip)
   const buf = await crypto.subtle.digest('SHA-256', data)
@@ -89,7 +125,7 @@ async function handleTrack(request: Request, env: Env, payload: BeaconPayload): 
   return new Response(null, { status: 204, headers: CORS_HEADERS })
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS })
@@ -115,6 +151,26 @@ export default {
       return new Response(null, { status: 400, headers: CORS_HEADERS })
     }
 
-    return handleTrack(request, env, body)
+    try {
+      return await handleTrack(request, env, body)
+    } catch (err) {
+      const errorId = logWorkerError('tracker.handleTrack', err, {
+        path: url.pathname,
+        event: body.event,
+        token: body.token,
+        session: body.session,
+        userAgent: request.headers.get('User-Agent') ?? '',
+      })
+
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...CORS_HEADERS,
+          'X-RG-Error-Id': errorId,
+        },
+      })
+    }
   },
 }
+
+export default worker

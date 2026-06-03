@@ -6,6 +6,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { userCanAccessSlug } from '@/lib/access-db'
+import { logError } from '@/lib/logger'
 
 /**
  * Re-checks access via session + DB and redirects to `/?denied=<slug>` if denied.
@@ -18,6 +19,17 @@ export async function requireModule(slug: string): Promise<void> {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const allowed = await userCanAccessSlug(session.user.id, slug)
+  let allowed = false
+
+  try {
+    allowed = await userCanAccessSlug(session.user.id, slug)
+  } catch (err) {
+    await logError('guard.requireModule', err, {
+      userId: session.user.id,
+      metadata: { slug },
+    })
+    redirect('/?denied=' + slug)
+  }
+
   if (!allowed) redirect(`/?denied=${slug}`)
 }

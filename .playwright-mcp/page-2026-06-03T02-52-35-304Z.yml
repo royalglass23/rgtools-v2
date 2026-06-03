@@ -1,0 +1,174 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "rgtools" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e6]:
+          - link "Quote Tracker" [ref=e7] [cursor=pointer]:
+            - /url: /quote-tracker
+          - link "Administration" [ref=e8] [cursor=pointer]:
+            - /url: /admin
+      - generic [ref=e9]:
+        - generic [ref=e10]: rgadmin(admin)
+        - button "Sign out" [ref=e12]
+    - main [ref=e13]:
+      - generic [ref=e14]:
+        - heading "Admin Panel" [level=1] [ref=e15]
+        - generic [ref=e16]:
+          - heading "Users" [level=2] [ref=e17]
+          - table [ref=e19]:
+            - rowgroup [ref=e20]:
+              - row "Username Role Access Actions" [ref=e21]:
+                - columnheader "Username" [ref=e22]
+                - columnheader "Role" [ref=e23]
+                - columnheader "Access" [ref=e24]
+                - columnheader "Actions" [ref=e25]
+            - rowgroup [ref=e26]:
+              - row "rgadmin (you) Protected Admin Manage access Delete" [ref=e27]:
+                - cell "rgadmin (you) Protected" [ref=e28]:
+                  - generic [ref=e29]:
+                    - generic [ref=e30]: rgadmin
+                    - generic [ref=e31]: (you)
+                    - generic "This user is protected and cannot be modified" [ref=e32]: Protected
+                - cell "Admin" [ref=e33]:
+                  - combobox "This user is protected and cannot be modified." [disabled] [ref=e35]:
+                    - option "Staff"
+                    - option "Admin" [selected]
+                - cell "Manage access" [ref=e36]:
+                  - button "Manage access" [ref=e38]
+                - cell "Delete" [ref=e39]:
+                  - button "Delete" [disabled] [ref=e41]
+              - row "staff Staff Manage access Delete" [ref=e42]:
+                - cell "staff" [ref=e43]:
+                  - generic [ref=e45]: staff
+                - cell "Staff" [ref=e46]:
+                  - combobox [ref=e48]:
+                    - option "Staff" [selected]
+                    - option "Admin"
+                - cell "Manage access" [ref=e49]:
+                  - button "Manage access" [ref=e51]
+                - cell "Delete" [ref=e52]:
+                  - button "Delete" [ref=e54]
+              - row "admin Admin Manage access Delete" [ref=e55]:
+                - cell "admin" [ref=e56]:
+                  - generic [ref=e58]: admin
+                - cell "Admin" [ref=e59]:
+                  - combobox [ref=e61]:
+                    - option "Staff"
+                    - option "Admin" [selected]
+                - cell "Manage access" [ref=e62]:
+                  - button "Manage access" [ref=e64]
+                - cell "Delete" [ref=e65]:
+                  - button "Delete" [ref=e67]
+              - row "teststaff Staff Manage access Delete" [ref=e68]:
+                - cell "teststaff" [ref=e69]:
+                  - generic [ref=e71]: teststaff
+                - cell "Staff" [ref=e72]:
+                  - combobox [ref=e74]:
+                    - option "Staff" [selected]
+                    - option "Admin"
+                - cell "Manage access" [ref=e75]:
+                  - button "Manage access" [ref=e77]
+                - cell "Delete" [ref=e78]:
+                  - button "Delete" [ref=e80]
+              - row "uniquetest123 Staff Manage access Delete" [ref=e81]:
+                - cell "uniquetest123" [ref=e82]:
+                  - generic [ref=e84]: uniquetest123
+                - cell "Staff" [ref=e85]:
+                  - combobox [ref=e87]:
+                    - option "Staff" [selected]
+                    - option "Admin"
+                - cell "Manage access" [ref=e88]:
+                  - button "Manage access" [ref=e90]
+                - cell "Delete" [ref=e91]:
+                  - button "Delete" [ref=e93]
+        - generic [ref=e94]:
+          - heading "Create User" [level=2] [ref=e95]
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - generic [ref=e100]: Username
+              - textbox "Username" [ref=e101]:
+                - /placeholder: e.g. jsmith
+            - generic [ref=e102]:
+              - generic [ref=e103]: Initial Password
+              - textbox "Initial Password" [ref=e104]:
+                - /placeholder: Min. 6 characters
+            - generic [ref=e105]:
+              - generic [ref=e106]: Role
+              - combobox "Role" [ref=e107]:
+                - option "Staff" [selected]
+                - option "Admin"
+            - button "Create User" [ref=e108]
+        - generic [ref=e109]:
+          - heading "Audit Log(last 100 entries, newest first — read-only)" [level=2] [ref=e110]
+          - table [ref=e112]:
+            - rowgroup [ref=e113]:
+              - row "Timestamp Actor Action Target Detail" [ref=e114]:
+                - columnheader "Timestamp" [ref=e115]
+                - columnheader "Actor" [ref=e116]
+                - columnheader "Action" [ref=e117]
+                - columnheader "Target" [ref=e118]
+                - columnheader "Detail" [ref=e119]
+            - rowgroup [ref=e120]:
+              - 'row "03/06/2026 14:51:40 rgadmin access.grant teststaff moduleSlug: quote-tracker" [ref=e121]':
+                - cell "03/06/2026 14:51:40" [ref=e122]
+                - cell "rgadmin" [ref=e123]
+                - cell "access.grant" [ref=e124]
+                - cell "teststaff" [ref=e125]
+                - 'cell "moduleSlug: quote-tracker" [ref=e126]'
+              - 'row "03/06/2026 14:44:32 rgadmin user.create uniquetest123 role: staff" [ref=e127]':
+                - cell "03/06/2026 14:44:32" [ref=e128]
+                - cell "rgadmin" [ref=e129]
+                - cell "user.create" [ref=e130]
+                - cell "uniquetest123" [ref=e131]
+                - 'cell "role: staff" [ref=e132]'
+              - 'row "03/06/2026 14:10:32 rgadmin user.create teststaff role: staff" [ref=e133]':
+                - cell "03/06/2026 14:10:32" [ref=e134]
+                - cell "rgadmin" [ref=e135]
+                - cell "user.create" [ref=e136]
+                - cell "teststaff" [ref=e137]
+                - 'cell "role: staff" [ref=e138]'
+              - 'row "03/06/2026 12:38:49 admin access.grant staff moduleSlug: quote-tracker" [ref=e139]':
+                - cell "03/06/2026 12:38:49" [ref=e140]
+                - cell "admin" [ref=e141]
+                - cell "access.grant" [ref=e142]
+                - cell "staff" [ref=e143]
+                - 'cell "moduleSlug: quote-tracker" [ref=e144]'
+              - 'row "03/06/2026 12:31:28 rgadmin access.revoke staff moduleSlug: quote-tracker" [ref=e145]':
+                - cell "03/06/2026 12:31:28" [ref=e146]
+                - cell "rgadmin" [ref=e147]
+                - cell "access.revoke" [ref=e148]
+                - cell "staff" [ref=e149]
+                - 'cell "moduleSlug: quote-tracker" [ref=e150]'
+              - 'row "03/06/2026 12:31:25 rgadmin access.grant staff moduleSlug: quote-tracker" [ref=e151]':
+                - cell "03/06/2026 12:31:25" [ref=e152]
+                - cell "rgadmin" [ref=e153]
+                - cell "access.grant" [ref=e154]
+                - cell "staff" [ref=e155]
+                - 'cell "moduleSlug: quote-tracker" [ref=e156]'
+              - 'row "03/06/2026 12:31:22 rgadmin access.revoke staff moduleSlug: quote-tracker" [ref=e157]':
+                - cell "03/06/2026 12:31:22" [ref=e158]
+                - cell "rgadmin" [ref=e159]
+                - cell "access.revoke" [ref=e160]
+                - cell "staff" [ref=e161]
+                - 'cell "moduleSlug: quote-tracker" [ref=e162]'
+              - 'row "03/06/2026 12:31:18 rgadmin access.grant staff moduleSlug: quote-tracker" [ref=e163]':
+                - cell "03/06/2026 12:31:18" [ref=e164]
+                - cell "rgadmin" [ref=e165]
+                - cell "access.grant" [ref=e166]
+                - cell "staff" [ref=e167]
+                - 'cell "moduleSlug: quote-tracker" [ref=e168]'
+              - 'row "03/06/2026 12:31:06 rgadmin user.create admin role: admin" [ref=e169]':
+                - cell "03/06/2026 12:31:06" [ref=e170]
+                - cell "rgadmin" [ref=e171]
+                - cell "user.create" [ref=e172]
+                - cell "admin" [ref=e173]
+                - 'cell "role: admin" [ref=e174]'
+              - 'row "03/06/2026 12:30:47 rgadmin user.create staff role: staff" [ref=e175]':
+                - cell "03/06/2026 12:30:47" [ref=e176]
+                - cell "rgadmin" [ref=e177]
+                - cell "user.create" [ref=e178]
+                - cell "staff" [ref=e179]
+                - 'cell "role: staff" [ref=e180]'
+  - alert [ref=e181]

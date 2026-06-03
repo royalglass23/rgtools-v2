@@ -6,9 +6,9 @@ import { getAccessibleModules } from '@/lib/access-db'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
-  if (!session) redirect('/login')
+  if (!session?.user?.id) redirect('/login')
 
-  const accessibleModules = await getAccessibleModules(session.user.id ?? '')
+  const accessibleModules = await getAccessibleModules(session.user.id)
 
   return (
     <div className="min-h-screen bg-gray-50">
