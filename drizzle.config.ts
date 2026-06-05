@@ -4,7 +4,7 @@ import { loadEnvConfig } from '@next/env'
 loadEnvConfig(process.cwd())
 
 export default defineConfig({
-  schema: './drizzle/schema.ts',
+  schema: './drizzle/*.ts',
   out: './drizzle/migrations',
   dialect: 'postgresql',
   dbCredentials: { url: process.env.DATABASE_URL! },

@@ -22,6 +22,13 @@
       "when": 1780497600000,
       "tag": "0002_error_log",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780623578955,
+      "tag": "0003_strong_ikaris",
+      "breakpoints": true
     }
   ]
 }
