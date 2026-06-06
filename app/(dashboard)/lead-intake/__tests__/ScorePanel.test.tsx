@@ -9,7 +9,7 @@ const config: ScoringConfig = {
   },
   bonuses: {},
   penalties: {},
-  tiers: { A: 30, B: 20, C: 10 },
+  tiers: { A: 75, B: 55, C: 30 },
 }
 
 const emptyInput = {
@@ -35,7 +35,7 @@ it('shows correct tier and score when fields are filled', () => {
       config={config}
     />,
   )
-  expect(screen.getByText('Tier A')).toBeInTheDocument()
+  expect(screen.getByText('Tier C')).toBeInTheDocument()
   expect(screen.getByText('38')).toBeInTheDocument()
 })
 
@@ -49,4 +49,24 @@ it('shows dashes for zero-point categories', () => {
   render(<ScorePanel input={emptyInput} config={config} />)
   const dashes = screen.getAllByText('—')
   expect(dashes).toHaveLength(2)
+})
+
+it('uses consentStatus over timeline for cat3 when both are set', () => {
+  const cat3Config: ScoringConfig = {
+    categories: {
+      '3': { label: 'Consent', max: 20, options: { approved: 19, enquiry_only: 2 } },
+    },
+    bonuses: {},
+    penalties: {},
+    tiers: { A: 75, B: 55, C: 30 },
+  }
+  render(
+    <ScorePanel
+      input={{ ...emptyInput, consentStatus: 'approved', timeline: 'enquiry_only' }}
+      config={cat3Config}
+    />,
+  )
+  const nineTeens = screen.getAllByText('19')
+  expect(nineTeens).toHaveLength(2)
+  expect(nineTeens[0]).toBeInTheDocument()
 })

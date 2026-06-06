@@ -28,6 +28,7 @@ export function ScorePanel({ input, config }: Props) {
   const answers = {
     cat1: input.clientProfileKey || undefined,
     cat2: input.budgetBand || undefined,
+    // consentStatus takes precedence; timeline is a fallback until cat7 is added
     cat3: input.consentStatus || input.timeline || undefined,
     cat4: input.cat4 || undefined,
     cat5: input.priceSensitivityRead || undefined,
