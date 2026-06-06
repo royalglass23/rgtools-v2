@@ -1,6 +1,6 @@
-import { getActiveScoringOptionLists } from '@/lib/scoring/config-options'
-import { getLeadIntakeForEdit } from './actions'
-import { LeadIntakeForm } from './LeadIntakeForm'
+import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { getLeadIntakeForEdit } from '@/modules/lead-intake/actions'
+import { LeadIntakeForm } from '@/modules/lead-intake/LeadIntakeForm'
 
 export default async function LeadIntakePage({
   searchParams,

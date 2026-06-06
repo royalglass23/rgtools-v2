@@ -1,6 +1,6 @@
 'use client'
 
-import { scoreLead, type ScoringConfig } from '@/lib/scoring/score-lead'
+import { scoreLead, type ScoringConfig } from '@/modules/lead-intake/scoring/score-lead'
 
 type ScoredFields = {
   clientProfileKey: string

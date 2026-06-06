@@ -5,8 +5,8 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
-import { getActiveScoringOptionLists } from '@/lib/scoring/config-options'
-import { persistLeadScore } from '@/lib/scoring/persist-score'
+import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
   buildCategoryAnswers,
   normalizeInput,

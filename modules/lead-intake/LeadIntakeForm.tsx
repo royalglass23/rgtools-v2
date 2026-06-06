@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import type { ActiveScoringOptionLists, FormOption } from '@/lib/scoring/config-options'
+import type { ActiveScoringOptionLists, FormOption } from '@/modules/lead-intake/scoring/config-options'
 import { submitLeadIntake, type LeadIntakeInput, type LeadIntakeResult } from './actions'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'

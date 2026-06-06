@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { ScorePanel } from '../ScorePanel'
-import type { ScoringConfig } from '@/lib/scoring/score-lead'
+import type { ScoringConfig } from '@/modules/lead-intake/scoring/score-lead'
 
 const config: ScoringConfig = {
   categories: {
