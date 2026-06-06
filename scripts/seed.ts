@@ -33,6 +33,7 @@ async function seed() {
 
   // Upsert modules
   const modulesToSeed = [
+    { slug: 'lead-intake', name: 'Lead Intake', adminOnly: false, sortOrder: 0 },
     { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 1 },
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
   ]
