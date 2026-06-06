@@ -12,8 +12,12 @@ type Props = {
 
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
 
-if (apiKey) {
-  setOptions({ key: apiKey, v: 'weekly' })
+let mapsConfigured = false
+function ensureMapsConfigured() {
+  if (!mapsConfigured && apiKey) {
+    setOptions({ key: apiKey, v: 'weekly' })
+    mapsConfigured = true
+  }
 }
 
 export function extractSuburb(components: AddressComponent[]): string {
@@ -35,6 +39,7 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
 
   useEffect(() => {
     if (!apiKey || !inputRef.current) return
+    ensureMapsConfigured()
 
     let cancelled = false
     let listener: google.maps.MapsEventListener | undefined
@@ -67,6 +72,7 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
       <input
         ref={inputRef}
         type="text"
+        defaultValue={value}
         className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Start typing an address..."
       />
