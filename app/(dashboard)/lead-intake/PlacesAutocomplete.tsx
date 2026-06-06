@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
 type AddressComponent = { types: string[]; short_name: string }
 
@@ -11,6 +11,10 @@ type Props = {
 }
 
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
+
+if (apiKey) {
+  setOptions({ key: apiKey, v: 'weekly' })
+}
 
 export function extractSuburb(components: AddressComponent[]): string {
   for (const type of ['locality', 'sublocality_level_1', 'sublocality']) {
@@ -32,26 +36,29 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
   useEffect(() => {
     if (!apiKey || !inputRef.current) return
 
-    const loader = new Loader({ apiKey, version: 'weekly', libraries: ['places'] })
-    let cleanup: (() => void) | undefined
+    let cancelled = false
+    let listener: google.maps.MapsEventListener | undefined
 
-    loader.load().then(() => {
-      if (!inputRef.current) return
-      const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+    importLibrary('places').then((placesLib) => {
+      if (cancelled || !inputRef.current) return
+      const { Autocomplete } = placesLib as google.maps.PlacesLibrary
+      const autocomplete = new Autocomplete(inputRef.current, {
         types: ['address'],
         componentRestrictions: { country: 'nz' },
         fields: ['formatted_address', 'address_components'],
       })
-      const listener = autocomplete.addListener('place_changed', () => {
+      listener = autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace()
         const address = place.formatted_address ?? inputRef.current?.value ?? ''
         const suburb = extractSuburb(place.address_components ?? [])
         onChangeRef.current(address, suburb)
       })
-      cleanup = () => google.maps.event.removeListener(listener)
     })
 
-    return () => cleanup?.()
+    return () => {
+      cancelled = true
+      if (listener) google.maps.event.removeListener(listener)
+    }
   }, [])
 
   return (
