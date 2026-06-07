@@ -55,7 +55,7 @@ export function scoringConfigToOptionLists(
         categoryKey,
         {
           label: category.label,
-          options: Object.keys(category.options).map((optionKey) => ({
+          options: (category.optionOrder ?? Object.keys(category.options)).map((optionKey) => ({
             key: optionKey,
             label: category.optionLabels?.[optionKey] ?? formatOptionLabel(optionKey),
           })),

@@ -15,6 +15,7 @@ export type ScoringCategoryConfig = {
   max: number
   options: Record<string, number>
   optionLabels?: Record<string, string>
+  optionOrder?: string[]
 }
 
 export type ScoringConfig = {
