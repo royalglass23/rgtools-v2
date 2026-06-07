@@ -68,7 +68,7 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
 
   return (
     <label className="block">
-      <span className="text-xs font-medium text-gray-600">Location *</span>
+      <span className="text-xs font-medium text-gray-600">Job Address *</span>
       <input
         ref={inputRef}
         type="text"

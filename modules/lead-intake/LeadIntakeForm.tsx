@@ -88,23 +88,9 @@ export function LeadIntakeForm({
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <TextField label="Client name" required value={input.clientName} onChange={(value) => update('clientName', value)} />
-          <TextField label="Phone" value={input.phone ?? ''} onChange={(value) => update('phone', value)} />
-          <TextField label="Email" type="email" value={input.email ?? ''} onChange={(value) => update('email', value)} />
-          <SelectField
-            label="Client type"
-            required
-            value={input.clientProfileKey}
-            options={optionLists.categories['1']?.options ?? []}
-            onChange={(value) => update('clientProfileKey', value)}
-          />
-          <SelectField
-            label="Project type"
-            required
-            value={input.projectType}
-            options={PROJECT_TYPES}
-            onChange={(value) => update('projectType', value)}
-          />
+          <TextField label="Client Name/Business Name" required value={input.clientName} onChange={(value) => update('clientName', value)} />
+          <TextField label="Phone" required value={input.phone ?? ''} onChange={(value) => update('phone', value)} />
+          <TextField label="Email" type="email" required value={input.email ?? ''} onChange={(value) => update('email', value)} />
           <PlacesAutocomplete
             value={input.location}
             onChange={(address, suburb) => {
@@ -113,22 +99,17 @@ export function LeadIntakeForm({
             }}
           />
           <SelectField
-            label="Distance / complexity"
-            value={input.cat4 ?? ''}
-            options={optionLists.categories['4']?.options ?? []}
-            onChange={(value) => update('cat4', value)}
+            label="Project type"
+            required
+            value={input.projectType}
+            options={PROJECT_TYPES}
+            onChange={(value) => update('projectType', value)}
           />
           <SelectField
-            label="Timeline"
-            value={input.timeline ?? ''}
-            options={optionLists.categories['3']?.options ?? []}
-            onChange={(value) => update('timeline', value)}
-          />
-          <SelectField
-            label="Consent status"
-            value={input.consentStatus ?? ''}
-            options={optionLists.categories['3']?.options ?? []}
-            onChange={(value) => update('consentStatus', value)}
+            label="Client type"
+            value={input.clientProfileKey}
+            options={optionLists.categories['1']?.options ?? []}
+            onChange={(value) => update('clientProfileKey', value)}
           />
           <SelectField
             label="Budget band"
@@ -137,16 +118,34 @@ export function LeadIntakeForm({
             onChange={(value) => update('budgetBand', value)}
           />
           <SelectField
-            label="Decision-makers"
-            value={input.decisionMakers ?? ''}
-            options={optionLists.categories['6']?.options ?? []}
-            onChange={(value) => update('decisionMakers', value)}
+            label="Consent status"
+            value={input.consentStatus ?? ''}
+            options={optionLists.categories['3']?.options ?? []}
+            onChange={(value) => update('consentStatus', value)}
+          />
+          <SelectField
+            label="Distance / complexity"
+            value={input.cat4 ?? ''}
+            options={optionLists.categories['4']?.options ?? []}
+            onChange={(value) => update('cat4', value)}
           />
           <SelectField
             label="Price-sensitivity read"
             value={input.priceSensitivityRead ?? ''}
             options={optionLists.categories['5']?.options ?? []}
             onChange={(value) => update('priceSensitivityRead', value)}
+          />
+          <SelectField
+            label="Decision-makers"
+            value={input.decisionMakers ?? ''}
+            options={optionLists.categories['6']?.options ?? []}
+            onChange={(value) => update('decisionMakers', value)}
+          />
+          <SelectField
+            label="Timeline"
+            value={input.timeline ?? ''}
+            options={optionLists.categories['3']?.options ?? []}
+            onChange={(value) => update('timeline', value)}
           />
           <SelectField
             label="Source"
