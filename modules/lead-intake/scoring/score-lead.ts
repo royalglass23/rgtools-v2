@@ -5,6 +5,7 @@ export type LeadAnswers = {
   cat4?: string
   cat5?: string
   cat6?: string
+  cat7?: string
   bonuses?: string[]
   penalties?: string[]
 }
@@ -23,7 +24,7 @@ export type ScoringConfig = {
 }
 
 export type LeadTier = 'A' | 'B' | 'C' | 'D'
-type CategoryAnswerField = keyof Pick<LeadAnswers, 'cat1' | 'cat2' | 'cat3' | 'cat4' | 'cat5' | 'cat6'>
+type CategoryAnswerField = keyof Pick<LeadAnswers, 'cat1' | 'cat2' | 'cat3' | 'cat4' | 'cat5' | 'cat6' | 'cat7'>
 
 export type ScoreResult = {
   score: number
@@ -39,6 +40,7 @@ const answerFieldByCategory: Record<string, CategoryAnswerField> = {
   '4': 'cat4',
   '5': 'cat5',
   '6': 'cat6',
+  '7': 'cat7',
 }
 
 export function scoreLead(answers: LeadAnswers, config: ScoringConfig): ScoreResult {

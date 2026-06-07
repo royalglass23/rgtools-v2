@@ -160,6 +160,7 @@ function leadSourceToAnswers(source: LeadScoreSource, config: ScoringConfig): Le
     cat4: optionKeyOrUndefined(config, '4', source.storedAnswers.cat4 ?? null),
     cat5: optionKeyOrUndefined(config, '5', source.storedAnswers.cat5 ?? source.priceSensitivityRead),
     cat6: optionKeyOrUndefined(config, '6', source.storedAnswers.cat6 ?? source.decisionMakers),
+    cat7: optionKeyOrUndefined(config, '7', source.storedAnswers.cat7 ?? null),
   }
 }
 

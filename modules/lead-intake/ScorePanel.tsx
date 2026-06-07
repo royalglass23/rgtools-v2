@@ -6,7 +6,6 @@ type ScoredFields = {
   clientProfileKey: string
   budgetBand?: string
   consentStatus?: string
-  timeline?: string
   cat4?: string
   priceSensitivityRead?: string
   decisionMakers?: string
@@ -28,8 +27,7 @@ export function ScorePanel({ input, config }: Props) {
   const answers = {
     cat1: input.clientProfileKey || undefined,
     cat2: input.budgetBand || undefined,
-    // consentStatus takes precedence; timeline is a fallback until cat7 is added
-    cat3: input.consentStatus || input.timeline || undefined,
+    cat3: input.consentStatus || undefined,
     cat4: input.cat4 || undefined,
     cat5: input.priceSensitivityRead || undefined,
     cat6: input.decisionMakers || undefined,

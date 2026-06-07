@@ -33,7 +33,6 @@ const initialState: LeadIntakeInput = {
   location: '',
   suburb: '',
   cat4: '',
-  timeline: '',
   consentStatus: '',
   budgetBand: '',
   decisionMakers: '',
@@ -140,12 +139,6 @@ export function LeadIntakeForm({
             value={input.decisionMakers ?? ''}
             options={optionLists.categories['6']?.options ?? []}
             onChange={(value) => update('decisionMakers', value)}
-          />
-          <SelectField
-            label="Timeline"
-            value={input.timeline ?? ''}
-            options={optionLists.categories['3']?.options ?? []}
-            onChange={(value) => update('timeline', value)}
           />
           <SelectField
             label="Source"
