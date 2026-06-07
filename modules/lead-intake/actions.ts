@@ -30,6 +30,7 @@ export type LeadIntakeInput = {
   budgetBand?: string
   decisionMakers?: string
   priceSensitivityRead?: string
+  distanceBand?: string
   source: 'phone' | 'email' | 'wechat' | 'calculator' | 'contact_form' | 'other'
   freeText?: string
 }
@@ -44,6 +45,7 @@ export type LeadIntakeResult =
       tier: 'A' | 'B' | 'C' | 'D'
       reason: string
       completeness: number
+      distanceBand: string | null
     }
   | { error: string }
 
@@ -95,6 +97,7 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
     location: row.location ?? '',
     suburb: row.suburb ?? '',
     cat4: answerByCategory[4] ?? '',
+    distanceBand: answerByCategory[7] ?? '',
     consentStatus: row.consentStatus ? answerByCategory[3] ?? row.consentStatus ?? '' : '',
     budgetBand: answerByCategory[2] ?? row.budgetBand ?? '',
     decisionMakers: answerByCategory[6] ?? row.decisionMakers ?? '',
@@ -265,6 +268,7 @@ export async function submitLeadIntakeForUser(
     tier: score.tier,
     reason: score.reason,
     completeness: score.completeness,
+    distanceBand,
   }
 }
 
