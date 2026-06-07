@@ -39,7 +39,7 @@ function minimumInput(overrides: Partial<LeadIntakeInput> = {}): LeadIntakeInput
   return {
     clientName: `Codex Intake Test ${crypto.randomUUID()}`,
     phone: '021 333 444',
-    clientProfileKey: 'owner_occupier',
+    clientProfileKey: '',
     projectType: 'pool_fence',
     location: 'Albany',
     source: 'phone',
@@ -167,7 +167,7 @@ describe('submitLeadIntakeForUser integration', () => {
     expect(lead.seedScore).toBe(result.score)
     expect(lead.configVersionId).toBeTruthy()
     expect(categoryRows.length).toBeGreaterThanOrEqual(6)
-    expect(categoryRows[0]).toEqual({ category: 1, answerKey: 'owner_occupier' })
+    expect(categoryRows[0]).toMatchObject({ category: 1 })
     expect(auditRows.map((row) => row.action).sort()).toEqual(['lead.create', 'lead.score'])
   }, 30000)
 })

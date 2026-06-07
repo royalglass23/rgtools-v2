@@ -3,7 +3,7 @@ const ORIGIN = '13E Paul Matthews Rd, Auckland, New Zealand'
 export type DistanceBand = 'within_30km' | '30km_to_80km' | 'over_80km'
 
 export async function computeDistanceBand(destination: string): Promise<DistanceBand | null> {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY
+  const apiKey = process.env.GOOGLE_MAPS_SERVER_KEY
   if (!apiKey || !destination) return null
 
   try {
