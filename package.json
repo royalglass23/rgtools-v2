@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.34.3",
+    "@googlemaps/js-api-loader": "^2.1.0",
     "@neondatabase/serverless": "^1.1.0",
     "@next/env": "^16.2.6",
     "bcryptjs": "^3.0.3",
@@ -30,6 +31,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^3.0.0",
+    "@types/google.maps": "^3.65.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

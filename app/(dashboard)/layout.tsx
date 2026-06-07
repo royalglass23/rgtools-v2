@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { signOutAction } from './actions'
 import { getAccessibleModules } from '@/lib/access-db'
 
@@ -12,10 +13,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <nav className="flex items-center justify-between border-b border-sky-900/40 bg-[#142B3A] px-6 py-3 shadow-sm">
         <div className="flex items-center gap-6">
-          <Link href="/" className="font-semibold text-gray-900 hover:text-gray-700 transition-colors">
-            rgtools
+          <Link
+            href="/"
+            className="flex h-[72px] items-center transition-opacity hover:opacity-85"
+            aria-label="Royal Glass tools home"
+          >
+            <Image
+              src="/royal-glass-logo-white.png"
+              alt="Royal Glass"
+              width={300}
+              height={144}
+              priority
+              unoptimized
+              className="h-[72px] w-auto"
+            />
           </Link>
           {accessibleModules.length > 0 && (
             <div className="flex items-center gap-4">
@@ -23,7 +36,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <Link
                   key={mod.id}
                   href={`/${mod.slug}`}
-                  className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
+                  className="text-sm text-slate-100/85 transition-colors hover:text-white"
                 >
                   {mod.name}
                 </Link>
@@ -32,14 +45,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
           )}
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-slate-100/80">
             {session.user?.name}
             {session.user?.role === 'admin' && (
-              <span className="ml-1 text-xs text-blue-600">(admin)</span>
+              <span className="ml-1 text-xs text-sky-200">(admin)</span>
             )}
           </span>
           <form action={signOutAction}>
-            <button type="submit" className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
+            <button type="submit" className="text-sm text-slate-100/80 transition-colors hover:text-white">
               Sign out
             </button>
           </form>

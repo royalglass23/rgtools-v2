@@ -95,7 +95,7 @@ import {
   updateUserRole,
   deleteUser,
   setModuleAccess,
-} from '../../app/(dashboard)/admin/actions'
+} from '@/modules/admin/actions'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 

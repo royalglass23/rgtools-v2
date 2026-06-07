@@ -4,10 +4,10 @@ import { db } from '@/lib/db'
 import { users, modules, userModuleAccess, auditLog, errorLog } from '@/drizzle/schema'
 import { count, desc } from 'drizzle-orm'
 import Link from 'next/link'
-import { CreateUserForm } from './CreateUserForm'
-import { TestErrorButton } from './TestErrorButton'
-import { UserRow } from './UserRow'
-import { ExportDropdown } from './ExportDropdown'
+import { CreateUserForm } from '@/modules/admin/CreateUserForm'
+import { TestErrorButton } from '@/modules/admin/TestErrorButton'
+import { UserRow } from '@/modules/admin/UserRow'
+import { ExportDropdown } from '@/modules/admin/ExportDropdown'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
 
