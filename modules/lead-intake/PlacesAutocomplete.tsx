@@ -71,6 +71,11 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
         ref={inputRef}
         type="text"
         defaultValue={value}
+        onInput={(e) => {
+          if (!(e.target as HTMLInputElement).value) {
+            onChangeRef.current('', '')
+          }
+        }}
         className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Start typing an address..."
       />
