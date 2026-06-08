@@ -31,12 +31,17 @@ Internal operations toolkit for Royal Glass — covering lead intake and scoring
 - [Lead intake form](docs/user/lead-intake.md) — field-by-field guide
 - [Scoring guide](docs/user/scoring-guide.md) — categories, tiers A–D, strike flags
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
 ## Quick start (dev)
 
 ```bash
 pnpm install
 cp .env.example .env.local   # fill in values — see docs/dev/setup.md
 pnpm db:migrate
+pnpm seed                    # creates initial admin user
 pnpm tsx scripts/seed-scoring-config-v3.ts
 pnpm dev
 ```

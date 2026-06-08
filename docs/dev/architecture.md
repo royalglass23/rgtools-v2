@@ -33,7 +33,7 @@ Role-based module access:
 - **Admin** — sees all active modules
 - **Staff** — sees modules where a grant row exists in `user_module_access`
 
-Guards are enforced in `lib/guard.ts` and middleware (`__tests__/middleware.test.ts`). The `(dashboard)` route group requires an authenticated session; unauthenticated requests redirect to `/login`.
+Guards are enforced in `middleware.ts` (route-level redirect) and `lib/guard.ts` (page-level server check). Tests live in `__tests__/middleware.test.ts` and `lib/__tests__/access.test.ts`. The `(dashboard)` route group requires an authenticated session; unauthenticated requests redirect to `/login`.
 
 ## Database schema
 

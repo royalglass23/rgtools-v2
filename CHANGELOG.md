@@ -18,7 +18,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ---
 
-## [0.3.0] — 2026-06
+## [0.3.0] — 2026-06-08
 
 ### Added
 - Driving distance auto-computed via Google Distance Matrix API when a job address is selected
@@ -34,7 +34,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ---
 
-## [0.2.0] — 2026-05
+## [0.2.0] — 2026-05-30
 
 ### Added
 - Lead intake v1: staff form to capture client details, project info, and 6-category scoring answers
@@ -51,7 +51,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ---
 
-## [0.1.0] — 2026-04
+## [0.1.0] — 2026-05
 
 ### Added
 - Next.js 16 app with NextAuth v5 credential login (admin/staff roles)

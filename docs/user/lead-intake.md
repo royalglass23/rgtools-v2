@@ -17,14 +17,14 @@ At the top of the page, above the form, is the **Score Panel**. It updates live 
 | Field | Notes |
 |-------|-------|
 | **Client Name / Business Name** | Full name or trading name. Required. |
-| **Phone** | Used to detect if this client already exists. Normalised automatically. |
-| **Email** | Also used for client matching. |
+| **Phone** | Used for client matching. At least one of phone or email is required. |
+| **Email** | Also used for client matching. At least one of phone or email is required. |
 
 If a client with the same phone number or email already exists, their record will be updated rather than a new one created. The result banner will tell you if an existing client was matched.
 
 ### Job Address
 
-Start typing the address — Google Places autocomplete will suggest matches (New Zealand addresses only). Select a suggestion to confirm.
+Required. Start typing the address — Google Places autocomplete will suggest matches (New Zealand addresses only). Select a suggestion to confirm.
 
 Once an address is selected, the **Driving Distance** field below it auto-computes the distance from Royal Glass's location and shows the distance band and its scoring impact:
 
@@ -53,7 +53,7 @@ Driving Distance is the seventh scored field and is auto-computed — you don't 
 
 ### Project type
 
-Select the type of glass work: Pool fence, Balustrade, Shower, Handrail, or Other.
+Required. Select the type of glass work: Pool fence, Balustrade, Shower, Handrail, or Other.
 
 ### Source
 

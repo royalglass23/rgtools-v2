@@ -81,7 +81,7 @@ Open [http://localhost:3000](http://localhost:3000). Log in with a user created 
 pnpm seed
 ```
 
-This runs `scripts/seed.ts`, which creates a default admin account. Check the script for the default credentials.
+This runs `scripts/seed.ts`, which creates a default admin account. Check the script for the default credentials. **Change the seed password before sharing access to any shared or production environment.**
 
 ## Run tests
 
