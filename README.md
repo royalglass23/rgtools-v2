@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# rgtools
 
-## Getting Started
+Internal operations toolkit for Royal Glass — covering lead intake and scoring, quote pipeline tracking, and quote engagement analytics.
 
-First, run the development server:
+## What it does
+
+| Module | Description |
+|--------|-------------|
+| **Dashboard** | KPI overview — pipeline value, open quotes, hot leads, win rate, urgent actions |
+| **Lead Intake** | Staff form to capture and score inbound enquiries, auto-syncs to ServiceM8 |
+| **Quote Tracker** | Cloudflare Worker that records how clients interact with sent quotes |
+
+## Tech stack
+
+- **Next.js 16** (App Router) + **React 19** + **Tailwind CSS 4**
+- **Drizzle ORM** + **Neon PostgreSQL** (serverless)
+- **NextAuth v5** — credential-based auth, JWT sessions, admin/staff roles
+- **Google Maps** — Places autocomplete + Distance Matrix
+- **Cloudflare Workers** — `rg-tracker` beacon endpoint
+- **Vitest** — unit and integration tests
+
+## Developer docs
+
+- [Local setup](docs/dev/setup.md) — prerequisites, env vars, DB migration, seeding, testing
+- [Architecture](docs/dev/architecture.md) — system design, modules, auth, scoring engine
+- [Deployment](docs/dev/deployment.md) — Vercel + Cloudflare Worker
+
+## User docs
+
+- [Getting started](docs/user/getting-started.md) — login, dashboard, roles
+- [Lead intake form](docs/user/lead-intake.md) — field-by-field guide
+- [Scoring guide](docs/user/scoring-guide.md) — categories, tiers A–D, strike flags
+
+## Quick start (dev)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # fill in values — see docs/dev/setup.md
+pnpm db:migrate
+pnpm tsx scripts/seed-scoring-config-v3.ts
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tests
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm test          # watch mode
+pnpm test:run      # single run (CI)
+```
