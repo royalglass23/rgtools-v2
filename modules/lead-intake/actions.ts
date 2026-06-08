@@ -107,6 +107,10 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
   }
 }
 
+export async function computeLeadDistance(address: string): Promise<string | null> {
+  return computeDistanceBand(address)
+}
+
 export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadIntakeResult> {
   const session = await auth()
   if (!session?.user?.id) return { error: 'Forbidden' }

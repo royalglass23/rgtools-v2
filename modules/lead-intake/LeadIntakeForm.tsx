@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import type { ActiveScoringOptionLists, FormOption } from '@/modules/lead-intake/scoring/config-options'
-import { submitLeadIntake, type LeadIntakeInput, type LeadIntakeResult } from './actions'
+import { submitLeadIntake, computeLeadDistance, type LeadIntakeInput, type LeadIntakeResult } from './actions'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'
 
@@ -51,6 +51,7 @@ export function LeadIntakeForm({
   const [input, setInput] = useState<LeadIntakeInput>(initialInput ?? initialState)
   const [result, setResult] = useState<LeadIntakeResult | null>(null)
   const [distanceBand, setDistanceBand] = useState<string | null>(initialInput?.distanceBand ?? null)
+  const [isComputingDistance, setIsComputingDistance] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function update<K extends keyof LeadIntakeInput>(key: K, value: LeadIntakeInput[K]) {
@@ -96,12 +97,19 @@ export function LeadIntakeForm({
           <TextField label="Email" type="email" required value={input.email ?? ''} onChange={(value) => update('email', value)} />
           <PlacesAutocomplete
             value={input.location}
-            onChange={(address, suburb) => {
+            onChange={async (address, suburb) => {
               update('location', address)
               update('suburb', suburb)
+              setDistanceBand(null)
+              if (address) {
+                setIsComputingDistance(true)
+                const band = await computeLeadDistance(address)
+                setDistanceBand(band)
+                setIsComputingDistance(false)
+              }
             }}
           />
-          <DistanceDisplay band={distanceBand} />
+          <DistanceDisplay band={distanceBand} isComputing={isComputingDistance} />
           <SelectField
             label="Project type"
             required
@@ -212,18 +220,20 @@ const DISTANCE_BAND_LABELS: Record<string, { text: string; pts: string; color: s
   over_80km: { text: 'Over 80 km', pts: '+2 pts', color: 'text-orange-600' },
 }
 
-function DistanceDisplay({ band }: { band: string | null }) {
+function DistanceDisplay({ band, isComputing }: { band: string | null; isComputing: boolean }) {
   const info = band ? DISTANCE_BAND_LABELS[band] : null
   return (
     <div className="block">
       <span className="text-xs font-medium text-gray-600">Driving distance</span>
       <div className="mt-1 flex h-[38px] items-center rounded border border-gray-200 bg-gray-50 px-3 text-sm">
-        {info ? (
+        {isComputing ? (
+          <span className="italic text-gray-400">Computing…</span>
+        ) : info ? (
           <span className={`font-medium ${info.color}`}>
             {info.text} <span className="ml-1 text-xs font-semibold">{info.pts}</span>
           </span>
         ) : (
-          <span className="italic text-gray-400">Auto-computed on save</span>
+          <span className="italic text-gray-400">Auto-computed from Job Address</span>
         )}
       </div>
     </div>
