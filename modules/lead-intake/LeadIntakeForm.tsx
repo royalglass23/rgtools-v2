@@ -85,6 +85,11 @@ export function LeadIntakeForm({
           <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
             <div className="font-medium">Tier {result.tier} · {result.score} points</div>
             <div className="mt-1">{result.reason}</div>
+            {result.flagNote && (
+              <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+                ⚑ {result.flagNote}
+              </div>
+            )}
             <div className="mt-1 text-xs text-green-700">
               Lead {result.leadId} · {input.leadId ? 'updated existing lead' : result.matchedExistingClient ? 'matched existing client' : 'created new client'}
             </div>

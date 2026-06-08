@@ -45,6 +45,7 @@ export async function persistLeadScore(
         seedScore: scoreResult.score,
         tier: scoreResult.tier,
         scoreReason: scoreResult.reason,
+        strikeFlag: scoreResult.flagNote,
         configVersionId: activeConfig.id,
         scoredAt,
         completeness,

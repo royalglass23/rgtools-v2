@@ -46,6 +46,7 @@ export type LeadIntakeResult =
       reason: string
       completeness: number
       distanceBand: string | null
+      flagNote: string | null
     }
   | { error: string }
 
@@ -273,6 +274,7 @@ export async function submitLeadIntakeForUser(
     reason: score.reason,
     completeness: score.completeness,
     distanceBand,
+    flagNote: score.flagNote,
   }
 }
 

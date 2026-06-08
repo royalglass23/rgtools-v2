@@ -52,6 +52,7 @@ export type ScoreResult = {
   reason: string
   categoryRows: Array<{ category: number; answerKey: string | null; points: number }>
   strikeResult: StrikeResult
+  flagNote: string | null
 }
 
 const answerFieldByCategory: Record<string, CategoryAnswerField> = {
@@ -99,6 +100,7 @@ export function scoreLead(answers: LeadAnswers, config: ScoringConfig): ScoreRes
   const score = clampScore(categoryScore + bonusScore + penaltyScore)
   const preStrikeTier = tierForScore(score, config)
   const strikeResult = computeStrikeResult(preStrikeTier, answers, categoryKeys, config)
+  const flagNote = buildFlagNote(strikeResult.firedKeys, categoryRows, config)
   const reason = buildReason(strikeResult.finalTier, score, answers, config, categoryRows)
 
   return {
@@ -107,6 +109,7 @@ export function scoreLead(answers: LeadAnswers, config: ScoringConfig): ScoreRes
     reason,
     categoryRows,
     strikeResult,
+    flagNote,
   }
 }
 
@@ -156,6 +159,22 @@ function computeStrikeResult(
         : 'none'
 
   return { firedKeys, totalWeight, preStrikeTier, finalTier, effect }
+}
+
+function buildFlagNote(
+  firedKeys: string[],
+  categoryRows: ScoreResult['categoryRows'],
+  config: ScoringConfig,
+): string | null {
+  if (firedKeys.length === 0) return null
+  const firedSet = new Set(firedKeys)
+  const labels: string[] = []
+  for (const row of categoryRows) {
+    if (row.answerKey && firedSet.has(row.answerKey)) {
+      labels.push(config.categories[String(row.category)]?.label ?? `Category ${row.category}`)
+    }
+  }
+  return `Blocker flag${labels.length > 1 ? 's' : ''}: ${labels.join(', ')}`
 }
 
 function configPoint(options: Record<string, number>, answerKey: string): number {

@@ -72,6 +72,7 @@ export const leads = pgTable('leads', {
   seedScore: integer('seed_score'),
   tier: leadTierEnum('tier'),
   scoreReason: text('score_reason'),
+  strikeFlag: text('strike_flag'),
   scoredAt: timestamp('scored_at', { withTimezone: true }),
   completeness: integer('completeness'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
