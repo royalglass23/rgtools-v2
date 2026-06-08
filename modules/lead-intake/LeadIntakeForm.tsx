@@ -73,7 +73,7 @@ export function LeadIntakeForm({
 
   return (
     <>
-      <ScorePanel input={input} config={optionLists.config} />
+      <ScorePanel input={{ ...input, distanceBand }} config={optionLists.config} />
 
       <div className="space-y-5 rounded border border-gray-200 bg-white p-5 shadow-sm">
         {result && 'error' in result && (

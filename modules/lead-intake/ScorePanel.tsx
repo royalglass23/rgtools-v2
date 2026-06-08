@@ -9,6 +9,7 @@ type ScoredFields = {
   cat4?: string
   priceSensitivityRead?: string
   decisionMakers?: string
+  distanceBand?: string | null
 }
 
 type Props = {
@@ -31,6 +32,7 @@ export function ScorePanel({ input, config }: Props) {
     cat4: input.cat4 || undefined,
     cat5: input.priceSensitivityRead || undefined,
     cat6: input.decisionMakers || undefined,
+    cat7: input.distanceBand || undefined,
   }
 
   const result = scoreLead(answers, config)
