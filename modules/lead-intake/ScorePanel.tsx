@@ -6,10 +6,10 @@ type ScoredFields = {
   clientProfileKey: string
   budgetBand?: string
   consentStatus?: string
-  timeline?: string
   cat4?: string
   priceSensitivityRead?: string
   decisionMakers?: string
+  distanceBand?: string | null
 }
 
 type Props = {
@@ -28,24 +28,30 @@ export function ScorePanel({ input, config }: Props) {
   const answers = {
     cat1: input.clientProfileKey || undefined,
     cat2: input.budgetBand || undefined,
-    // consentStatus takes precedence; timeline is a fallback until cat7 is added
-    cat3: input.consentStatus || input.timeline || undefined,
+    cat3: input.consentStatus || undefined,
     cat4: input.cat4 || undefined,
     cat5: input.priceSensitivityRead || undefined,
     cat6: input.decisionMakers || undefined,
+    cat7: input.distanceBand || undefined,
   }
 
   const result = scoreLead(answers, config)
 
   return (
     <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <span className={`rounded-full px-3 py-1 text-sm font-semibold ${tierStyles[result.tier]}`}>
           Tier {result.tier}
         </span>
         <span className="text-2xl font-bold text-gray-900">{result.score}</span>
         <span className="text-sm text-gray-500">/ 100</span>
       </div>
+      {result.flagNote && (
+        <div className="mt-2 mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+          ⚑ {result.flagNote}
+        </div>
+      )}
+      {!result.flagNote && <div className="mb-4" />}
       <div className="space-y-2">
         {Object.entries(config.categories)
           .sort(([a], [b]) => Number(a) - Number(b))

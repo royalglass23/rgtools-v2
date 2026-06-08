@@ -8,11 +8,17 @@ import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
+  markLeadPendingServiceM8Sync,
+  syncLeadToServiceM8,
+  type ServiceM8LeadSyncOutcome,
+} from '@/modules/lead-intake/servicem8/sync'
+import {
   buildCategoryAnswers,
   normalizeInput,
   validateMinimum,
   validateScoredOptions,
 } from './intake-utils'
+import { computeDistanceBand } from './distance'
 
 export type LeadIntakeInput = {
   leadId?: string
@@ -25,11 +31,11 @@ export type LeadIntakeInput = {
   location: string
   suburb?: string
   cat4?: string
-  timeline?: string
   consentStatus?: string
   budgetBand?: string
   decisionMakers?: string
   priceSensitivityRead?: string
+  distanceBand?: string
   source: 'phone' | 'email' | 'wechat' | 'calculator' | 'contact_form' | 'other'
   freeText?: string
 }
@@ -44,6 +50,9 @@ export type LeadIntakeResult =
       tier: 'A' | 'B' | 'C' | 'D'
       reason: string
       completeness: number
+      distanceBand: string | null
+      flagNote: string | null
+      servicem8Sync: ServiceM8LeadSyncOutcome
     }
   | { error: string }
 
@@ -55,7 +64,6 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
       projectType: leads.projectType,
       location: leads.location,
       suburb: leads.suburb,
-      timeline: leads.timeline,
       consentStatus: leads.consentStatus,
       budgetBand: leads.budgetBand,
       decisionMakers: leads.decisionMakers,
@@ -96,7 +104,7 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
     location: row.location ?? '',
     suburb: row.suburb ?? '',
     cat4: answerByCategory[4] ?? '',
-    timeline: row.consentStatus ? row.timeline ?? '' : answerByCategory[3] ?? row.timeline ?? '',
+    distanceBand: answerByCategory[7] ?? '',
     consentStatus: row.consentStatus ? answerByCategory[3] ?? row.consentStatus ?? '' : '',
     budgetBand: answerByCategory[2] ?? row.budgetBand ?? '',
     decisionMakers: answerByCategory[6] ?? row.decisionMakers ?? '',
@@ -104,6 +112,10 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
     source: row.source,
     freeText: row.freeText ?? '',
   }
+}
+
+export async function computeLeadDistance(address: string): Promise<string | null> {
+  return computeDistanceBand(address)
 }
 
 export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadIntakeResult> {
@@ -125,7 +137,8 @@ export async function submitLeadIntakeForUser(
   const optionError = validateScoredOptions(normalized, optionLists.categories)
   if (optionError) return { error: optionError }
 
-  const categoryAnswers = buildCategoryAnswers(normalized)
+  const distanceBand = await computeDistanceBand(normalized.location)
+  const categoryAnswers = buildCategoryAnswers(normalized, distanceBand)
   const now = new Date()
   let leadId = ''
   let clientId = ''
@@ -164,7 +177,6 @@ export async function submitLeadIntakeForUser(
           location: normalized.location,
           suburb: normalized.suburb || null,
           budgetBand: normalized.budgetBand || null,
-          timeline: normalized.timeline || null,
           consentStatus: normalized.consentStatus || null,
           decisionMakers: normalized.decisionMakers || null,
           priceSensitivityRead: normalized.priceSensitivityRead || null,
@@ -214,7 +226,6 @@ export async function submitLeadIntakeForUser(
           location: normalized.location,
           suburb: normalized.suburb || null,
           budgetBand: normalized.budgetBand || null,
-          timeline: normalized.timeline || null,
           consentStatus: normalized.consentStatus || null,
           decisionMakers: normalized.decisionMakers || null,
           priceSensitivityRead: normalized.priceSensitivityRead || null,
@@ -258,6 +269,8 @@ export async function submitLeadIntakeForUser(
   })
 
   const score = await persistLeadScore(leadId, actorId)
+  await markLeadPendingServiceM8Sync(leadId)
+  const servicem8Sync = await syncLeadToServiceM8(leadId)
 
   return {
     success: true,
@@ -268,6 +281,9 @@ export async function submitLeadIntakeForUser(
     tier: score.tier,
     reason: score.reason,
     completeness: score.completeness,
+    distanceBand,
+    flagNote: score.flagNote,
+    servicem8Sync,
   }
 }
 

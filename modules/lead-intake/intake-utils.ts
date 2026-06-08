@@ -22,7 +22,6 @@ export function normalizeInput(input: LeadIntakeInput): NormalizedLeadIntakeInpu
     location: input.location.trim(),
     suburb: input.suburb?.trim() || '',
     cat4: input.cat4?.trim() || '',
-    timeline: input.timeline?.trim() || '',
     consentStatus: input.consentStatus?.trim() || '',
     budgetBand: input.budgetBand?.trim() || '',
     decisionMakers: input.decisionMakers?.trim() || '',
@@ -36,7 +35,6 @@ export function validateMinimum(input: NormalizedLeadIntakeInput): string | null
   if (!input.phone && !input.email) return 'Phone or email is required.'
   if (!input.projectType) return 'Project type is required.'
   if (!input.location) return 'Location / suburb is required.'
-  if (!input.clientProfileKey) return 'Client type is required.'
   return null
 }
 
@@ -47,7 +45,6 @@ export function validateScoredOptions(
   const checks = [
     ['1', input.clientProfileKey, 'Client type'],
     ['4', input.cat4, 'Distance / complexity'],
-    ['3', input.timeline, 'Timeline'],
     ['3', input.consentStatus, 'Consent status'],
     ['2', input.budgetBand, 'Budget band'],
     ['6', input.decisionMakers, 'Decision-makers'],
@@ -63,14 +60,15 @@ export function validateScoredOptions(
   return null
 }
 
-export function buildCategoryAnswers(input: NormalizedLeadIntakeInput) {
+export function buildCategoryAnswers(input: NormalizedLeadIntakeInput, distanceBand?: string | null) {
   return [
     { category: 1, answerKey: input.clientProfileKey },
     { category: 2, answerKey: input.budgetBand },
-    { category: 3, answerKey: input.consentStatus || input.timeline },
+    { category: 3, answerKey: input.consentStatus },
     { category: 4, answerKey: input.cat4 },
     { category: 5, answerKey: input.priceSensitivityRead },
     { category: 6, answerKey: input.decisionMakers },
+    { category: 7, answerKey: distanceBand ?? undefined },
   ]
 }
 

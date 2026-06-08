@@ -29,6 +29,13 @@
       "when": 1780623578955,
       "tag": "0003_strong_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780886774891,
+      "tag": "0004_confused_warhawk",
+      "breakpoints": true
     }
   ]
 }

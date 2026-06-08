@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import type { ActiveScoringOptionLists, FormOption } from '@/modules/lead-intake/scoring/config-options'
-import { submitLeadIntake, type LeadIntakeInput, type LeadIntakeResult } from './actions'
+import { submitLeadIntake, computeLeadDistance, type LeadIntakeInput, type LeadIntakeResult } from './actions'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'
 
@@ -33,7 +33,6 @@ const initialState: LeadIntakeInput = {
   location: '',
   suburb: '',
   cat4: '',
-  timeline: '',
   consentStatus: '',
   budgetBand: '',
   decisionMakers: '',
@@ -51,6 +50,8 @@ export function LeadIntakeForm({
 }) {
   const [input, setInput] = useState<LeadIntakeInput>(initialInput ?? initialState)
   const [result, setResult] = useState<LeadIntakeResult | null>(null)
+  const [distanceBand, setDistanceBand] = useState<string | null>(initialInput?.distanceBand ?? null)
+  const [isComputingDistance, setIsComputingDistance] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function update<K extends keyof LeadIntakeInput>(key: K, value: LeadIntakeInput[K]) {
@@ -63,13 +64,21 @@ export function LeadIntakeForm({
     startTransition(async () => {
       const nextResult = await submitLeadIntake(input)
       setResult(nextResult)
-      if ('success' in nextResult && !input.leadId) setInput(initialState)
+      if ('success' in nextResult) {
+        if (input.leadId) {
+          setDistanceBand(nextResult.distanceBand)
+        } else {
+          setInput(initialState)
+          setDistanceBand(null)
+          setIsComputingDistance(false)
+        }
+      }
     })
   }
 
   return (
     <>
-      <ScorePanel input={input} config={optionLists.config} />
+      <ScorePanel input={{ ...input, distanceBand }} config={optionLists.config} />
 
       <div className="space-y-5 rounded border border-gray-200 bg-white p-5 shadow-sm">
         {result && 'error' in result && (
@@ -81,8 +90,16 @@ export function LeadIntakeForm({
           <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
             <div className="font-medium">Tier {result.tier} · {result.score} points</div>
             <div className="mt-1">{result.reason}</div>
+            {result.flagNote && (
+              <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+                ⚑ {result.flagNote}
+              </div>
+            )}
             <div className="mt-1 text-xs text-green-700">
               Lead {result.leadId} · {input.leadId ? 'updated existing lead' : result.matchedExistingClient ? 'matched existing client' : 'created new client'}
+            </div>
+            <div className="mt-1 text-xs text-green-700">
+              ServiceM8 {result.servicem8Sync.ok ? 'sent to inbox' : `queued for retry: ${result.servicem8Sync.error}`}
             </div>
           </div>
         )}
@@ -93,11 +110,19 @@ export function LeadIntakeForm({
           <TextField label="Email" type="email" required value={input.email ?? ''} onChange={(value) => update('email', value)} />
           <PlacesAutocomplete
             value={input.location}
-            onChange={(address, suburb) => {
+            onChange={async (address, suburb) => {
               update('location', address)
               update('suburb', suburb)
+              setDistanceBand(null)
+              if (address) {
+                setIsComputingDistance(true)
+                const band = await computeLeadDistance(address)
+                setDistanceBand(band)
+                setIsComputingDistance(false)
+              }
             }}
           />
+          <DistanceDisplay band={distanceBand} isComputing={isComputingDistance} />
           <SelectField
             label="Project type"
             required
@@ -124,7 +149,7 @@ export function LeadIntakeForm({
             onChange={(value) => update('consentStatus', value)}
           />
           <SelectField
-            label="Distance / complexity"
+            label="Complexity"
             value={input.cat4 ?? ''}
             options={optionLists.categories['4']?.options ?? []}
             onChange={(value) => update('cat4', value)}
@@ -140,12 +165,6 @@ export function LeadIntakeForm({
             value={input.decisionMakers ?? ''}
             options={optionLists.categories['6']?.options ?? []}
             onChange={(value) => update('decisionMakers', value)}
-          />
-          <SelectField
-            label="Timeline"
-            value={input.timeline ?? ''}
-            options={optionLists.categories['3']?.options ?? []}
-            onChange={(value) => update('timeline', value)}
           />
           <SelectField
             label="Source"
@@ -205,6 +224,32 @@ function TextField({
         className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
     </label>
+  )
+}
+
+const DISTANCE_BAND_LABELS: Record<string, { text: string; pts: string; color: string }> = {
+  within_30km: { text: 'Within 30 km', pts: '+6 pts', color: 'text-green-700' },
+  '30km_to_80km': { text: '30 – 80 km', pts: '+4 pts', color: 'text-amber-700' },
+  over_80km: { text: 'Over 80 km', pts: '+2 pts', color: 'text-orange-600' },
+}
+
+function DistanceDisplay({ band, isComputing }: { band: string | null; isComputing: boolean }) {
+  const info = band ? DISTANCE_BAND_LABELS[band] : null
+  return (
+    <div className="block">
+      <span className="text-xs font-medium text-gray-600">Driving distance</span>
+      <div className="mt-1 flex h-[38px] items-center rounded border border-gray-200 bg-gray-50 px-3 text-sm">
+        {isComputing ? (
+          <span className="italic text-gray-400">Computing…</span>
+        ) : info ? (
+          <span className={`font-medium ${info.color}`}>
+            {info.text} <span className="ml-1 text-xs font-semibold">{info.pts}</span>
+          </span>
+        ) : (
+          <span className="italic text-gray-400">Auto-computed from Job Address</span>
+        )}
+      </div>
+    </div>
   )
 }
 

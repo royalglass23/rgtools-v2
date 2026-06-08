@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
 type AddressComponent = { types: string[]; short_name: string }
 
@@ -13,12 +12,6 @@ type Props = {
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
 
 let mapsConfigured = false
-function ensureMapsConfigured() {
-  if (!mapsConfigured && apiKey) {
-    setOptions({ key: apiKey, v: 'weekly' })
-    mapsConfigured = true
-  }
-}
 
 export function extractSuburb(components: AddressComponent[]): string {
   for (const type of ['locality', 'sublocality_level_1', 'sublocality']) {
@@ -39,12 +32,17 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
 
   useEffect(() => {
     if (!apiKey || !inputRef.current) return
-    ensureMapsConfigured()
 
     let cancelled = false
     let listener: google.maps.MapsEventListener | undefined
 
-    importLibrary('places').then((placesLib) => {
+    import('@googlemaps/js-api-loader').then(({ setOptions, importLibrary }) => {
+      if (!mapsConfigured) {
+        setOptions({ key: apiKey, v: 'weekly' })
+        mapsConfigured = true
+      }
+      return importLibrary('places')
+    }).then((placesLib) => {
       if (cancelled || !inputRef.current) return
       const { Autocomplete } = placesLib as google.maps.PlacesLibrary
       const autocomplete = new Autocomplete(inputRef.current, {
@@ -73,6 +71,11 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
         ref={inputRef}
         type="text"
         defaultValue={value}
+        onInput={(e) => {
+          if (!(e.target as HTMLInputElement).value) {
+            onChangeRef.current('', '')
+          }
+        }}
         className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Start typing an address..."
       />

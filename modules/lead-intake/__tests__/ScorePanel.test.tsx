@@ -62,7 +62,7 @@ it('uses consentStatus over timeline for cat3 when both are set', () => {
   }
   render(
     <ScorePanel
-      input={{ ...emptyInput, consentStatus: 'approved', timeline: 'enquiry_only' }}
+      input={{ ...emptyInput, consentStatus: 'approved' }}
       config={cat3Config}
     />,
   )
