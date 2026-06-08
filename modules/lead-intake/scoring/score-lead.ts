@@ -18,21 +18,40 @@ export type ScoringCategoryConfig = {
   optionOrder?: string[]
 }
 
+export type StrikesConfig = {
+  weights: Record<string, number>
+  softDemoteAt: number
+  capAt: number
+  capCeiling: LeadTier
+}
+
 export type ScoringConfig = {
   categories: Record<string, ScoringCategoryConfig>
   bonuses: Record<string, number>
   penalties: Record<string, number>
   tiers: Record<Exclude<LeadTier, 'D'>, number>
+  strikes?: StrikesConfig
 }
 
 export type LeadTier = 'A' | 'B' | 'C' | 'D'
 type CategoryAnswerField = keyof Pick<LeadAnswers, 'cat1' | 'cat2' | 'cat3' | 'cat4' | 'cat5' | 'cat6' | 'cat7'>
+
+type StrikeEffect = 'none' | 'soft_demote' | 'cap'
+
+export type StrikeResult = {
+  firedKeys: string[]
+  totalWeight: number
+  preStrikeTier: LeadTier
+  finalTier: LeadTier
+  effect: StrikeEffect
+}
 
 export type ScoreResult = {
   score: number
   tier: LeadTier
   reason: string
   categoryRows: Array<{ category: number; answerKey: string | null; points: number }>
+  strikeResult: StrikeResult
 }
 
 const answerFieldByCategory: Record<string, CategoryAnswerField> = {
@@ -45,13 +64,27 @@ const answerFieldByCategory: Record<string, CategoryAnswerField> = {
   '7': 'cat7',
 }
 
+const TIER_SEVERITY: Record<LeadTier, number> = { A: 0, B: 1, C: 2, D: 3 }
+
+function mostSevereTier(a: LeadTier, b: LeadTier): LeadTier {
+  return TIER_SEVERITY[a] >= TIER_SEVERITY[b] ? a : b
+}
+
+function demoteOneTier(tier: LeadTier): LeadTier {
+  const map: Record<LeadTier, LeadTier> = { A: 'B', B: 'C', C: 'D', D: 'D' }
+  return map[tier]
+}
+
 export function scoreLead(answers: LeadAnswers, config: ScoringConfig): ScoreResult {
+  const strikeWeights = config.strikes?.weights ?? {}
   const categoryKeys = Object.keys(config.categories).sort((a, b) => Number(a) - Number(b))
+
   const categoryRows = categoryKeys.map((categoryKey) => {
     const categoryConfig = config.categories[categoryKey]
     const answerField = answerFieldByCategory[categoryKey]
     const answerKey = answerField ? answers[answerField] ?? null : null
-    const points = answerKey ? configPoint(categoryConfig.options, answerKey) : 0
+    const isStrikeKey = answerKey !== null && answerKey in strikeWeights
+    const points = answerKey ? (isStrikeKey ? 0 : configPoint(categoryConfig.options, answerKey)) : 0
 
     return {
       category: Number(categoryKey),
@@ -64,15 +97,65 @@ export function scoreLead(answers: LeadAnswers, config: ScoringConfig): ScoreRes
   const bonusScore = sumAdjustments(answers.bonuses, config.bonuses)
   const penaltyScore = sumAdjustments(answers.penalties, config.penalties)
   const score = clampScore(categoryScore + bonusScore + penaltyScore)
-  const tier = tierForScore(score, config)
-  const reason = buildReason(tier, score, answers, config, categoryRows)
+  const preStrikeTier = tierForScore(score, config)
+  const strikeResult = computeStrikeResult(preStrikeTier, answers, categoryKeys, config)
+  const reason = buildReason(strikeResult.finalTier, score, answers, config, categoryRows)
 
   return {
     score,
-    tier,
+    tier: strikeResult.finalTier,
     reason,
     categoryRows,
+    strikeResult,
   }
+}
+
+function computeStrikeResult(
+  preStrikeTier: LeadTier,
+  answers: LeadAnswers,
+  categoryKeys: string[],
+  config: ScoringConfig,
+): StrikeResult {
+  const strikes = config.strikes
+  if (!strikes) {
+    return {
+      firedKeys: [],
+      totalWeight: 0,
+      preStrikeTier,
+      finalTier: preStrikeTier,
+      effect: 'none',
+    }
+  }
+
+  const firedKeys: string[] = []
+  let totalWeight = 0
+  for (const categoryKey of categoryKeys) {
+    const answerField = answerFieldByCategory[categoryKey]
+    if (!answerField) continue
+    const answerKey = answers[answerField]
+    if (answerKey && answerKey in strikes.weights) {
+      firedKeys.push(answerKey)
+      totalWeight += strikes.weights[answerKey]
+    }
+  }
+
+  const candidates: LeadTier[] = [preStrikeTier]
+  if (totalWeight >= strikes.softDemoteAt) {
+    candidates.push(demoteOneTier(preStrikeTier))
+  }
+  if (totalWeight >= strikes.capAt) {
+    candidates.push(strikes.capCeiling)
+  }
+  const finalTier = candidates.reduce(mostSevereTier)
+
+  const effect: StrikeEffect =
+    totalWeight >= strikes.capAt
+      ? 'cap'
+      : totalWeight >= strikes.softDemoteAt
+        ? 'soft_demote'
+        : 'none'
+
+  return { firedKeys, totalWeight, preStrikeTier, finalTier, effect }
 }
 
 function configPoint(options: Record<string, number>, answerKey: string): number {
