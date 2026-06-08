@@ -65,8 +65,13 @@ export function LeadIntakeForm({
       const nextResult = await submitLeadIntake(input)
       setResult(nextResult)
       if ('success' in nextResult) {
-        setDistanceBand(nextResult.distanceBand)
-        if (!input.leadId) setInput(initialState)
+        if (input.leadId) {
+          setDistanceBand(nextResult.distanceBand)
+        } else {
+          setInput(initialState)
+          setDistanceBand(null)
+          setIsComputingDistance(false)
+        }
       }
     })
   }
@@ -92,6 +97,9 @@ export function LeadIntakeForm({
             )}
             <div className="mt-1 text-xs text-green-700">
               Lead {result.leadId} · {input.leadId ? 'updated existing lead' : result.matchedExistingClient ? 'matched existing client' : 'created new client'}
+            </div>
+            <div className="mt-1 text-xs text-green-700">
+              ServiceM8 {result.servicem8Sync.ok ? 'sent to inbox' : `queued for retry: ${result.servicem8Sync.error}`}
             </div>
           </div>
         )}

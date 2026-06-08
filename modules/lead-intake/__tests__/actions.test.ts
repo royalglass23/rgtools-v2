@@ -10,6 +10,12 @@ vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
 }))
 
+const sendLeadToServiceM8InboxMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/modules/lead-intake/servicem8/client', () => ({
+  createServiceM8ClientFromEnv: vi.fn(() => ({ sendLeadToInbox: sendLeadToServiceM8InboxMock })),
+}))
+
 import {
   submitLeadIntakeForUser,
   type LeadIntakeInput,
@@ -33,6 +39,15 @@ afterEach(async () => {
   for (const clientId of createdClientIds.splice(0)) {
     await db.delete(clients).where(eq(clients.id, clientId))
   }
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  process.env.SERVICEM8_INBOX_EMAIL = 'de9f86@inbox.servicem8.com'
+  sendLeadToServiceM8InboxMock.mockResolvedValue({
+    reference: `inbox-${crypto.randomUUID()}`,
+    noteSignature: 'test-signature',
+  })
 })
 
 function minimumInput(overrides: Partial<LeadIntakeInput> = {}): LeadIntakeInput {
@@ -110,7 +125,7 @@ describe('lead intake validation', () => {
 })
 
 describe('submitLeadIntakeForUser integration', () => {
-  it('minimum submit creates client, lead, audit rows, and six category rows', async () => {
+  it('minimum submit creates client, lead, audit rows, category rows, and immediately syncs ServiceM8', async () => {
     const [actor] = await db
       .select({ id: users.id })
       .from(users)
@@ -162,12 +177,54 @@ describe('submitLeadIntakeForUser integration', () => {
       .where(eq(auditLog.targetId, result.leadId))
 
     expect(client.phoneNormalized).toBe('+6421333444')
-    expect(lead.syncStatus).toBe('pending_sync')
+    expect(lead.syncStatus).toBe('synced')
     expect(lead.tier).toBe(result.tier)
     expect(lead.seedScore).toBe(result.score)
+    expect(result.servicem8Sync).toMatchObject({ ok: true })
+    expect(sendLeadToServiceM8InboxMock).toHaveBeenCalledOnce()
     expect(lead.configVersionId).toBeTruthy()
     expect(categoryRows.length).toBeGreaterThanOrEqual(6)
     expect(categoryRows[0]).toMatchObject({ category: 1 })
-    expect(auditRows.map((row) => row.action).sort()).toEqual(['lead.create', 'lead.score'])
+    expect(auditRows.map((row) => row.action).sort()).toEqual([
+      'lead.create',
+      'lead.score',
+      'lead.servicem8_sync',
+    ])
+  }, 30000)
+
+  it('still saves the lead when immediate ServiceM8 sync fails', async () => {
+    sendLeadToServiceM8InboxMock.mockRejectedValue(new Error('ServiceM8 inbox unavailable'))
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    expect(actor).toBeDefined()
+
+    const result = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in result).toBe(true)
+    if (!('success' in result)) throw new Error(result.error)
+
+    createdLeadIds.push(result.leadId)
+    createdClientIds.push(result.clientId)
+
+    const [lead] = await db
+      .select({
+        syncStatus: leads.syncStatus,
+        syncError: leads.syncError,
+      })
+      .from(leads)
+      .where(eq(leads.id, result.leadId))
+      .limit(1)
+
+    expect(result.servicem8Sync).toEqual({
+      ok: false,
+      leadId: result.leadId,
+      error: 'ServiceM8 inbox unavailable',
+    })
+    expect(lead.syncStatus).toBe('sync_failed')
+    expect(lead.syncError).toBe('ServiceM8 inbox unavailable')
   }, 30000)
 })

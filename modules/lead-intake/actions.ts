@@ -8,6 +8,11 @@ import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
+  markLeadPendingServiceM8Sync,
+  syncLeadToServiceM8,
+  type ServiceM8LeadSyncOutcome,
+} from '@/modules/lead-intake/servicem8/sync'
+import {
   buildCategoryAnswers,
   normalizeInput,
   validateMinimum,
@@ -47,6 +52,7 @@ export type LeadIntakeResult =
       completeness: number
       distanceBand: string | null
       flagNote: string | null
+      servicem8Sync: ServiceM8LeadSyncOutcome
     }
   | { error: string }
 
@@ -263,6 +269,8 @@ export async function submitLeadIntakeForUser(
   })
 
   const score = await persistLeadScore(leadId, actorId)
+  await markLeadPendingServiceM8Sync(leadId)
+  const servicem8Sync = await syncLeadToServiceM8(leadId)
 
   return {
     success: true,
@@ -275,6 +283,7 @@ export async function submitLeadIntakeForUser(
     completeness: score.completeness,
     distanceBand,
     flagNote: score.flagNote,
+    servicem8Sync,
   }
 }
 
