@@ -75,6 +75,21 @@ The lead intake module is the main staff workflow. Key files:
 | `servicem8/payload.ts` | Builds the ServiceM8 email payload from a lead record |
 | `servicem8/sync.ts` | Orchestrates ServiceM8 sync — mark pending, attempt, handle retry |
 
+### `modules/leads/`
+
+The leads module provides the read-side dashboard for reviewing and triaging leads. Key files:
+
+| File | Responsibility |
+|------|---------------|
+| `queries.ts` | `getLeadsList` (paginated, filtered) and `getLeadDetail` (full record with scored fields) |
+| `LeadsTableControls.tsx` | Client component — filter bar, table, pagination, bulk-delete form |
+| `ServiceM8FetchButton.tsx` | Client component — calls the fetch API route and updates the displayed UUID/status |
+| `DeleteLeadButton.tsx` | Confirmation wrapper for the per-lead delete action |
+| `actions.ts` | `batchDeleteLeadsAction` — soft-deletes selected leads (admin only) |
+| `servicem8-fetch.ts` | `fetchLeadFromServiceM8` — searches ServiceM8 for a job matching `RGTools Lead {uuid}`, stores the UUID and status, sets the Leads Quality custom field on first link |
+
+The ServiceM8 fetch uses a dependency-injectable `request` parameter so it can be tested without real API calls.
+
 ### `modules/admin/`
 
 User management (create/list/delete users), CSV export of quotes, error log viewer. Admin-only.
@@ -117,11 +132,28 @@ An amber flag note is shown on the score panel and result banner when any strike
 
 ## ServiceM8 integration
 
-ServiceM8 is the field-service management system. rgtools sends new leads to ServiceM8 via SMTP to the ServiceM8 inbox address. The flow:
+ServiceM8 is the field-service management system. rgtools integrates in two stages:
 
-1. `submitLeadIntake` completes lead creation and scoring
-2. `markLeadPendingServiceM8Sync` sets `sync_status = 'pending_sync'`
-3. `syncLeadToServiceM8` builds an email payload and sends via nodemailer
-4. On success: `sync_status = 'synced'`, `servicem8_job_uuid` is written
+### Stage 1 — Inbox sync (on lead creation)
+
+When a lead is submitted via the intake form:
+
+1. Lead is inserted with `sync_status = 'pending_sync'`
+2. An email is built by `servicem8/payload.ts` — includes client details, score, tier, and an `RGTools Lead {uuid}` reference line in the body
+3. The email is sent via nodemailer to `SERVICEM8_INBOX_EMAIL`
+4. On success: `sync_status = 'synced'`
 5. On failure: `sync_status = 'sync_failed'`, error stored in `sync_error`
-6. A retry endpoint exists at `POST /api/lead-intake/servicem8/retry`
+
+After Stage 1 the lead has no ServiceM8 job UUID — ServiceM8 creates a job from the inbox email asynchronously.
+
+### Stage 2 — Job fetch (manual, on demand)
+
+Staff click **Fetch from ServiceM8** on the lead detail page (`/leads/[id]`). This calls `POST /api/leads/[id]/servicem8-fetch`, which runs `fetchLeadFromServiceM8`:
+
+1. Fetches all jobs from `GET /job.json` via the ServiceM8 REST API
+2. Finds the job whose `job_description` contains `RGTools Lead {leadId}`
+3. Stores `servicem8_job_uuid` and `servicem8_status` on the lead
+4. On the first link only: writes the lead tier to the `SERVICEM8_LEAD_QUALITY_FIELD` custom field via `POST /JobCustomFieldData.json`
+5. An audit log entry (`lead.servicem8_fetch`) is written
+
+`sync_status` badges on the list: **Linked** = job UUID exists; **Pending** = email sent, UUID not yet fetched; **Failed** = inbox email failed.

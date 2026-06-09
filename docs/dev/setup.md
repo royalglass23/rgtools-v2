@@ -34,9 +34,8 @@ Copy `.env.example` to `.env.local` and fill in all values.
 | `SMTP_PASS` | No | SMTP password |
 | `SMTP_FROM` | Yes | From address for outbound emails, e.g. `noreply@royalglass.co.nz` |
 | `SERVICEM8_INBOX_EMAIL` | Yes | Comma-separated email address(es) that receive ServiceM8 inbox submissions |
-| `SERVICEM8_API_KEY` | No | ServiceM8 API key (reserved for future direct API integration) |
-| `SERVICEM8_SYNC_SECRET` | No | Shared secret for ServiceM8 webhook verification |
-| `SERVICEM8_LEAD_QUALITY_FIELD` | No | Custom field UUID in ServiceM8 to write lead tier into |
+| `SERVICEM8_API_KEY` | Yes | ServiceM8 API key — used by the "Fetch from ServiceM8" button to search jobs and update the Leads Quality custom field |
+| `SERVICEM8_LEAD_QUALITY_FIELD` | Yes | UUID of the ServiceM8 custom field to write the lead tier into (e.g. "Leads Quality A") — find it in ServiceM8 → Settings → Custom Fields |
 
 ### Google Maps API keys
 
