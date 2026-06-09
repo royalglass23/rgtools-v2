@@ -8,6 +8,25 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ---
 
+## [0.5.0] — 2026-06-09
+
+### Added
+- Leads dashboard at `/leads` — paginated list with tier, SM8, and date filters; columns for date, client, job address, project, tier badge, score, SM8 status, completeness
+- Lead detail page at `/leads/[id]` — read-only view of all scored fields, score summary (tier, score, completeness, flag note, score reason), and ServiceM8 section
+- "Fetch from ServiceM8" button — searches ServiceM8 jobs for the `RGTools Lead {uuid}` reference, stores job UUID and status, sets the Leads Quality custom field on first link only
+- Bulk delete from the leads list (admin only, with confirmation)
+- Soft-delete per-lead from the detail page (admin only)
+- Edit button on detail page routes to `/lead-intake?leadId=...` with the form pre-filled and "Reason for edit" required
+- `servicem8_status` column added to `leads` table (migration 0005)
+
+### Fixed
+- SM8 "Pending" filter now correctly returns leads whose email was sent but job UUID not yet fetched (`syncStatus = 'synced'` + no `servicem8JobUuid`); previously queried `pending_sync` which is only set for milliseconds during creation
+- Invalid (non-UUID) `[id]` path segments now return a clean 404 instead of crashing with a PostgreSQL type error
+- ServiceM8 fetch API route status code now properly narrows the union type before accessing `result.reason`
+- `batchDeleteLeadsAction` auth failure now throws (consistent with `deleteLeadAction`) instead of returning a silently-discarded error object
+
+---
+
 ## [0.4.0] — 2026-06-09
 
 ### Added

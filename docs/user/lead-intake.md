@@ -87,4 +87,8 @@ If there's a validation error, a red banner appears instead with a description o
 
 ## Editing an existing lead
 
-To re-open and update an existing lead, navigate to the lead's edit URL (provided by an admin or linked from the lead list). The form pre-fills all previous answers. Make your changes and click **Save and score** again — the lead and score are updated in place.
+To edit an existing lead, open it from the **Leads** list (`/leads`) and click the **Edit** button at the top right of the detail page. The intake form opens pre-filled with all previous answers.
+
+A **Reason for edit** field appears at the bottom of the form — this is required before you can save. Enter a brief description of what changed and why (e.g. "Customer corrected the project address"). This is recorded in the audit log.
+
+Click **Save and score** to update the lead and refresh the score.

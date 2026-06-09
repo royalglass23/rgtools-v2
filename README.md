@@ -8,6 +8,7 @@ Internal operations toolkit for Royal Glass — covering lead intake and scoring
 |--------|-------------|
 | **Dashboard** | KPI overview — pipeline value, open quotes, hot leads, win rate, urgent actions |
 | **Lead Intake** | Staff form to capture and score inbound enquiries, auto-syncs to ServiceM8 |
+| **Leads** | Paginated lead list and detail view — filter by tier/SM8/date, manual ServiceM8 job fetch |
 | **Quote Tracker** | Cloudflare Worker that records how clients interact with sent quotes |
 
 ## Tech stack
@@ -29,6 +30,7 @@ Internal operations toolkit for Royal Glass — covering lead intake and scoring
 
 - [Getting started](docs/user/getting-started.md) — login, dashboard, roles
 - [Lead intake form](docs/user/lead-intake.md) — field-by-field guide
+- [Leads dashboard](docs/user/leads.md) — list, filters, detail view, ServiceM8 fetch
 - [Scoring guide](docs/user/scoring-guide.md) — categories, tiers A–D, strike flags
 
 ## Changelog
