@@ -42,7 +42,7 @@ export function buildServiceM8InboxEmail(
   const completeness = record.completeness ?? 0
   const subject = [
     'RGTools Lead',
-    `Tier ${tier}`,
+    `Leads Quality ${tier}`,
     record.clientName,
     record.projectType,
   ].filter(Boolean).join(' - ')
@@ -53,7 +53,7 @@ export function buildServiceM8InboxEmail(
     record.location ? `Address: ${record.location}` : null,
     '',
     '--- RGTools Lead Score ---',
-    `Tier: ${tier}`,
+    `Leads Quality: ${tier}`,
     `Score: ${score}`,
     `Completeness: ${completeness}%`,
     record.strikeFlag ? `Flag: ${record.strikeFlag}` : null,

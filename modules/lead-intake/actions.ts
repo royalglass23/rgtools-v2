@@ -22,6 +22,7 @@ import { computeDistanceBand } from './distance'
 
 export type LeadIntakeInput = {
   leadId?: string
+  editReason?: string
   clientName: string
   companyName?: string
   phone?: string
@@ -132,6 +133,7 @@ export async function submitLeadIntakeForUser(
   const normalized = normalizeInput(input)
   const validationError = validateMinimum(normalized)
   if (validationError) return { error: validationError }
+  if (normalized.leadId && !normalized.editReason) return { error: 'Reason for edit is required.' }
 
   const optionLists = await getActiveScoringOptionLists()
   const optionError = validateScoredOptions(normalized, optionLists.categories)
@@ -258,12 +260,13 @@ export async function submitLeadIntakeForUser(
 
     await tx.insert(auditLog).values({
       actorId,
-      action: normalized.leadId ? 'lead.update' : 'lead.create',
+      action: normalized.leadId ? 'lead.edited' : 'lead.create',
       targetId: leadId,
       detail: {
         clientId,
         source: normalized.source,
         matchedExistingClient,
+        ...(normalized.leadId ? { reason: normalized.editReason } : {}),
       },
     })
   })

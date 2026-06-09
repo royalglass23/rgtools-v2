@@ -57,6 +57,7 @@ export const leads = pgTable('leads', {
   source: leadSourceEnum('source').notNull(),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),
   servicem8JobUuid: text('servicem8_job_uuid'),
+  servicem8Status: text('servicem8_status'),
   syncError: text('sync_error'),
   projectType: text('project_type'),
   location: text('location'),

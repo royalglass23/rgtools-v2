@@ -20,6 +20,7 @@ import {
   submitLeadIntakeForUser,
   type LeadIntakeInput,
 } from '../actions'
+import { fetchLeadFromServiceM8, type ServiceM8FetchRequest } from '@/modules/leads/servicem8-fetch'
 import {
   buildCategoryAnswers,
   normalizeNzPhone,
@@ -226,5 +227,345 @@ describe('submitLeadIntakeForUser integration', () => {
     })
     expect(lead.syncStatus).toBe('sync_failed')
     expect(lead.syncError).toBe('ServiceM8 inbox unavailable')
+  }, 30000)
+
+  it('requires an edit reason before updating an existing lead', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const result = await submitLeadIntakeForUser(
+      minimumInput({
+        leadId: created.leadId,
+        clientName: 'Edited Without Reason',
+        editReason: '',
+      }),
+      actor.id,
+    )
+
+    expect(result).toEqual({ error: 'Reason for edit is required.' })
+  }, 30000)
+
+  it('audits edits with the mandatory edit reason', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const edited = await submitLeadIntakeForUser(
+      minimumInput({
+        leadId: created.leadId,
+        clientName: 'Edited With Reason',
+        editReason: 'Customer corrected the project address.',
+      }),
+      actor.id,
+    )
+
+    expect('success' in edited).toBe(true)
+    if (!('success' in edited)) throw new Error(edited.error)
+
+    const auditRows = await db
+      .select({ action: auditLog.action, detail: auditLog.detail })
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.leadId))
+
+    const editAudit = auditRows.find((row) => row.action === 'lead.edited')
+    expect(editAudit?.detail).toMatchObject({
+      reason: 'Customer corrected the project address.',
+    })
+  }, 30000)
+
+  it('returns a not-found result when no ServiceM8 job contains the lead reference', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ uuid: 'job-1', job_description: 'Other job', status: 'Work Order' }],
+    }))
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'not_found',
+      message: 'No matching job found in ServiceM8 yet',
+    })
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenNthCalledWith(1, '/job.json')
+    expect(request).toHaveBeenNthCalledWith(2, '/inboxmessage.json?limit=500&offset=0&filter=all')
+  }, 30000)
+
+  it('links a matching ServiceM8 job, stores status, and sets Leads Quality only for a new link', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'job-uuid-1',
+              job_description: `Install pool fence\nRGTools Lead ${created.leadId}`,
+              status: 'Work Order',
+            },
+          ],
+        }
+      }
+
+      expect(path).toBe('/job/job-uuid-1.json')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        'quality-field-uuid': 'Leads Quality B',
+      })
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ uuid: 'field-data-1' }),
+      }
+    })
+
+    const firstResult = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+    const secondResult = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(firstResult).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-1',
+      jobStatus: 'Work Order',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: true,
+    })
+    expect(secondResult).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-1',
+      jobStatus: 'Work Order',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: false,
+    })
+    expect(request).toHaveBeenCalledTimes(3)
+
+    const [lead] = await db
+      .select({
+        servicem8JobUuid: leads.servicem8JobUuid,
+        servicem8Status: leads.servicem8Status,
+      })
+      .from(leads)
+      .where(eq(leads.id, created.leadId))
+      .limit(1)
+
+    expect(lead).toEqual({
+      servicem8JobUuid: 'job-uuid-1',
+      servicem8Status: 'Work Order',
+    })
+  }, 30000)
+
+  it('links a ServiceM8 job converted from an inbox message containing the lead reference', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'wrong-job-uuid',
+              job_description: 'No RGTools reference here',
+              status: 'Quote',
+            },
+          ],
+        }
+      }
+
+      if (path === '/inboxmessage.json?limit=500&offset=0&filter=all') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            messages: [
+              {
+                uuid: 'message-uuid-1',
+                subject: 'RGTools Lead - Leads Quality B - Customer - shower',
+                message_text: `--- Reference ---\nRGTools Lead ${created.leadId}`,
+                converted_to_job_uuid: 'converted-job-uuid',
+              },
+            ],
+          }),
+        }
+      }
+
+      if (path === '/job/converted-job-uuid.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uuid: 'converted-job-uuid',
+            status: 'Quote',
+            job_description: 'RGTools Lead - Leads Quality B - Customer - shower',
+          }),
+        }
+      }
+
+      expect(path).toBe('/job/converted-job-uuid.json')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        'quality-field-uuid': 'Leads Quality B',
+      })
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ uuid: 'field-data-1' }),
+      }
+    })
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobUuid: 'converted-job-uuid',
+      jobStatus: 'Quote',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: true,
+    })
+  }, 30000)
+
+  it('still links the ServiceM8 job when Leads Quality custom field update is forbidden', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'job-uuid-403',
+              job_description: `RGTools Lead ${created.leadId}`,
+              status: 'Quote',
+            },
+          ],
+        }
+      }
+
+      if (path === '/job/job-uuid-403.json') {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({ message: 'Forbidden' }),
+        }
+      }
+
+      throw new Error(`Unexpected ServiceM8 request path: ${path}`)
+    })
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-403',
+      jobStatus: 'Quote',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: false,
+      customFieldError: 'ServiceM8 custom field update failed with HTTP 403',
+    })
+
+    const [lead] = await db
+      .select({
+        servicem8JobUuid: leads.servicem8JobUuid,
+        servicem8Status: leads.servicem8Status,
+      })
+      .from(leads)
+      .where(eq(leads.id, created.leadId))
+      .limit(1)
+
+    expect(lead).toEqual({
+      servicem8JobUuid: 'job-uuid-403',
+      servicem8Status: 'Quote',
+    })
   }, 30000)
 })
