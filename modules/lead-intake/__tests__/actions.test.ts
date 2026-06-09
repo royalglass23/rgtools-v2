@@ -319,7 +319,9 @@ describe('submitLeadIntakeForUser integration', () => {
       reason: 'not_found',
       message: 'No matching job found in ServiceM8 yet',
     })
-    expect(request).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenNthCalledWith(1, '/job.json')
+    expect(request).toHaveBeenNthCalledWith(2, '/inboxmessage.json?limit=500&offset=0&filter=all')
   }, 30000)
 
   it('links a matching ServiceM8 job, stores status, and sets Leads Quality only for a new link', async () => {
@@ -358,12 +360,10 @@ describe('submitLeadIntakeForUser integration', () => {
         }
       }
 
-      expect(path).toBe('/JobCustomFieldData.json')
+      expect(path).toBe('/job/job-uuid-1.json')
       expect(init?.method).toBe('POST')
       expect(JSON.parse(String(init?.body))).toMatchObject({
-        related_object_uuid: 'job-uuid-1',
-        job_custom_field_uuid: 'quality-field-uuid',
-        value: 'Leads Quality B',
+        'quality-field-uuid': 'Leads Quality B',
       })
 
       return {
@@ -404,6 +404,168 @@ describe('submitLeadIntakeForUser integration', () => {
     expect(lead).toEqual({
       servicem8JobUuid: 'job-uuid-1',
       servicem8Status: 'Work Order',
+    })
+  }, 30000)
+
+  it('links a ServiceM8 job converted from an inbox message containing the lead reference', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'wrong-job-uuid',
+              job_description: 'No RGTools reference here',
+              status: 'Quote',
+            },
+          ],
+        }
+      }
+
+      if (path === '/inboxmessage.json?limit=500&offset=0&filter=all') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            messages: [
+              {
+                uuid: 'message-uuid-1',
+                subject: 'RGTools Lead - Leads Quality B - Customer - shower',
+                message_text: `--- Reference ---\nRGTools Lead ${created.leadId}`,
+                converted_to_job_uuid: 'converted-job-uuid',
+              },
+            ],
+          }),
+        }
+      }
+
+      if (path === '/job/converted-job-uuid.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uuid: 'converted-job-uuid',
+            status: 'Quote',
+            job_description: 'RGTools Lead - Leads Quality B - Customer - shower',
+          }),
+        }
+      }
+
+      expect(path).toBe('/job/converted-job-uuid.json')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        'quality-field-uuid': 'Leads Quality B',
+      })
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ uuid: 'field-data-1' }),
+      }
+    })
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobUuid: 'converted-job-uuid',
+      jobStatus: 'Quote',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: true,
+    })
+  }, 30000)
+
+  it('still links the ServiceM8 job when Leads Quality custom field update is forbidden', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'job-uuid-403',
+              job_description: `RGTools Lead ${created.leadId}`,
+              status: 'Quote',
+            },
+          ],
+        }
+      }
+
+      if (path === '/job/job-uuid-403.json') {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({ message: 'Forbidden' }),
+        }
+      }
+
+      throw new Error(`Unexpected ServiceM8 request path: ${path}`)
+    })
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-403',
+      jobStatus: 'Quote',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: false,
+      customFieldError: 'ServiceM8 custom field update failed with HTTP 403',
+    })
+
+    const [lead] = await db
+      .select({
+        servicem8JobUuid: leads.servicem8JobUuid,
+        servicem8Status: leads.servicem8Status,
+      })
+      .from(leads)
+      .where(eq(leads.id, created.leadId))
+      .limit(1)
+
+    expect(lead).toEqual({
+      servicem8JobUuid: 'job-uuid-403',
+      servicem8Status: 'Quote',
     })
   }, 30000)
 })

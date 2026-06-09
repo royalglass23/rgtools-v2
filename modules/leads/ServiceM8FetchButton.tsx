@@ -9,6 +9,7 @@ type FetchResult =
       jobStatus: string | null
       leadsQuality: string
       customFieldUpdated: boolean
+      customFieldError?: string
     }
   | {
       ok: false
@@ -48,7 +49,13 @@ export function ServiceM8FetchButton({
       setJobUuid(result.jobUuid)
       setJobStatus(result.jobStatus)
       setLeadsQuality(result.leadsQuality)
-      setMessage(result.customFieldUpdated ? 'ServiceM8 job linked and Leads Quality set.' : 'ServiceM8 job details refreshed.')
+      setMessage(
+        result.customFieldError
+          ? `ServiceM8 job linked, but Leads Quality was not set: ${result.customFieldError}`
+          : result.customFieldUpdated
+            ? 'ServiceM8 job linked and Leads Quality set.'
+            : 'ServiceM8 job details refreshed.',
+      )
     })
   }
 

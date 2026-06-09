@@ -20,6 +20,13 @@ type ServiceM8Job = {
   status?: string
 }
 
+type ServiceM8InboxMessage = {
+  converted_to_job_uuid?: string | null
+  message_text?: string | null
+  message_html?: string | null
+  subject?: string | null
+}
+
 export type LeadServiceM8FetchResult =
   | {
       ok: true
@@ -27,6 +34,7 @@ export type LeadServiceM8FetchResult =
       jobStatus: string | null
       leadsQuality: string
       customFieldUpdated: boolean
+      customFieldError?: string
     }
   | {
       ok: false
@@ -54,26 +62,8 @@ export async function fetchLeadFromServiceM8(
     return { ok: false, reason: 'error', message: 'Lead not found' }
   }
 
-  const jobsResponse = await request('/job.json')
-  if (!jobsResponse.ok) {
-    return {
-      ok: false,
-      reason: 'error',
-      message: `ServiceM8 job search failed with HTTP ${jobsResponse.status}`,
-    }
-  }
-
-  const jobs = await jobsResponse.json()
-  const matchingJob = Array.isArray(jobs)
-    ? jobs.find((job): job is ServiceM8Job => {
-        if (!job || typeof job !== 'object') return false
-        const candidate = job as ServiceM8Job
-        return Boolean(
-          candidate.uuid &&
-          candidate.job_description?.includes(`RGTools Lead ${leadId}`),
-        )
-      })
-    : undefined
+  const reference = `RGTools Lead ${leadId}`
+  const matchingJob = await findMatchingJob(request, reference)
 
   if (!matchingJob?.uuid) {
     return {
@@ -86,9 +76,16 @@ export async function fetchLeadFromServiceM8(
   const wasAlreadyLinked = Boolean(lead.servicem8JobUuid)
   const leadsQuality = `Leads Quality ${lead.tier ?? 'D'}`
   const jobStatus = matchingJob.status ?? null
+  let customFieldUpdated = false
+  let customFieldError: string | undefined
 
   if (!wasAlreadyLinked) {
-    await setLeadsQualityCustomField(request, matchingJob.uuid, leadsQuality)
+    try {
+      await setLeadsQualityCustomField(request, matchingJob.uuid, leadsQuality)
+      customFieldUpdated = true
+    } catch (error) {
+      customFieldError = error instanceof Error ? error.message : String(error)
+    }
   }
 
   await db
@@ -110,7 +107,8 @@ export async function fetchLeadFromServiceM8(
       jobUuid: matchingJob.uuid,
       jobStatus,
       leadsQuality,
-      customFieldUpdated: !wasAlreadyLinked,
+      customFieldUpdated,
+      customFieldError,
     },
   })
 
@@ -119,8 +117,74 @@ export async function fetchLeadFromServiceM8(
     jobUuid: matchingJob.uuid,
     jobStatus,
     leadsQuality,
-    customFieldUpdated: !wasAlreadyLinked,
+    customFieldUpdated,
+    customFieldError,
   }
+}
+
+async function findMatchingJob(
+  request: ServiceM8FetchRequest,
+  reference: string,
+): Promise<ServiceM8Job | undefined> {
+  const jobsResponse = await request('/job.json')
+  if (!jobsResponse.ok) {
+    throw new Error(`ServiceM8 job search failed with HTTP ${jobsResponse.status}`)
+  }
+
+  const jobs = await jobsResponse.json()
+  const matchingJob = Array.isArray(jobs)
+    ? jobs.find((job): job is ServiceM8Job => {
+        if (!job || typeof job !== 'object') return false
+        const candidate = job as ServiceM8Job
+        return Boolean(
+          candidate.uuid &&
+          candidate.job_description?.includes(reference),
+        )
+      })
+    : undefined
+
+  return matchingJob ?? findMatchingInboxJob(request, reference)
+}
+
+async function findMatchingInboxJob(
+  request: ServiceM8FetchRequest,
+  reference: string,
+): Promise<ServiceM8Job | undefined> {
+  const inboxResponse = await request('/inboxmessage.json?limit=500&offset=0&filter=all')
+  if (!inboxResponse.ok) {
+    throw new Error(`ServiceM8 inbox search failed with HTTP ${inboxResponse.status}`)
+  }
+
+  const inboxPayload = await inboxResponse.json()
+  const messages = inboxPayload && typeof inboxPayload === 'object' && 'messages' in inboxPayload
+    ? (inboxPayload as { messages?: unknown }).messages
+    : undefined
+
+  if (!Array.isArray(messages)) return undefined
+
+  const matchingMessage = messages.find((message): message is ServiceM8InboxMessage => {
+    if (!message || typeof message !== 'object') return false
+    const candidate = message as ServiceM8InboxMessage
+    return Boolean(
+      candidate.converted_to_job_uuid &&
+      (
+        candidate.message_text?.includes(reference) ||
+        candidate.message_html?.includes(reference) ||
+        candidate.subject?.includes(reference)
+      ),
+    )
+  })
+
+  if (!matchingMessage?.converted_to_job_uuid) return undefined
+
+  const jobResponse = await request(`/job/${matchingMessage.converted_to_job_uuid}.json`)
+  if (!jobResponse.ok) {
+    throw new Error(`ServiceM8 job retrieve failed with HTTP ${jobResponse.status}`)
+  }
+
+  const job = await jobResponse.json()
+  if (!job || typeof job !== 'object') return undefined
+  return job as ServiceM8Job
 }
 
 export function createServiceM8RequestFromEnv(): ServiceM8FetchRequest {
@@ -154,12 +218,10 @@ async function setLeadsQualityCustomField(
   const customFieldUuid = process.env.SERVICEM8_LEAD_QUALITY_FIELD?.trim()
   if (!customFieldUuid) throw new Error('SERVICEM8_LEAD_QUALITY_FIELD is not configured')
 
-  const response = await request('/JobCustomFieldData.json', {
+  const response = await request(`/job/${jobUuid}.json`, {
     method: 'POST',
     body: JSON.stringify({
-      related_object_uuid: jobUuid,
-      job_custom_field_uuid: customFieldUuid,
-      value,
+      [customFieldUuid]: value,
     }),
   })
 

@@ -60,7 +60,11 @@ export async function getLeadsList(filters: LeadsListFilters) {
   }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function getLeadDetail(leadId: string) {
+  if (!UUID_RE.test(leadId)) return null
+
   const [lead] = await db
     .select({
       id: leads.id,
@@ -129,7 +133,10 @@ function listWhere(filters: LeadsListFilters) {
 
   if (filters.tier !== 'all') conditions.push(eq(leads.tier, filters.tier))
   if (filters.sm8 === 'linked') conditions.push(isNotNull(leads.servicem8JobUuid))
-  if (filters.sm8 === 'pending') conditions.push(eq(leads.syncStatus, 'pending_sync'))
+  if (filters.sm8 === 'pending') {
+    conditions.push(eq(leads.syncStatus, 'synced'))
+    conditions.push(isNull(leads.servicem8JobUuid))
+  }
   if (filters.sm8 === 'failed') conditions.push(eq(leads.syncStatus, 'sync_failed'))
   if (filters.date !== 'all') {
     const start = new Date()
