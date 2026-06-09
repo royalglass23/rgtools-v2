@@ -35,7 +35,7 @@ describe('buildServiceM8LeadPayload', () => {
     const email = buildServiceM8InboxEmail(leadRecord(), ['de9f86@inbox.servicem8.com'])
 
     expect(email.to).toEqual(['de9f86@inbox.servicem8.com'])
-    expect(email.subject).toBe('RGTools Lead - Tier A - Aroha Smith - pool_fence')
+    expect(email.subject).toBe('RGTools Lead - Leads Quality A - Aroha Smith - pool_fence')
     expect(email.body).toContain('Name: Aroha Smith')
     expect(email.body).toContain('Mobile: 021 123 456')
     expect(email.body).toContain('Email: aroha@example.com')
@@ -67,7 +67,7 @@ describe('buildServiceM8LeadPayload', () => {
     expect(email.body).toContain('Price-sensitivity read: average_negotiation')
     expect(email.body).toContain('Decision-makers: sole_decision_maker')
     expect(email.body).toContain('Source: phone')
-    expect(email.body).toContain('Tier: A')
+    expect(email.body).toContain('Leads Quality: A')
     expect(email.body).toContain('Score: 82')
     expect(email.body).toContain('Completeness: 100%')
     expect(email.body).toContain('Flag: Blocker flag: remote specialised')

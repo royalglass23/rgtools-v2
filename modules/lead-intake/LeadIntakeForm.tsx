@@ -24,6 +24,7 @@ const SOURCES: Array<{ key: LeadIntakeInput['source']; label: string }> = [
 ]
 
 const initialState: LeadIntakeInput = {
+  editReason: '',
   clientName: '',
   companyName: '',
   phone: '',
@@ -183,6 +184,17 @@ export function LeadIntakeForm({
             className="mt-1 min-h-24 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </label>
+
+        {input.leadId && (
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">Reason for edit *</span>
+            <textarea
+              value={input.editReason ?? ''}
+              onChange={(event) => update('editReason', event.target.value)}
+              className="mt-1 min-h-20 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </label>
+        )}
 
         <div className="flex justify-end">
           <button

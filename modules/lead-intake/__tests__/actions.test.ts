@@ -20,6 +20,7 @@ import {
   submitLeadIntakeForUser,
   type LeadIntakeInput,
 } from '../actions'
+import { fetchLeadFromServiceM8, type ServiceM8FetchRequest } from '@/modules/leads/servicem8-fetch'
 import {
   buildCategoryAnswers,
   normalizeNzPhone,
@@ -226,5 +227,183 @@ describe('submitLeadIntakeForUser integration', () => {
     })
     expect(lead.syncStatus).toBe('sync_failed')
     expect(lead.syncError).toBe('ServiceM8 inbox unavailable')
+  }, 30000)
+
+  it('requires an edit reason before updating an existing lead', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const result = await submitLeadIntakeForUser(
+      minimumInput({
+        leadId: created.leadId,
+        clientName: 'Edited Without Reason',
+        editReason: '',
+      }),
+      actor.id,
+    )
+
+    expect(result).toEqual({ error: 'Reason for edit is required.' })
+  }, 30000)
+
+  it('audits edits with the mandatory edit reason', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const edited = await submitLeadIntakeForUser(
+      minimumInput({
+        leadId: created.leadId,
+        clientName: 'Edited With Reason',
+        editReason: 'Customer corrected the project address.',
+      }),
+      actor.id,
+    )
+
+    expect('success' in edited).toBe(true)
+    if (!('success' in edited)) throw new Error(edited.error)
+
+    const auditRows = await db
+      .select({ action: auditLog.action, detail: auditLog.detail })
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.leadId))
+
+    const editAudit = auditRows.find((row) => row.action === 'lead.edited')
+    expect(editAudit?.detail).toMatchObject({
+      reason: 'Customer corrected the project address.',
+    })
+  }, 30000)
+
+  it('returns a not-found result when no ServiceM8 job contains the lead reference', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ uuid: 'job-1', job_description: 'Other job', status: 'Work Order' }],
+    }))
+
+    const result = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'not_found',
+      message: 'No matching job found in ServiceM8 yet',
+    })
+    expect(request).toHaveBeenCalledOnce()
+  }, 30000)
+
+  it('links a matching ServiceM8 job, stores status, and sets Leads Quality only for a new link', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'quality-field-uuid'
+
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    const created = await submitLeadIntakeForUser(minimumInput(), actor.id)
+    expect('success' in created).toBe(true)
+    if (!('success' in created)) throw new Error(created.error)
+
+    createdLeadIds.push(created.leadId)
+    createdClientIds.push(created.clientId)
+
+    await db
+      .update(leads)
+      .set({ tier: 'B', seedScore: 72, completeness: 80, servicem8JobUuid: null })
+      .where(eq(leads.id, created.leadId))
+
+    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
+      if (path === '/job.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              uuid: 'job-uuid-1',
+              job_description: `Install pool fence\nRGTools Lead ${created.leadId}`,
+              status: 'Work Order',
+            },
+          ],
+        }
+      }
+
+      expect(path).toBe('/JobCustomFieldData.json')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        related_object_uuid: 'job-uuid-1',
+        job_custom_field_uuid: 'quality-field-uuid',
+        value: 'Leads Quality B',
+      })
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ uuid: 'field-data-1' }),
+      }
+    })
+
+    const firstResult = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+    const secondResult = await fetchLeadFromServiceM8(created.leadId, actor.id, { request })
+
+    expect(firstResult).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-1',
+      jobStatus: 'Work Order',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: true,
+    })
+    expect(secondResult).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-1',
+      jobStatus: 'Work Order',
+      leadsQuality: 'Leads Quality B',
+      customFieldUpdated: false,
+    })
+    expect(request).toHaveBeenCalledTimes(3)
+
+    const [lead] = await db
+      .select({
+        servicem8JobUuid: leads.servicem8JobUuid,
+        servicem8Status: leads.servicem8Status,
+      })
+      .from(leads)
+      .where(eq(leads.id, created.leadId))
+      .limit(1)
+
+    expect(lead).toEqual({
+      servicem8JobUuid: 'job-uuid-1',
+      servicem8Status: 'Work Order',
+    })
   }, 30000)
 })

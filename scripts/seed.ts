@@ -4,7 +4,7 @@ config({ path: '.env.local' })
 async function seed() {
   const bcrypt = await import('bcryptjs')
   const { db } = await import('../lib/db')
-  const { users, modules } = await import('../drizzle/schema')
+  const { users, modules, userModuleAccess } = await import('../drizzle/schema')
   const { eq } = await import('drizzle-orm')
 
   const username = 'rgadmin'
@@ -34,7 +34,8 @@ async function seed() {
   // Upsert modules
   const modulesToSeed = [
     { slug: 'lead-intake', name: 'Lead Intake', adminOnly: false, sortOrder: 0 },
-    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 1 },
+    { slug: 'leads', name: 'Leads', adminOnly: false, sortOrder: 1 },
+    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 2 },
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
   ]
 
@@ -45,6 +46,30 @@ async function seed() {
     } else {
       await db.insert(modules).values(moduleSeed)
       console.log(`Created module: ${moduleSeed.slug}`)
+    }
+  }
+
+  const [leadsModule] = await db
+    .select({ id: modules.id })
+    .from(modules)
+    .where(eq(modules.slug, 'leads'))
+    .limit(1)
+
+  if (leadsModule) {
+    const staffUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'staff'))
+
+    for (const staffUser of staffUsers) {
+      await db
+        .insert(userModuleAccess)
+        .values({
+          userId: staffUser.id,
+          moduleId: leadsModule.id,
+          grantedBy: null,
+        })
+        .onConflictDoNothing()
     }
   }
 

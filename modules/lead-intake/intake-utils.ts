@@ -12,6 +12,7 @@ export function normalizeInput(input: LeadIntakeInput): NormalizedLeadIntakeInpu
 
   return {
     ...input,
+    editReason: input.editReason?.trim() || '',
     clientName: input.clientName.trim(),
     companyName: input.companyName?.trim() || '',
     phone,
