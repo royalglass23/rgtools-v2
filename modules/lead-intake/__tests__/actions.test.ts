@@ -125,7 +125,9 @@ describe('lead intake validation', () => {
   })
 })
 
-describe('submitLeadIntakeForUser integration', () => {
+// Live-Neon integration tests (require DATABASE_URL reachable + seeded rgadmin user).
+// Opt in with RUN_DB_TESTS=1 — the default suite stays hermetic for sandboxes/CI.
+describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration', () => {
   it('minimum submit creates client, lead, audit rows, category rows, and immediately syncs ServiceM8', async () => {
     const [actor] = await db
       .select({ id: users.id })
