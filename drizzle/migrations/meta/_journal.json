@@ -43,6 +43,13 @@
       "when": 1780969429128,
       "tag": "0005_unknown_ogun",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781063733875,
+      "tag": "0006_fluffy_lilith",
+      "breakpoints": true
     }
   ]
 }

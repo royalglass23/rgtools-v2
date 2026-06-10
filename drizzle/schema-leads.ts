@@ -55,6 +55,7 @@ export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
   source: leadSourceEnum('source').notNull(),
+  externalRef: text('external_ref'),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),
   servicem8JobUuid: text('servicem8_job_uuid'),
   servicem8Status: text('servicem8_status'),
@@ -85,6 +86,7 @@ export const leads = pgTable('leads', {
   index('leads_tier_idx').on(t.tier),
   index('leads_sync_status_idx').on(t.syncStatus),
   index('leads_servicem8_idx').on(t.servicem8JobUuid),
+  uniqueIndex('leads_external_ref_uq').on(t.externalRef),
 ])
 
 export const leadCategoryScores = pgTable('lead_category_scores', {
