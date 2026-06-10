@@ -22,6 +22,8 @@ export function normalizeInput(input: LeadIntakeInput): NormalizedLeadIntakeInpu
     projectType: input.projectType.trim(),
     location: input.location.trim(),
     suburb: input.suburb?.trim() || '',
+    timeline: input.timeline?.trim() || '',
+    externalRef: input.externalRef?.trim() || '',
     cat4: input.cat4?.trim() || '',
     consentStatus: input.consentStatus?.trim() || '',
     budgetBand: input.budgetBand?.trim() || '',

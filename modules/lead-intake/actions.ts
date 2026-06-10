@@ -38,6 +38,8 @@ export type LeadIntakeInput = {
   priceSensitivityRead?: string
   distanceBand?: string
   source: 'phone' | 'email' | 'wechat' | 'calculator' | 'contact_form' | 'other'
+  timeline?: string
+  externalRef?: string
   freeText?: string
 }
 
@@ -128,7 +130,7 @@ export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadInta
 
 export async function submitLeadIntakeForUser(
   input: LeadIntakeInput,
-  actorId: string,
+  actorId: string | null,
 ): Promise<LeadIntakeResult> {
   const normalized = normalizeInput(input)
   const validationError = validateMinimum(normalized)
@@ -178,6 +180,7 @@ export async function submitLeadIntakeForUser(
           projectType: normalized.projectType,
           location: normalized.location,
           suburb: normalized.suburb || null,
+          timeline: normalized.timeline || null,
           budgetBand: normalized.budgetBand || null,
           consentStatus: normalized.consentStatus || null,
           decisionMakers: normalized.decisionMakers || null,
@@ -227,6 +230,8 @@ export async function submitLeadIntakeForUser(
           projectType: normalized.projectType,
           location: normalized.location,
           suburb: normalized.suburb || null,
+          timeline: normalized.timeline || null,
+          externalRef: normalized.externalRef || null,
           budgetBand: normalized.budgetBand || null,
           consentStatus: normalized.consentStatus || null,
           decisionMakers: normalized.decisionMakers || null,
