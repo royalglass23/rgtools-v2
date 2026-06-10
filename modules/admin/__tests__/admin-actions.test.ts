@@ -193,7 +193,7 @@ describe('createUser', () => {
 
     await expect(
       createUser({ username: 'newuser', password: 'pass123', role: 'staff' }),
-    ).rejects.toThrow('Forbidden')
+    ).resolves.toEqual({ error: 'Forbidden' })
 
     expect(mockInsert).not.toHaveBeenCalled()
   })
@@ -203,7 +203,7 @@ describe('createUser', () => {
 
     await expect(
       createUser({ username: 'newuser', password: 'pass123', role: 'staff' }),
-    ).rejects.toThrow('Forbidden')
+    ).resolves.toEqual({ error: 'Forbidden' })
 
     expect(mockInsert).not.toHaveBeenCalled()
   })
@@ -287,7 +287,7 @@ describe('updateUserRole', () => {
   it('blocked when session is not admin', async () => {
     mockAuth.mockResolvedValue(staffSession)
 
-    await expect(updateUserRole('target-id', 'admin')).rejects.toThrow('Forbidden')
+    await expect(updateUserRole('target-id', 'admin')).resolves.toEqual({ error: 'Forbidden' })
 
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockInsert).not.toHaveBeenCalled()
@@ -359,7 +359,7 @@ describe('deleteUser', () => {
   it('blocked when session is not admin', async () => {
     mockAuth.mockResolvedValue(staffSession)
 
-    await expect(deleteUser('target-id')).rejects.toThrow('Forbidden')
+    await expect(deleteUser('target-id')).resolves.toEqual({ error: 'Forbidden' })
 
     expect(mockDelete).not.toHaveBeenCalled()
     expect(mockInsert).not.toHaveBeenCalled()
@@ -476,7 +476,7 @@ describe('setModuleAccess', () => {
   it('blocked when session is not admin', async () => {
     mockAuth.mockResolvedValue(staffSession)
 
-    await expect(setModuleAccess('target-id', 'module-id', true)).rejects.toThrow('Forbidden')
+    await expect(setModuleAccess('target-id', 'module-id', true)).resolves.toEqual({ error: 'Forbidden' })
 
     expect(mockInsert).not.toHaveBeenCalled()
     expect(mockDelete).not.toHaveBeenCalled()

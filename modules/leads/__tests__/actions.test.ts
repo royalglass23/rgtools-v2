@@ -41,9 +41,9 @@ beforeEach(() => {
 
 describe('batchDeleteLeadsAction', () => {
   it('soft-deletes selected leads and writes one audit row per lead for admins', async () => {
-    const result = await batchDeleteLeadsAction(formData(['lead-1', 'lead-2']))
+    // Used directly as <form action>, so the action returns nothing on success.
+    await expect(batchDeleteLeadsAction(formData(['lead-1', 'lead-2']))).resolves.toBeUndefined()
 
-    expect(result).toEqual({ success: true, count: 2 })
     expect(mockUpdate).toHaveBeenCalled()
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
       archivedAt: expect.any(Date),
@@ -69,9 +69,8 @@ describe('batchDeleteLeadsAction', () => {
   it('blocks staff users without mutating leads', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'staff-id', role: 'staff' } })
 
-    const result = await batchDeleteLeadsAction(formData(['lead-1']))
+    await expect(batchDeleteLeadsAction(formData(['lead-1']))).rejects.toThrow('Forbidden')
 
-    expect(result).toEqual({ error: 'Forbidden' })
     expect(mockTransaction).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })

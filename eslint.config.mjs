@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "cost-calculator/**",
+    "cost-calculator-copy/**",
     "next-env.d.ts",
   ]),
 ]);
