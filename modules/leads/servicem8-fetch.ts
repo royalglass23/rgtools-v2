@@ -53,6 +53,7 @@ export async function fetchLeadFromServiceM8(
       id: leads.id,
       tier: leads.tier,
       servicem8JobUuid: leads.servicem8JobUuid,
+      createdAt: leads.createdAt,
     })
     .from(leads)
     .where(eq(leads.id, leadId))
@@ -63,7 +64,7 @@ export async function fetchLeadFromServiceM8(
   }
 
   const reference = `RGTools Lead ${leadId}`
-  const matchingJob = await findMatchingJob(request, reference)
+  const matchingJob = await findMatchingJob(request, reference, lead.createdAt)
 
   if (!matchingJob?.uuid) {
     return {
@@ -125,8 +126,12 @@ export async function fetchLeadFromServiceM8(
 async function findMatchingJob(
   request: ServiceM8FetchRequest,
   reference: string,
+  leadCreatedAt: Date,
 ): Promise<ServiceM8Job | undefined> {
-  const jobsResponse = await request('/job.json')
+  // One-day margin guards against timezone skew between Neon and ServiceM8 job dates.
+  const sinceDate = new Date(leadCreatedAt.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const filter = encodeURIComponent(`date gt '${sinceDate}'`)
+  const jobsResponse = await request(`/job.json?%24filter=${filter}`)
   if (!jobsResponse.ok) {
     throw new Error(`ServiceM8 job search failed with HTTP ${jobsResponse.status}`)
   }
