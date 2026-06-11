@@ -21,6 +21,12 @@ export type WpCalculatorLead = {
   hardware: string
   est_low: string
   est_high: string
+  // Optional fields — the WP export endpoint should include these; the mapper
+  // degrades gracefully if they are absent (older export, missing column).
+  est_subtotal?: string
+  needs_consult?: number
+  consult_notes?: string
+  height?: string
   consent_given: number
   created_at: string
 }
@@ -36,12 +42,23 @@ const CLIENT_PROFILE_BY_CUSTOMER_TYPE: Record<string, string> = {
 const BUSINESS_CUSTOMER_TYPES = new Set(['builder', 'developer', 'architect', 'pool_builder'])
 
 // Calculator scenarios → rgtools lead-intake project-type keys (PROJECT_TYPES in
-// LeadIntakeForm.tsx). Three of the four calculator scenarios are balustrade variants.
+// LeadIntakeForm.tsx). Keys are identical for the balustrade variants; only the
+// pool-fence scenario is renamed.
 const PROJECT_TYPE_BY_SCENARIO: Record<string, string> = {
-  ground_level: 'balustrade',
-  balcony_balustrade: 'balustrade',
-  stair_balustrade: 'balustrade',
+  ground_level: 'ground_level',
+  balcony_balustrade: 'balcony_balustrade',
+  stair_balustrade: 'stair_balustrade',
   premium_pool_fence: 'pool_fence',
+}
+
+// Human-readable labels for the raw calculator customer_type, used in freeText.
+const CUSTOMER_TYPE_LABEL: Record<string, string> = {
+  homeowner: 'Homeowner',
+  builder: 'Builder',
+  developer: 'Developer',
+  architect: 'Architect',
+  pool_builder: 'Pool Builder',
+  other: 'Other',
 }
 
 export function mapWpLeadToIntakeInput(wp: WpCalculatorLead): LeadIntakeInput {
@@ -55,6 +72,7 @@ export function mapWpLeadToIntakeInput(wp: WpCalculatorLead): LeadIntakeInput {
     clientProfileKey: CLIENT_PROFILE_BY_CUSTOMER_TYPE[wp.customer_type] ?? '',
     projectType: PROJECT_TYPE_BY_SCENARIO[wp.project_type] ?? 'other',
     budgetBand: budgetBandFromEstimate(wp.est_low, wp.est_high),
+    cat4: complexityFromConsult(wp.needs_consult),
     location: wp.address,
     source: 'calculator',
     timeline: wp.timeframe || '',
@@ -80,13 +98,32 @@ export function budgetBandFromEstimate(estLow: string, estHigh: string): string 
   return 'under_2k'
 }
 
+// Complexity band (scoring category 4) from the calculator's consultation flag.
+// A flagged lead ("not sure" / needs advice) is minor custom work; an unflagged
+// all-menu selection is standard. We deliberately never auto-assign complex_install
+// because it is a scoring STRIKE that demotes the tier — that judgment stays with staff.
+function complexityFromConsult(needsConsult: number | undefined): string {
+  return needsConsult ? 'minor_custom' : 'standard_non_custom'
+}
+
+// Dumps everything the calculator captured into the lead's free-text notes, so no
+// detail is lost even where it has no dedicated scored field.
 function buildFreeText(wp: WpCalculatorLead): string {
+  const estimate = `Estimate: $${wp.est_low} - $${wp.est_high}` +
+    (wp.est_subtotal ? ` (subtotal $${wp.est_subtotal})` : '')
+  const project = `Project: ${wp.project_type}, ${wp.length_m}m, ${wp.corners} corner(s), ${wp.gates} gate(s)` +
+    (wp.height ? `, height ${wp.height}` : '')
+  const customerType = CUSTOMER_TYPE_LABEL[wp.customer_type] ?? wp.customer_type ?? 'not specified'
+  const consultation = `Consultation needed: ${wp.needs_consult ? 'yes' : 'no'}` +
+    (wp.consult_notes ? ` — ${wp.consult_notes}` : '')
+
   const lines = [
     `[Calculator] WP lead #${wp.id}, submitted ${wp.created_at}`,
-    `Estimate: $${wp.est_low} - $${wp.est_high}`,
-    `Project: ${wp.project_type}, ${wp.length_m}m, ${wp.corners} corner(s), ${wp.gates} gate(s)`,
+    estimate,
+    project,
     `Fixing: ${wp.fixing_method || 'not specified'} | Substrate: ${wp.substrate || 'not specified'} | Hardware: ${wp.hardware || 'not specified'}`,
-    `Customer type: ${wp.customer_type || 'not specified'} | Call preference: ${wp.call_pref}`,
+    `Customer type: ${customerType} | Call preference: ${wp.call_pref}`,
+    consultation,
     `Contact consent: ${wp.consent_given ? 'yes' : 'no'}`,
   ]
   if (wp.notes) lines.push(`Notes: ${wp.notes}`)

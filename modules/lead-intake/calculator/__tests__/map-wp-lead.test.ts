@@ -36,6 +36,7 @@ describe('mapWpLeadToIntakeInput', () => {
       clientProfileKey: 'homeowner',
       projectType: 'pool_fence',
       budgetBand: '2k_to_10k',
+      cat4: 'standard_non_custom',
       location: '12 Beach Rd, Takapuna',
       source: 'calculator',
       timeline: 'asap',
@@ -47,11 +48,17 @@ describe('mapWpLeadToIntakeInput', () => {
     const scenario = (project_type: string) =>
       mapWpLeadToIntakeInput({ ...baseWpLead, project_type }).projectType
 
-    expect(scenario('ground_level')).toBe('balustrade')
-    expect(scenario('balcony_balustrade')).toBe('balustrade')
-    expect(scenario('stair_balustrade')).toBe('balustrade')
+    expect(scenario('ground_level')).toBe('ground_level')
+    expect(scenario('balcony_balustrade')).toBe('balcony_balustrade')
+    expect(scenario('stair_balustrade')).toBe('stair_balustrade')
     expect(scenario('premium_pool_fence')).toBe('pool_fence')
     expect(scenario('something_new')).toBe('other')
+  })
+
+  it('flags consultation leads as minor custom, otherwise standard, never complex', () => {
+    expect(mapWpLeadToIntakeInput(baseWpLead).cat4).toBe('standard_non_custom')
+    expect(mapWpLeadToIntakeInput({ ...baseWpLead, needs_consult: 1 }).cat4).toBe('minor_custom')
+    expect(mapWpLeadToIntakeInput({ ...baseWpLead, needs_consult: 0 }).cat4).toBe('standard_non_custom')
   })
 
   it('derives the budget band from the estimate midpoint using exact scoring keys', () => {
@@ -92,5 +99,20 @@ describe('mapWpLeadToIntakeInput', () => {
     expect(freeText).toContain('Contact consent: yes')
     expect(freeText).toContain('pool fence needs a self-closing gate')
     expect(mapWpLeadToIntakeInput(baseWpLead).consentStatus).toBeUndefined()
+  })
+
+  it('includes optional calculator fields in free text when present', () => {
+    const freeText = mapWpLeadToIntakeInput({
+      ...baseWpLead,
+      est_subtotal: '4800.00',
+      needs_consult: 1,
+      consult_notes: 'Special Engineer Design may be required',
+      height: '1.2m',
+    }).freeText ?? ''
+
+    expect(freeText).toContain('subtotal $4800.00')
+    expect(freeText).toContain('height 1.2m')
+    expect(freeText).toContain('Consultation needed: yes — Special Engineer Design may be required')
+    expect(freeText).toContain('Customer type: Homeowner')
   })
 })
