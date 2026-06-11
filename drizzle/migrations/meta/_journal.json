@@ -50,6 +50,13 @@
       "when": 1781063733875,
       "tag": "0006_fluffy_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781064000000,
+      "tag": "0007_admin_menu_modules",
+      "breakpoints": true
     }
   ]
 }

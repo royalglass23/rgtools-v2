@@ -7,8 +7,10 @@ import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'
 
 const PROJECT_TYPES = [
-  { key: 'pool_fence', label: 'Pool fence' },
-  { key: 'balustrade', label: 'Balustrade' },
+  { key: 'ground_level', label: 'Ground Level Balustrade' },
+  { key: 'balcony_balustrade', label: 'Balcony Balustrade' },
+  { key: 'stair_balustrade', label: 'Stair Balustrade' },
+  { key: 'pool_fence', label: 'Pool Fence' },
   { key: 'shower', label: 'Shower' },
   { key: 'handrail', label: 'Handrail' },
   { key: 'other', label: 'Other' },

@@ -4,12 +4,14 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { signOutAction } from './actions'
 import { getAccessibleModules } from '@/lib/access-db'
+import { buildDashboardNavigation } from '@/lib/admin-navigation'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
   const accessibleModules = await getAccessibleModules(session.user.id)
+  const { primaryModules, adminItems } = buildDashboardNavigation(accessibleModules)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -30,9 +32,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="h-[72px] w-auto"
             />
           </Link>
-          {accessibleModules.length > 0 && (
+          {(primaryModules.length > 0 || adminItems.length > 0) && (
             <div className="flex items-center gap-4">
-              {accessibleModules.map((mod) => (
+              {primaryModules.map((mod) => (
                 <Link
                   key={mod.id}
                   href={`/${mod.slug}`}
@@ -41,6 +43,36 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   {mod.name}
                 </Link>
               ))}
+              {adminItems.length > 0 && (
+                <div className="group relative">
+                  <button
+                    type="button"
+                    className="text-sm text-slate-100/85 transition-colors hover:text-white focus:text-white focus:outline-none"
+                    aria-haspopup="menu"
+                  >
+                    Admin
+                  </button>
+                  <div
+                    className="invisible absolute left-0 top-full z-20 min-w-56 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+                  >
+                    <div
+                      className="rounded border border-slate-200 bg-white py-2 shadow-lg"
+                      role="menu"
+                    >
+                      {adminItems.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={item.href}
+                          className="block px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950"
+                          role="menuitem"
+                        >
+                          {item.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

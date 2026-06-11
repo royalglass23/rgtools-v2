@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapWpLeadToIntakeInput, type WpCalculatorLead } from '../map-wp-lead'
+import { mapWpLeadToIntakeInput, budgetBandFromEstimate, type WpCalculatorLead } from '../map-wp-lead'
 
 const baseWpLead: WpCalculatorLead = {
   id: 42,
@@ -34,12 +34,40 @@ describe('mapWpLeadToIntakeInput', () => {
       phone: '021 123 4567',
       email: 'sarah@example.com',
       clientProfileKey: 'homeowner',
-      projectType: 'premium_pool_fence',
+      projectType: 'pool_fence',
+      budgetBand: '2k_to_10k',
+      cat4: 'standard_non_custom',
       location: '12 Beach Rd, Takapuna',
       source: 'calculator',
       timeline: 'asap',
       externalRef: 'calculator:42',
     })
+  })
+
+  it('maps calculator scenarios to rgtools project-type keys', () => {
+    const scenario = (project_type: string) =>
+      mapWpLeadToIntakeInput({ ...baseWpLead, project_type }).projectType
+
+    expect(scenario('ground_level')).toBe('ground_level')
+    expect(scenario('balcony_balustrade')).toBe('balcony_balustrade')
+    expect(scenario('stair_balustrade')).toBe('stair_balustrade')
+    expect(scenario('premium_pool_fence')).toBe('pool_fence')
+    expect(scenario('something_new')).toBe('other')
+  })
+
+  it('flags consultation leads as minor custom, otherwise standard, never complex', () => {
+    expect(mapWpLeadToIntakeInput(baseWpLead).cat4).toBe('standard_non_custom')
+    expect(mapWpLeadToIntakeInput({ ...baseWpLead, needs_consult: 1 }).cat4).toBe('minor_custom')
+    expect(mapWpLeadToIntakeInput({ ...baseWpLead, needs_consult: 0 }).cat4).toBe('standard_non_custom')
+  })
+
+  it('derives the budget band from the estimate midpoint using exact scoring keys', () => {
+    expect(budgetBandFromEstimate('1500.00', '1800.00')).toBe('under_2k')
+    expect(budgetBandFromEstimate('4100.00', '5400.00')).toBe('2k_to_10k')
+    expect(budgetBandFromEstimate('11000.00', '13000.00')).toBe('10k_to_50k')
+    expect(budgetBandFromEstimate('48000.00', '60000.00')).toBe('50k_plus')
+    expect(budgetBandFromEstimate('', 'NaN')).toBe('')
+    expect(budgetBandFromEstimate('0', '0')).toBe('')
   })
 
   it('maps business customer types to new business and company name', () => {
@@ -71,5 +99,20 @@ describe('mapWpLeadToIntakeInput', () => {
     expect(freeText).toContain('Contact consent: yes')
     expect(freeText).toContain('pool fence needs a self-closing gate')
     expect(mapWpLeadToIntakeInput(baseWpLead).consentStatus).toBeUndefined()
+  })
+
+  it('includes optional calculator fields in free text when present', () => {
+    const freeText = mapWpLeadToIntakeInput({
+      ...baseWpLead,
+      est_subtotal: '4800.00',
+      needs_consult: 1,
+      consult_notes: 'Special Engineer Design may be required',
+      height: '1.2m',
+    }).freeText ?? ''
+
+    expect(freeText).toContain('subtotal $4800.00')
+    expect(freeText).toContain('height 1.2m')
+    expect(freeText).toContain('Consultation needed: yes — Special Engineer Design may be required')
+    expect(freeText).toContain('Customer type: Homeowner')
   })
 })
