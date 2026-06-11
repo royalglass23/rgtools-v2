@@ -47,6 +47,7 @@ next-env.d.ts
 .superpowers/
 .playwright-mcp/
 docs/superpowers/
+docs/codex/
 workers/tracker/.dev.vars
 
 # Screenshot artifacts from manual/automated testing
