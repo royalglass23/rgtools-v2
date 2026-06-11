@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapWpLeadToIntakeInput, type WpCalculatorLead } from '../map-wp-lead'
+import { mapWpLeadToIntakeInput, budgetBandFromEstimate, type WpCalculatorLead } from '../map-wp-lead'
 
 const baseWpLead: WpCalculatorLead = {
   id: 42,
@@ -34,12 +34,33 @@ describe('mapWpLeadToIntakeInput', () => {
       phone: '021 123 4567',
       email: 'sarah@example.com',
       clientProfileKey: 'homeowner',
-      projectType: 'premium_pool_fence',
+      projectType: 'pool_fence',
+      budgetBand: '2k_to_10k',
       location: '12 Beach Rd, Takapuna',
       source: 'calculator',
       timeline: 'asap',
       externalRef: 'calculator:42',
     })
+  })
+
+  it('maps calculator scenarios to rgtools project-type keys', () => {
+    const scenario = (project_type: string) =>
+      mapWpLeadToIntakeInput({ ...baseWpLead, project_type }).projectType
+
+    expect(scenario('ground_level')).toBe('balustrade')
+    expect(scenario('balcony_balustrade')).toBe('balustrade')
+    expect(scenario('stair_balustrade')).toBe('balustrade')
+    expect(scenario('premium_pool_fence')).toBe('pool_fence')
+    expect(scenario('something_new')).toBe('other')
+  })
+
+  it('derives the budget band from the estimate midpoint using exact scoring keys', () => {
+    expect(budgetBandFromEstimate('1500.00', '1800.00')).toBe('under_2k')
+    expect(budgetBandFromEstimate('4100.00', '5400.00')).toBe('2k_to_10k')
+    expect(budgetBandFromEstimate('11000.00', '13000.00')).toBe('10k_to_50k')
+    expect(budgetBandFromEstimate('48000.00', '60000.00')).toBe('50k_plus')
+    expect(budgetBandFromEstimate('', 'NaN')).toBe('')
+    expect(budgetBandFromEstimate('0', '0')).toBe('')
   })
 
   it('maps business customer types to new business and company name', () => {
