@@ -10,5 +10,5 @@ export const proxy = auth((req) => {
 })
 
 export const config = {
-  matcher: ['/((?!login|api/auth|q/|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!login|api/auth|api/lead-intake/calculator-import|q/|_next/static|_next/image|favicon.ico).*)'],
 }
