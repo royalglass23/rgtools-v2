@@ -37,6 +37,18 @@ Copy `.env.example` to `.env.local` and fill in all values.
 | `SERVICEM8_API_KEY` | Yes | ServiceM8 API key — used by the "Fetch from ServiceM8" button to search jobs and update the Leads Quality custom field |
 | `SERVICEM8_LEAD_QUALITY_FIELD` | Yes | UUID of the ServiceM8 custom field to write the lead tier into (e.g. "Leads Quality A") — find it in ServiceM8 → Settings → Custom Fields |
 
+Calculator submit and customer estimate email:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SERVICEM8_SYNC_SECRET` | Yes | Bearer secret for the ServiceM8 retry endpoint |
+| `CALCULATOR_ALLOWED_ORIGIN` | Yes | Exact browser origin allowed to POST calculator leads, e.g. `https://www.royalglass.co.nz` |
+| `TURNSTILE_SECRET` | Production | Cloudflare Turnstile siteverify secret. If unset, verification is skipped for local/dev |
+| `RESEND_API_KEY` | Production | Resend API key for customer estimate emails |
+| `RESEND_FROM` | Production | Verified sender, e.g. `Royal Glass <support@royalglass.co.nz>` |
+
+The calculator submit path uses the Neon database directly. In production, use Neon's pooled connection string for `DATABASE_URL`.
+
 ### Google Maps API keys
 
 Two separate keys are used to limit exposure:

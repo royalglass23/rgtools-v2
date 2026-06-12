@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 function matchesMiddleware(pathname: string): boolean {
   // Mirrors the Next.js matcher.
-  return !/^\/(login|api\/auth|api\/lead-intake\/calculator-import|q\/|_next\/static|_next\/image|favicon\.ico)/.test(pathname)
+  return !/^\/(login|api\/auth|api\/lead-intake\/calculator-submit|q\/|_next\/static|_next\/image|favicon\.ico)/.test(pathname)
 }
 
 describe('middleware route matching', () => {
@@ -14,8 +14,12 @@ describe('middleware route matching', () => {
     expect(matchesMiddleware('/api/auth/callback/credentials')).toBe(false)
   })
 
-  it('skips Bearer-secured calculator import route', () => {
-    expect(matchesMiddleware('/api/lead-intake/calculator-import')).toBe(false)
+  it('skips public calculator submit route', () => {
+    expect(matchesMiddleware('/api/lead-intake/calculator-submit')).toBe(false)
+  })
+
+  it('protects retired calculator import route', () => {
+    expect(matchesMiddleware('/api/lead-intake/calculator-import')).toBe(true)
   })
 
   it('skips client quote pages', () => {

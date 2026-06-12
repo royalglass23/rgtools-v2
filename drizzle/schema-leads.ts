@@ -124,3 +124,37 @@ export const leadStatusChanges = pgTable('lead_status_changes', {
 }, (t) => [
   index('lead_status_changes_lead_idx').on(t.leadId),
 ])
+
+export const leadSubmitAttempts = pgTable('lead_submit_attempts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ip: text('ip').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_submit_attempts_ip_created_at_idx').on(t.ip, t.createdAt),
+])
+
+export const leadSubmitFailures = pgTable('lead_submit_failures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  correlationId: text('correlation_id').notNull(),
+  ip: text('ip').notNull(),
+  stage: text('stage').notNull(),
+  error: text('error').notNull(),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_submit_failures_created_at_idx').on(t.createdAt),
+  index('lead_submit_failures_correlation_idx').on(t.correlationId),
+])
+
+export const leadEmailLog = pgTable('lead_email_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+  recipient: text('recipient').notNull(),
+  status: text('status').notNull(),
+  providerMessageId: text('provider_message_id'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_email_log_lead_idx').on(t.leadId),
+  index('lead_email_log_created_at_idx').on(t.createdAt),
+])
