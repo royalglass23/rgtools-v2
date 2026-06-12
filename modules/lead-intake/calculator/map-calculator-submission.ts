@@ -134,7 +134,11 @@ function buildFreeText(
     (estimate.subtotal !== null ? ` (subtotal $${estimate.subtotal})` : '')
   const project = `Project: ${stringValue(answers.scenario)}, ${stringValue(answers.length)}m, ` +
     `${stringValue(answers.corners)} corner(s), ${stringValue(answers.gates)} gate(s)` +
-    (stringValue(answers.height) ? `, height ${stringValue(answers.height)}` : '')
+    (numberValue(answers.landingLength) > 0 ? `, landing ${stringValue(answers.landingLength)}m` : '')
+  // WizardAnswers uses fixingMethod/hardwareFinish; older payloads used fixing/hardware.
+  const fixing = stringValue(answers.fixingMethod) || stringValue(answers.fixing)
+  const hardware = stringValue(answers.hardwareFinish) || stringValue(answers.hardware)
+  const glass = [stringValue(answers.glassType), stringValue(answers.glassColour)].filter(Boolean).join(' / ')
   const customerType =
     CUSTOMER_TYPE_LABEL[stringValue(lead.customerType)] ?? (stringValue(lead.customerType) || 'not specified')
   const consultation = `Consultation needed: ${estimate.needsCallUs || estimate.consultationFlags.length > 0 ? 'yes' : 'no'}` +
@@ -144,7 +148,8 @@ function buildFreeText(
     `[Calculator] submitted ${submittedAt.toISOString()}`,
     estimateText,
     project,
-    `Fixing: ${stringValue(answers.fixing) || 'not specified'} | Substrate: ${stringValue(answers.substrate) || 'not specified'} | Hardware: ${stringValue(answers.hardware) || 'not specified'}`,
+    `Fixing: ${fixing || 'not specified'} | Substrate: ${stringValue(answers.substrate) || 'not specified'} | Hardware: ${hardware || 'not specified'}`,
+    `Glass: ${glass || 'not specified'}`,
     `Customer type: ${customerType} | Call preference: ${stringValue(lead.callPreference)}`,
     consultation,
     `Contact consent: ${lead.consent ? 'yes' : 'no'}`,

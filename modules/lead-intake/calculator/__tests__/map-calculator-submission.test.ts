@@ -6,15 +6,21 @@ import {
 } from '../map-calculator-submission'
 
 const baseSubmission: CalculatorSubmission = {
+  // Mirrors the calculator's real WizardAnswers shape (fixingMethod/hardwareFinish,
+  // not fixing/hardware) — see cost-calculator/src/lib/calculator/types.ts.
   answers: {
     scenario: 'premium_pool_fence',
     length: 12,
+    landingLength: 0,
     corners: 2,
     gates: 1,
-    fixing: 'spigot_round',
+    glassType: 'toughened_12mm',
+    glassColour: 'clear',
+    interlikingRails: false,
+    fixingMethod: 'spigot_round',
     substrate: 'concrete',
-    hardware: 'standard_chrome',
-    height: '1.2m',
+    hardwareFinish: 'standard_chrome',
+    callTriggers: [],
   },
   lead: {
     firstName: 'Sarah',
@@ -65,6 +71,8 @@ describe('mapCalculatorSubmissionToIntakeInput', () => {
     expect(input.freeText).toContain('[Calculator] submitted 2026-06-12T01:02:03.000Z')
     expect(input.freeText).toContain('Estimate: $4100 - $5400 (subtotal $4800)')
     expect(input.freeText).toContain('premium_pool_fence, 12m, 2 corner(s), 1 gate(s)')
+    expect(input.freeText).toContain('Fixing: spigot_round | Substrate: concrete | Hardware: standard_chrome')
+    expect(input.freeText).toContain('Glass: toughened_12mm / clear')
     expect(input.freeText).toContain('Special Engineer Design may be required')
     expect(input.freeText).toContain('Contact consent: yes')
   })
