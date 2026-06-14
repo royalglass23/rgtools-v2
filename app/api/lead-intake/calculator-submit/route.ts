@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
       customerName: input.clientName,
       estimate: normalizeEstimate(submission.estimate),
       projectType: input.projectType,
+      answers: submission.answers,
       correlationId,
     }
 
