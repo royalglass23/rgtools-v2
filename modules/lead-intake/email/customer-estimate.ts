@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { leadEmailLog } from '@/drizzle/schema-leads'
+import { errorMessage } from '@/lib/error-message'
 import type { CalculatorEstimateForEmail } from '@/modules/lead-intake/calculator/map-calculator-submission'
 
 type FetchFn = typeof fetch
@@ -100,9 +101,4 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }

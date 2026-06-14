@@ -8,6 +8,8 @@ import {
   type CalculatorSubmission,
 } from '@/modules/lead-intake/calculator/map-calculator-submission'
 import { saveLeadSubmitFailure } from '@/modules/lead-intake/calculator/submit-failures'
+import { numberValue, stringValue } from '@/modules/lead-intake/calculator/parse'
+import { errorMessage } from '@/lib/error-message'
 import { sendCustomerEstimateEmail } from '@/modules/lead-intake/email/customer-estimate'
 import { syncLeadToServiceM8 } from '@/modules/lead-intake/servicem8/sync'
 import { submitLeadIntakeForUser } from '@/modules/lead-intake/actions'
@@ -196,20 +198,6 @@ function json(body: unknown, status: number, request: NextRequest, headers: Reco
     status,
     headers: corsHeaders(request, headers),
   })
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
-}
-
-function numberValue(value: unknown): number {
-  const number = typeof value === 'number' ? value : Number.parseFloat(stringValue(value))
-  return Number.isFinite(number) ? number : Number.NaN
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }
 
 function logSubmit(entry: {
