@@ -12,6 +12,16 @@ Set all variables from [setup.md](setup.md#environment-variables) in the Vercel 
 
 `NEXT_PUBLIC_*` variables are embedded at build time — they must be set before deploying.
 
+For calculator lead submission, confirm these are set before routing production traffic:
+
+- `CALCULATOR_ALLOWED_ORIGIN=https://www.royalglass.co.nz`
+- `TURNSTILE_SECRET`
+- `RESEND_API_KEY`
+- `RESEND_FROM="Royal Glass <support@royalglass.co.nz>"`
+- pooled Neon `DATABASE_URL`
+
+The Resend sending domain `royalglass.co.nz` must remain verified with SPF, DKIM, and DMARC. `support@royalglass.co.nz` should be a monitored mailbox because customer replies go there.
+
 ### Deploy
 
 Vercel auto-deploys on push to `main`. No special build configuration is needed beyond what is in `package.json`:

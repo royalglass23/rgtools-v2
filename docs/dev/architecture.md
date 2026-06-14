@@ -51,6 +51,9 @@ Two schema files in `drizzle/`:
 - `lead_category_scores` — per-category scoring answers and points
 - `scoring_config_versions` — versioned scoring config stored as JSONB
 - `lead_outcomes`, `lead_status_changes` — outcome tracking
+- `lead_submit_attempts` - public calculator rate limiting
+- `lead_submit_failures` - dead-letter rows for valid calculator payloads that fail mapping or save
+- `lead_email_log` - customer estimate email send results
 
 Migrations are managed with Drizzle Kit (`drizzle/migrations/`).
 
@@ -74,6 +77,23 @@ The lead intake module is the main staff workflow. Key files:
 | `servicem8/client.ts` | SMTP client that sends leads to the ServiceM8 inbox |
 | `servicem8/payload.ts` | Builds the ServiceM8 email payload from a lead record |
 | `servicem8/sync.ts` | Orchestrates ServiceM8 sync — mark pending, attempt, handle retry |
+| `calculator/map-calculator-submission.ts` | Maps the browser calculator payload into lead intake input |
+| `anti-spam/*` | Public calculator protections: client IP, Turnstile, and rate limiting |
+| `email/customer-estimate.ts` | Sends/logs the calculator customer estimate email via Resend |
+
+### Public calculator submit
+
+`POST /api/lead-intake/calculator-submit` is the public lead front door for the WordPress-hosted calculator. It is excluded from auth middleware but only accepts the configured `CALCULATOR_ALLOWED_ORIGIN`.
+
+The hot path is intentionally short:
+
+1. CORS, honeypot, time-gate, Turnstile, and IP rate-limit checks run first.
+2. The browser payload is mapped to `LeadIntakeInput`.
+3. `submitLeadIntakeForUser(input, null, { syncServiceM8: false })` saves to Neon and scores the lead.
+4. The route returns `{ ok: true, leadId }`.
+5. Customer email runs in the background; ServiceM8 remains `pending_sync` for the retry route/cron to drain.
+
+Valid prospect payloads that pass anti-spam but fail mapping or saving are written to `lead_submit_failures` with the raw payload and correlation id.
 
 ### `modules/leads/`
 

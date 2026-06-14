@@ -131,6 +131,7 @@ export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadInta
 export async function submitLeadIntakeForUser(
   input: LeadIntakeInput,
   actorId: string | null,
+  { syncServiceM8 = true }: { syncServiceM8?: boolean } = {},
 ): Promise<LeadIntakeResult> {
   const normalized = normalizeInput(input)
   const validationError = validateMinimum(normalized)
@@ -278,7 +279,9 @@ export async function submitLeadIntakeForUser(
 
   const score = await persistLeadScore(leadId, actorId)
   await markLeadPendingServiceM8Sync(leadId)
-  const servicem8Sync = await syncLeadToServiceM8(leadId)
+  const servicem8Sync = syncServiceM8
+    ? await syncLeadToServiceM8(leadId)
+    : { ok: true as const, leadId, reference: 'pending_retry' }
 
   return {
     success: true,
