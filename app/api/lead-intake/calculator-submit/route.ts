@@ -9,6 +9,7 @@ import {
 } from '@/modules/lead-intake/calculator/map-calculator-submission'
 import { saveLeadSubmitFailure } from '@/modules/lead-intake/calculator/submit-failures'
 import { sendCustomerEstimateEmail } from '@/modules/lead-intake/email/customer-estimate'
+import { syncLeadToServiceM8 } from '@/modules/lead-intake/servicem8/sync'
 import { submitLeadIntakeForUser } from '@/modules/lead-intake/actions'
 
 const MINIMUM_SUBMIT_AGE_MS = 3000
@@ -105,6 +106,22 @@ export async function POST(request: NextRequest) {
     // request into a 500: wrap it and still return success.
     try {
       after(async () => {
+        // ServiceM8 sync runs here (not inline) so the customer never waits on it,
+        // but it still happens automatically — no cron/retry batch required. The lead
+        // is left as pending_sync by submitLeadIntakeForUser until this completes.
+        try {
+          const sm8 = await syncLeadToServiceM8(result.leadId)
+          logSubmit({
+            correlationId,
+            ip,
+            stage: 'sm8',
+            outcome: sm8.ok ? 'accepted' : 'error',
+            reason: sm8.ok ? sm8.reference : sm8.error,
+          })
+        } catch (error) {
+          logSubmit({ correlationId, ip, stage: 'sm8', outcome: 'error', reason: errorMessage(error) })
+        }
+
         try {
           const emailResult = await sendCustomerEstimateEmail(emailInput)
           logSubmit({

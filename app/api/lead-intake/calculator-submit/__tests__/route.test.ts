@@ -12,6 +12,7 @@ const submitLeadIntakeForUserMock = vi.hoisted(() => vi.fn())
 const checkLeadSubmitRateLimitMock = vi.hoisted(() => vi.fn())
 const verifyTurnstileTokenMock = vi.hoisted(() => vi.fn())
 const sendCustomerEstimateEmailMock = vi.hoisted(() => vi.fn())
+const syncLeadToServiceM8Mock = vi.hoisted(() => vi.fn())
 const saveLeadSubmitFailureMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/modules/lead-intake/actions', () => ({
@@ -28,6 +29,10 @@ vi.mock('@/modules/lead-intake/anti-spam/verify-turnstile', () => ({
 
 vi.mock('@/modules/lead-intake/email/customer-estimate', () => ({
   sendCustomerEstimateEmail: sendCustomerEstimateEmailMock,
+}))
+
+vi.mock('@/modules/lead-intake/servicem8/sync', () => ({
+  syncLeadToServiceM8: syncLeadToServiceM8Mock,
 }))
 
 vi.mock('@/modules/lead-intake/calculator/submit-failures', () => ({
@@ -101,6 +106,7 @@ beforeEach(() => {
   checkLeadSubmitRateLimitMock.mockResolvedValue({ ok: true, remaining: 9 })
   verifyTurnstileTokenMock.mockResolvedValue({ ok: true, skipped: false })
   sendCustomerEstimateEmailMock.mockResolvedValue({ ok: true })
+  syncLeadToServiceM8Mock.mockResolvedValue({ ok: true, leadId: 'lead-uuid', reference: 'RGTools Lead lead-uuid' })
   saveLeadSubmitFailureMock.mockResolvedValue(undefined)
 })
 
@@ -134,6 +140,9 @@ describe('POST /api/lead-intake/calculator-submit', () => {
       leadId: 'lead-uuid',
       to: 'sarah@example.com',
     }))
+    // ServiceM8 sync runs in the background (after response) so the lead reaches
+    // the SM8 inbox without depending on a cron/retry batch.
+    expect(syncLeadToServiceM8Mock).toHaveBeenCalledWith('lead-uuid')
   })
 
   it('rejects disallowed CORS origins before processing the body', async () => {
