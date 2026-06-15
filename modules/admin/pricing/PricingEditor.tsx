@@ -98,7 +98,7 @@ export function PricingEditor({ initialConfig, readOnly }: Props) {
               required
               rows={3}
               placeholder="Summarise why this pricing version is being activated."
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className={inputClassName(false)}
             />
           </label>
         </div>
