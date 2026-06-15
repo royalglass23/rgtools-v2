@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
+import { errorMessage } from '@/lib/error-message'
 import { createServiceM8ClientFromEnv } from './client'
 import { buildServiceM8InboxEmail, type ServiceM8LeadSyncRecord } from './payload'
 
@@ -171,9 +172,4 @@ async function loadLastSyncedNoteSignature(leadId: string): Promise<string | nul
 
   const signature = detail.noteSignature
   return typeof signature === 'string' ? signature : null
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }

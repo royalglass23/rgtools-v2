@@ -1,4 +1,5 @@
 import type { LeadIntakeInput } from '../actions'
+import { numberValue, stringValue } from './parse'
 
 export type CalculatorSubmission = {
   answers?: Record<string, unknown>
@@ -162,15 +163,6 @@ function buildFreeText(
 
 function complexityFromConsult(needsConsult: boolean): string {
   return needsConsult ? 'minor_custom' : 'standard_non_custom'
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
-}
-
-function numberValue(value: unknown): number {
-  const number = typeof value === 'number' ? value : Number.parseFloat(stringValue(value))
-  return Number.isFinite(number) ? number : Number.NaN
 }
 
 function clampMoney(value: number): number {
