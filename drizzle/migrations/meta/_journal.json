@@ -71,6 +71,13 @@
       "when": 1781484150395,
       "tag": "0009_giant_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781570550395,
+      "tag": "0010_dashboard_settings_module",
+      "breakpoints": true
     }
   ]
 }

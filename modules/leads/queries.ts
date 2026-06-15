@@ -11,12 +11,26 @@ export type LeadsListFilters = {
   size: 10 | 20 | 50 | 100
 }
 
-export function parseLeadsListFilters(searchParams: Record<string, string | string[] | undefined>): LeadsListFilters {
-  const tier = stringValue(searchParams.tier)
-  const sm8 = stringValue(searchParams.sm8)
-  const date = stringValue(searchParams.date)
-  const page = Number(stringValue(searchParams.page) ?? '1')
-  const size = Number(stringValue(searchParams.size) ?? '10')
+export type ParseLeadsListFiltersOptions = {
+  /** Prefix applied to every param name, e.g. `leads_` when the table is embedded alongside others. */
+  prefix?: string
+  /** Default values (admin-set) used when a param is absent from the URL. */
+  defaults?: Partial<Record<'tier' | 'sm8' | 'date' | 'size', string>>
+}
+
+export function parseLeadsListFilters(
+  searchParams: Record<string, string | string[] | undefined>,
+  options: ParseLeadsListFiltersOptions = {},
+): LeadsListFilters {
+  const { prefix = '', defaults = {} } = options
+  const pick = (name: 'tier' | 'sm8' | 'date' | 'size') =>
+    stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
+
+  const tier = pick('tier')
+  const sm8 = pick('sm8')
+  const date = pick('date')
+  const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
+  const size = Number(pick('size') ?? '10')
 
   return {
     tier: tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D' ? tier : 'all',

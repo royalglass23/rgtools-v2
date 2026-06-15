@@ -39,6 +39,7 @@ async function seed() {
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
     { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100 },
     { slug: 'admin/calculator-pricing', name: 'Cost Calculator Price', adminOnly: true, sortOrder: 101 },
+    { slug: 'admin/dashboard-settings', name: 'Dashboard Settings', adminOnly: true, sortOrder: 102 },
   ]
 
   for (const moduleSeed of modulesToSeed) {
