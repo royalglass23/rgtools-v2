@@ -96,26 +96,35 @@ function queueSelectResults(results: unknown[][]) {
 
 describe('saveScoringConfigVersion', () => {
   it('inserts a new active config version, deactivates the old version, and audits activation', async () => {
-    queueSelectResults([
-      [activeRow],
-      [{ versionLabel: 'v3-2026-06-08' }],
-      [],
-    ])
+    // Pin the clock so the auto-generated version label is deterministic
+    // regardless of the day the test runs.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-11T00:00:00Z'))
 
-    const formData = new FormData()
-    formData.set('config', JSON.stringify(config))
-    formData.set('versionLabel', 'custom-label-that-must-be-ignored')
-    formData.set('activationNote', 'Adjusted lead scoring ceiling points.')
+    try {
+      queueSelectResults([
+        [activeRow],
+        [{ versionLabel: 'v3-2026-06-08' }],
+        [],
+      ])
 
-    const result = await saveScoringConfigVersion(formData)
+      const formData = new FormData()
+      formData.set('config', JSON.stringify(config))
+      formData.set('versionLabel', 'custom-label-that-must-be-ignored')
+      formData.set('activationNote', 'Adjusted lead scoring ceiling points.')
 
-    expect(result).toEqual({ success: true, versionLabel: 'v4-2026-06-11', warnings: [] })
-    expect(mockUpdate).toHaveBeenCalledWith(scoringConfigVersions)
-    expect(mockInsert).toHaveBeenCalledWith(scoringConfigVersions)
-    expect(mockInsert).toHaveBeenCalledWith(auditLog)
+      const result = await saveScoringConfigVersion(formData)
 
-    expect(updateSetValues).toEqual([{ isActive: false }])
-    expect(updateSetValues.some((values) => Object.hasOwn(values as object, 'config'))).toBe(false)
+      expect(result).toEqual({ success: true, versionLabel: 'v4-2026-06-11', warnings: [] })
+      expect(mockUpdate).toHaveBeenCalledWith(scoringConfigVersions)
+      expect(mockInsert).toHaveBeenCalledWith(scoringConfigVersions)
+      expect(mockInsert).toHaveBeenCalledWith(auditLog)
+
+      expect(updateSetValues).toEqual([{ isActive: false }])
+      expect(updateSetValues.some((values) => Object.hasOwn(values as object, 'config'))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('requires an activation note before saving a new version', async () => {
