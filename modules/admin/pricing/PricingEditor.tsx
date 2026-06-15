@@ -206,7 +206,9 @@ export function PricingEditor({ initialConfig, readOnly }: Props) {
 function inputClassName(readOnly: boolean) {
   return [
     'w-full rounded border border-gray-300 px-3 py-2 text-sm',
-    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+    readOnly
+      ? 'bg-gray-50 text-gray-900 disabled:text-gray-900 disabled:opacity-100'
+      : 'bg-white text-gray-900',
   ].join(' ')
 }
 
