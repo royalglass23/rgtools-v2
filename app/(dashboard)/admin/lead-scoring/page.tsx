@@ -84,9 +84,15 @@ export default async function LeadScoringAdminPage({
                   <td className="px-4 py-2 font-mono text-xs text-gray-500">{row.createdBy ?? '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
-                      <Link href={`/admin/lead-scoring?version=${row.id}`} className="text-sm text-blue-700 hover:text-blue-900">
-                        {row.isActive ? 'Open editor' : 'View'}
-                      </Link>
+                      {row.isActive ? (
+                        <Link href="/admin/lead-scoring" className="text-sm text-blue-700 hover:text-blue-900">
+                          Open editor
+                        </Link>
+                      ) : (
+                        <Link href={`/admin/lead-scoring?version=${row.id}`} className="text-sm text-blue-700 hover:text-blue-900">
+                          View
+                        </Link>
+                      )}
                       {!row.isActive && (
                         <>
                           <details className="relative">
@@ -101,7 +107,7 @@ export default async function LeadScoringAdminPage({
                                   name="activationNote"
                                   required
                                   rows={3}
-                                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm normal-case text-gray-800"
+                                  className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm normal-case text-gray-900 placeholder:text-gray-500"
                                 />
                               </label>
                               <button type="submit" className="mt-2 rounded bg-green-700 px-3 py-1.5 text-sm text-white">
@@ -121,7 +127,7 @@ export default async function LeadScoringAdminPage({
                                   name="deleteNote"
                                   required
                                   rows={3}
-                                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm normal-case text-gray-800"
+                                  className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm normal-case text-gray-900 placeholder:text-gray-500"
                                 />
                               </label>
                               <button type="submit" className="mt-2 rounded bg-red-700 px-3 py-1.5 text-sm text-white">
