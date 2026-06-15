@@ -203,7 +203,7 @@ export function LeadScoringEditor({
                 required
                 rows={3}
                 placeholder="Summarise why this scoring version is being activated."
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className={inputClassName(false, 'w-full')}
               />
             </label>
           </div>
@@ -241,7 +241,7 @@ export function LeadScoringEditor({
                       value={category.label}
                       disabled={readOnly}
                       onChange={(event) => updateCategory(categoryKey, (current) => ({ ...current, label: event.target.value }))}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                      className={inputClassName(readOnly, 'w-full')}
                     />
                   </label>
                   <label className="text-sm">
@@ -253,7 +253,7 @@ export function LeadScoringEditor({
                       value={category.max}
                       disabled={readOnly}
                       onChange={(event) => updateCategory(categoryKey, (current) => ({ ...current, max: Number(event.target.value) }))}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                      className={inputClassName(readOnly, 'w-full')}
                     />
                   </label>
                 </div>
@@ -283,7 +283,7 @@ export function LeadScoringEditor({
                                 defaultValue={optionKey}
                                 disabled={readOnly}
                                 onBlur={(event) => updateOption(categoryKey, optionKey, 'key', event.target.value)}
-                                className="w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-xs"
+                                className={compactInputClassName(readOnly, 'w-full font-mono text-xs')}
                               />
                             )}
                           </td>
@@ -292,7 +292,7 @@ export function LeadScoringEditor({
                               value={category.optionLabels?.[optionKey] ?? ''}
                               disabled={readOnly}
                               onChange={(event) => updateOption(categoryKey, optionKey, 'label', event.target.value)}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5"
+                              className={compactInputClassName(readOnly, 'w-full')}
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -302,7 +302,7 @@ export function LeadScoringEditor({
                               value={category.options[optionKey]}
                               disabled={readOnly}
                               onChange={(event) => updateOption(categoryKey, optionKey, 'points', event.target.value)}
-                              className="w-24 rounded border border-gray-300 px-2 py-1.5"
+                              className={compactInputClassName(readOnly, 'w-24')}
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -342,7 +342,7 @@ export function LeadScoringEditor({
                 value={config.tiers[tier]}
                 disabled={readOnly}
                 onChange={(event) => setConfig((current) => ({ ...current, tiers: { ...current.tiers, [tier]: Number(event.target.value) } }))}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className={inputClassName(readOnly, 'w-full')}
               />
             </label>
           ))}
@@ -354,15 +354,15 @@ export function LeadScoringEditor({
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm">
             <span className="mb-1 block text-xs font-medium uppercase text-gray-500">Soft demote at</span>
-            <input type="number" value={config.strikes?.softDemoteAt ?? 0} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { capAt: 0, capCeiling: 'C', weights: {}, ...current.strikes, softDemoteAt: Number(event.target.value) } }))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+            <input type="number" value={config.strikes?.softDemoteAt ?? 0} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { capAt: 0, capCeiling: 'C', weights: {}, ...current.strikes, softDemoteAt: Number(event.target.value) } }))} className={inputClassName(readOnly, 'w-full')} />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-xs font-medium uppercase text-gray-500">Cap at</span>
-            <input type="number" value={config.strikes?.capAt ?? 0} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capCeiling: 'C', weights: {}, ...current.strikes, capAt: Number(event.target.value) } }))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+            <input type="number" value={config.strikes?.capAt ?? 0} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capCeiling: 'C', weights: {}, ...current.strikes, capAt: Number(event.target.value) } }))} className={inputClassName(readOnly, 'w-full')} />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-xs font-medium uppercase text-gray-500">Cap ceiling</span>
-            <select value={config.strikes?.capCeiling ?? 'C'} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capAt: 0, weights: {}, ...current.strikes, capCeiling: event.target.value as 'A' | 'B' | 'C' | 'D' } }))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={config.strikes?.capCeiling ?? 'C'} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capAt: 0, weights: {}, ...current.strikes, capCeiling: event.target.value as 'A' | 'B' | 'C' | 'D' } }))} className={inputClassName(readOnly, 'w-full')}>
               {(['A', 'B', 'C', 'D'] as const).map((tier) => <option key={tier} value={tier}>{tier}</option>)}
             </select>
           </label>
@@ -371,7 +371,7 @@ export function LeadScoringEditor({
           {Object.entries(strikeWeights).map(([key, weight]) => (
             <label key={key} className="text-sm">
               <span className="mb-1 block font-mono text-xs text-gray-500">{key}</span>
-              <input type="number" value={weight} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capAt: 0, capCeiling: 'C', ...current.strikes, weights: { ...(current.strikes?.weights ?? {}), [key]: Number(event.target.value) } } }))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+              <input type="number" value={weight} disabled={readOnly} onChange={(event) => setConfig((current) => ({ ...current, strikes: { softDemoteAt: 0, capAt: 0, capCeiling: 'C', ...current.strikes, weights: { ...(current.strikes?.weights ?? {}), [key]: Number(event.target.value) } } }))} className={inputClassName(readOnly, 'w-full')} />
             </label>
           ))}
         </div>
@@ -390,6 +390,22 @@ export function LeadScoringEditor({
       )}
     </form>
   )
+}
+
+function inputClassName(readOnly: boolean, extra = '') {
+  return [
+    'rounded border border-gray-300 px-3 py-2 text-sm',
+    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+    extra,
+  ].filter(Boolean).join(' ')
+}
+
+function compactInputClassName(readOnly: boolean, extra = '') {
+  return [
+    'rounded border border-gray-300 px-2 py-1.5',
+    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+    extra,
+  ].filter(Boolean).join(' ')
 }
 
 function AdjustmentEditor({
@@ -415,8 +431,8 @@ function AdjustmentEditor({
       <div className="mt-4 space-y-3">
         {Object.entries(values).map(([key, points]) => (
           <div key={key} className="grid gap-3 md:grid-cols-[1fr_7rem_auto]">
-            <input defaultValue={key} disabled={readOnly} onBlur={(event) => onChange(kind, key, 'key', event.target.value)} className="rounded border border-gray-300 px-3 py-2 font-mono text-xs" />
-            <input type="number" value={points} disabled={readOnly} onChange={(event) => onChange(kind, key, 'points', event.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm" />
+            <input defaultValue={key} disabled={readOnly} onBlur={(event) => onChange(kind, key, 'key', event.target.value)} className={inputClassName(readOnly, 'font-mono text-xs')} />
+            <input type="number" value={points} disabled={readOnly} onChange={(event) => onChange(kind, key, 'points', event.target.value)} className={inputClassName(readOnly)} />
             <button type="button" disabled={readOnly} onClick={() => onRemove(kind, key)} className="rounded border border-red-200 px-3 py-2 text-sm text-red-700 disabled:text-gray-300">Remove</button>
           </div>
         ))}

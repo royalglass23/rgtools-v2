@@ -203,6 +203,13 @@ export function PricingEditor({ initialConfig, readOnly }: Props) {
   )
 }
 
+function inputClassName(readOnly: boolean) {
+  return [
+    'w-full rounded border border-gray-300 px-3 py-2 text-sm',
+    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+  ].join(' ')
+}
+
 function NumberMapEditor<K extends string>({
   title,
   values,
@@ -278,7 +285,7 @@ function NumberInput({
       value={value}
       disabled={readOnly}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+      className={inputClassName(readOnly)}
     />
   )
 }
