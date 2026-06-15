@@ -188,6 +188,32 @@ export function PricingEditor({ initialConfig, readOnly }: Props) {
         </div>
       </section>
 
+      <section className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-800">Formula Reference</h2>
+        <div className="mt-4 rounded border border-gray-100 bg-gray-50 p-4">
+          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm leading-7 text-gray-900">
+{`Billable length      = max(entered length, minimumLength)
+
+Base cost            = billable length x scenario base rate
+Corner cost          = number of corners x corner surcharge
+Gate cost            = number of gates x gate price  (Pool Fence only)
+Glass type surcharge = billable length x glass type surcharge/m
+Glass colour surcharge = billable length x colour surcharge/m
+Interlinking rails   = billable length x interlinking rails surcharge/m  (if ticked)
+Fixing surcharge     = billable length x fixing method surcharge/m
+Finish surcharge     = billable length x finish surcharge/m
+
+Subtotal             = base + corners + gates + fixing + glass type + glass colour + interlinking + finish
+Low estimate         = subtotal x rangeLowPercent / 100
+High estimate        = subtotal x rangeHighPercent / 100`}
+          </pre>
+        </div>
+        <p className="mt-4 text-sm font-semibold text-gray-700">Standard heights assumed:</p>
+        <p className="text-sm text-gray-600">
+          Ground Level &lt;1m · Balcony/Patio 1m (NZBC) · Pool Fence 1.2m (NZ Pool Safety Act) · Stair 1m (NZBC)
+        </p>
+      </section>
+
       {!readOnly && (
         <div className="sticky bottom-0 flex justify-end border-t border-gray-200 bg-gray-50/95 py-4">
           <button
