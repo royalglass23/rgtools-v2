@@ -91,7 +91,7 @@ export default async function CalculatorPricingAdminPage({
                                   name="activationNote"
                                   required
                                   rows={3}
-                                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm normal-case text-gray-800"
+                                  className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm normal-case text-gray-900 placeholder:text-gray-500"
                                 />
                               </label>
                               <button type="submit" className="mt-2 rounded bg-green-700 px-3 py-1.5 text-sm text-white">
@@ -111,7 +111,7 @@ export default async function CalculatorPricingAdminPage({
                                   name="deleteNote"
                                   required
                                   rows={3}
-                                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm normal-case text-gray-800"
+                                  className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm normal-case text-gray-900 placeholder:text-gray-500"
                                 />
                               </label>
                               <button type="submit" className="mt-2 rounded bg-red-700 px-3 py-1.5 text-sm text-white">
