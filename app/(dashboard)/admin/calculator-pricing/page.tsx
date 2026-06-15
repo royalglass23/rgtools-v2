@@ -68,9 +68,15 @@ export default async function CalculatorPricingAdminPage({
                   <td className="px-4 py-2 font-mono text-xs text-gray-500">{row.createdBy ?? '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
-                      <Link href={`/admin/calculator-pricing?version=${row.id}`} className="text-sm text-blue-700 hover:text-blue-900">
-                        {row.isActive ? 'Open editor' : 'View'}
-                      </Link>
+                      {row.isActive ? (
+                        <Link href="/admin/calculator-pricing" className="text-sm text-blue-700 hover:text-blue-900">
+                          Open editor
+                        </Link>
+                      ) : (
+                        <Link href={`/admin/calculator-pricing?version=${row.id}`} className="text-sm text-blue-700 hover:text-blue-900">
+                          View
+                        </Link>
+                      )}
                       {!row.isActive && (
                         <>
                           <details className="relative">
