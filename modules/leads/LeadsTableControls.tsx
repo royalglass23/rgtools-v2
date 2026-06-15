@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import type { LeadsListFilters } from './queries'
 import { batchDeleteLeadsAction } from './actions'
@@ -25,12 +26,18 @@ export function LeadsTableControls({
   total,
   pageCount,
   isAdmin,
+  basePath = '/leads',
+  paramPrefix = '',
 }: {
   filters: LeadsListFilters
   rows: LeadRow[]
   total: number
   pageCount: number
   isAdmin: boolean
+  /** Path the filter form + pagination links target. Defaults to the Leads page. */
+  basePath?: string
+  /** Prefix applied to query param names so multiple tables can coexist on one URL. */
+  paramPrefix?: string
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -50,7 +57,7 @@ export function LeadsTableControls({
 
   return (
     <>
-      <FilterBar filters={filters} />
+      <FilterBar filters={filters} basePath={basePath} paramPrefix={paramPrefix} />
 
       {isAdmin && (
         <form
@@ -107,23 +114,32 @@ export function LeadsTableControls({
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
         <span>{total} leads</span>
         <div className="flex items-center gap-2">
-          <PageLink filters={filters} page={Math.max(1, filters.page - 1)} disabled={filters.page <= 1}>Previous</PageLink>
+          <PageLink filters={filters} page={Math.max(1, filters.page - 1)} disabled={filters.page <= 1} basePath={basePath} paramPrefix={paramPrefix}>Previous</PageLink>
           <span>Page {filters.page} of {pageCount}</span>
-          <PageLink filters={filters} page={Math.min(pageCount, filters.page + 1)} disabled={filters.page >= pageCount}>Next</PageLink>
+          <PageLink filters={filters} page={Math.min(pageCount, filters.page + 1)} disabled={filters.page >= pageCount} basePath={basePath} paramPrefix={paramPrefix}>Next</PageLink>
         </div>
       </div>
     </>
   )
 }
 
-function FilterBar({ filters }: { filters: LeadsListFilters }) {
+function FilterBar({ filters, basePath, paramPrefix }: { filters: LeadsListFilters; basePath: string; paramPrefix: string }) {
+  const searchParams = useSearchParams()
+  const owned = new Set(
+    ['tier', 'sm8', 'date', 'size', 'page'].map((name) => `${paramPrefix}${name}`),
+  )
+  const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
+
   return (
-    <form className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-4">
-      <Select name="tier" label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
-      <Select name="sm8" label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
-      <Select name="date" label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
-      <Select name="size" label="Page size" value={String(filters.size)} options={[['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']]} />
-      <input type="hidden" name="page" value="1" />
+    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-4">
+      {carryOver.map(([key, value]) => (
+        <input key={key} type="hidden" name={key} value={value} />
+      ))}
+      <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
+      <Select name={`${paramPrefix}sm8`} label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
+      <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
+      <Select name={`${paramPrefix}size`} label="Page size" value={String(filters.size)} options={[['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']]} />
+      <input type="hidden" name={`${paramPrefix}page`} value="1" />
     </form>
   )
 }
@@ -241,17 +257,17 @@ function LeadsTable({
   )
 }
 
-function PageLink({ filters, page, disabled, children }: { filters: LeadsListFilters; page: number; disabled: boolean; children: React.ReactNode }) {
-  const params = new URLSearchParams({
-    tier: filters.tier,
-    sm8: filters.sm8,
-    date: filters.date,
-    size: String(filters.size),
-    page: String(page),
-  })
+function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: { filters: LeadsListFilters; page: number; disabled: boolean; basePath: string; paramPrefix: string; children: React.ReactNode }) {
+  const searchParams = useSearchParams()
+  const params = new URLSearchParams(searchParams.toString())
+  params.set(`${paramPrefix}tier`, filters.tier)
+  params.set(`${paramPrefix}sm8`, filters.sm8)
+  params.set(`${paramPrefix}date`, filters.date)
+  params.set(`${paramPrefix}size`, String(filters.size))
+  params.set(`${paramPrefix}page`, String(page))
 
   if (disabled) return <span className="rounded border border-gray-200 px-3 py-1.5 text-gray-400">{children}</span>
-  return <Link href={`/leads?${params}`} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{children}</Link>
+  return <Link href={`${basePath}?${params}`} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{children}</Link>
 }
 
 function TierBadge({ tier }: { tier: string | null }) {
