@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
 export const proxy = auth((req) => {
-  if (req.nextUrl.pathname === '/api/lead-intake/calculator-submit') {
+  if (req.nextUrl.pathname === '/api/lead-intake/calculator-submit' || req.nextUrl.pathname === '/api/pricing') {
     return NextResponse.next()
   }
 
@@ -14,5 +14,5 @@ export const proxy = auth((req) => {
 })
 
 export const config = {
-  matcher: ['/((?!login|api/auth|api/lead-intake/calculator-submit|q/|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!login|api/auth|api/lead-intake/calculator-submit|api/pricing|q/|_next/static|_next/image|favicon.ico).*)'],
 }

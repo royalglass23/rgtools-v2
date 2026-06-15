@@ -51,6 +51,19 @@ export const scoringConfigVersions = pgTable('scoring_config_versions', {
   // Drizzle cannot express the WHERE clause cleanly - do NOT attempt it here.
 ])
 
+export const pricingConfigVersions = pgTable('pricing_config_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  versionLabel: text('version_label').notNull(),
+  isActive: boolean('is_active').default(false).notNull(),
+  config: jsonb('config').notNull(),
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('pricing_config_label_uq').on(t.versionLabel),
+  // The "only one active version" partial unique index is added by hand in the migration.
+])
+
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').notNull().references(() => clients.id),

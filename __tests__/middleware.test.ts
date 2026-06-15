@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 function matchesMiddleware(pathname: string): boolean {
   // Mirrors the Next.js matcher.
-  return !/^\/(login|api\/auth|api\/lead-intake\/calculator-submit|q\/|_next\/static|_next\/image|favicon\.ico)/.test(pathname)
+  return !/^\/(login|api\/auth|api\/lead-intake\/calculator-submit|api\/pricing|q\/|_next\/static|_next\/image|favicon\.ico)/.test(pathname)
 }
 
 describe('middleware route matching', () => {
@@ -16,6 +16,10 @@ describe('middleware route matching', () => {
 
   it('skips public calculator submit route', () => {
     expect(matchesMiddleware('/api/lead-intake/calculator-submit')).toBe(false)
+  })
+
+  it('skips public pricing route', () => {
+    expect(matchesMiddleware('/api/pricing')).toBe(false)
   })
 
   it('protects retired calculator import route', () => {
