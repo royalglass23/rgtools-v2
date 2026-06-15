@@ -395,7 +395,9 @@ export function LeadScoringEditor({
 function inputClassName(readOnly: boolean, extra = '') {
   return [
     'rounded border border-gray-300 px-3 py-2 text-sm',
-    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+    readOnly
+      ? 'bg-gray-50 text-gray-900 disabled:text-gray-900 disabled:opacity-100'
+      : 'bg-white text-gray-900',
     extra,
   ].filter(Boolean).join(' ')
 }
@@ -403,7 +405,9 @@ function inputClassName(readOnly: boolean, extra = '') {
 function compactInputClassName(readOnly: boolean, extra = '') {
   return [
     'rounded border border-gray-300 px-2 py-1.5',
-    readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-900',
+    readOnly
+      ? 'bg-gray-50 text-gray-900 disabled:text-gray-900 disabled:opacity-100'
+      : 'bg-white text-gray-900',
     extra,
   ].filter(Boolean).join(' ')
 }
