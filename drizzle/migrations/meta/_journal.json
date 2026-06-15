@@ -64,6 +64,13 @@
       "when": 1781236154934,
       "tag": "0008_slow_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781484150395,
+      "tag": "0009_giant_firelord",
+      "breakpoints": true
     }
   ]
 }
