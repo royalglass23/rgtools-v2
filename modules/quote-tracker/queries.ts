@@ -1,7 +1,8 @@
 import { and, asc, count, desc, eq, ilike, or, sql, sum } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { quoteEngagement, quoteEvents, quotes, tagOverrides } from '@/drizzle/schema'
+import { quoteEngagement, quoteEvents, quoteRecipients, quotes, tagOverrides } from '@/drizzle/schema'
 import type { QuoteListFilters } from './list-filters'
+import { validateEmailGateSettings } from './email-gate'
 import type { StatusTag } from './score'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -96,6 +97,14 @@ export async function getQuoteDetail(id: string) {
       .orderBy(desc(tagOverrides.createdAt)),
     getViewerSessions(id),
   ])
+  const [recipients, recipientAnalytics] = await Promise.all([
+    db
+      .select()
+      .from(quoteRecipients)
+      .where(eq(quoteRecipients.quoteId, id))
+      .orderBy(asc(quoteRecipients.email)),
+    getRecipientAnalytics(id),
+  ])
 
   return {
     quote,
@@ -103,7 +112,44 @@ export async function getQuoteDetail(id: string) {
     events,
     overrides,
     viewerSessions,
+    recipients,
+    recipientAnalytics,
   }
+}
+
+export async function getRecipientAnalytics(quoteId: string) {
+  if (!UUID_RE.test(quoteId)) return []
+
+  const [recipients, events] = await Promise.all([
+    db
+      .select()
+      .from(quoteRecipients)
+      .where(eq(quoteRecipients.quoteId, quoteId))
+      .orderBy(asc(quoteRecipients.email)),
+    db
+      .select()
+      .from(quoteEvents)
+      .where(eq(quoteEvents.quoteId, quoteId))
+      .orderBy(asc(quoteEvents.createdAt)),
+  ])
+
+  return recipients.map((recipient) => {
+    const recipientEvents = events.filter((event) => event.recipientId === recipient.id)
+    const openEvents = recipientEvents.filter((event) => event.eventType === 'open')
+
+    return {
+      recipientId: recipient.id,
+      email: recipient.email,
+      name: recipient.name,
+      opens: openEvents.length,
+      totalTimeMs: recipientEvents.reduce((total, event) => total + (event.durationMs ?? 0), 0),
+      maxScrollDepth: Math.max(0, ...recipientEvents.map((event) => event.scrollDepth ?? 0)),
+      maxPageSeen: Math.max(0, ...recipientEvents.map((event) => event.pageNumber ?? 0)),
+      downloaded: recipientEvents.some((event) => event.eventType === 'download'),
+      firstSeenAt: openEvents[0]?.createdAt ?? null,
+      lastSeenAt: recipientEvents.at(-1)?.createdAt ?? null,
+    }
+  })
 }
 
 export async function getViewerSessions(quoteId: string) {
@@ -199,6 +245,44 @@ export async function updateQuoteScore(quoteId: string, score: number, tag: Stat
     .update(quotes)
     .set({ aiScore: score, statusTag: tag, updatedAt: new Date() })
     .where(eq(quotes.id, quoteId))
+}
+
+export async function updateQuoteEmailGate(
+  quoteId: string,
+  input: {
+    enabled: boolean
+    recipientEmails: string | null
+  },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!UUID_RE.test(quoteId)) return { ok: false, message: 'Quote not found.' }
+
+  const result = validateEmailGateSettings(input)
+  if (!result.ok) return result
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(quotes)
+      .set({
+        emailGateEnabled: result.value.enabled,
+        updatedAt: new Date(),
+      })
+      .where(eq(quotes.id, quoteId))
+
+    await tx
+      .delete(quoteRecipients)
+      .where(eq(quoteRecipients.quoteId, quoteId))
+
+    if (result.value.enabled && result.value.recipientEmails.length > 0) {
+      await tx.insert(quoteRecipients).values(
+        result.value.recipientEmails.map((email) => ({
+          quoteId,
+          email,
+        })),
+      )
+    }
+  })
+
+  return { ok: true }
 }
 
 function listWhere(filters: QuoteListFilters) {

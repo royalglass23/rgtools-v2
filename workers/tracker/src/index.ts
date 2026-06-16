@@ -6,7 +6,7 @@ export interface Env {
   DATABASE_URL: string
 }
 
-type SqlClient = ReturnType<typeof neon>
+type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
 type TrackingSettings = Record<string, boolean>
 
 const TRACKING_SETTING_DEFAULTS: TrackingSettings = {
@@ -138,6 +138,15 @@ async function handleTrack(request: Request, env: Env, payload: BeaconPayload): 
   if (rows.length === 0) return new Response(null, { status: 404, headers: CORS_HEADERS })
 
   const quoteId = rows[0].id as string
+  const recipientRows = await sql`
+    SELECT recipient_id FROM quote_viewer_emails
+    WHERE quote_id = ${quoteId}
+      AND session_id = ${session}::uuid
+      AND recipient_id IS NOT NULL
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  const recipientId = recipientRows[0]?.recipient_id as string | undefined
   const geo = geoFields(request, settings)
   const ipHash = await hashIp(geo.ip ?? 'unknown')
   const deviceType = detectDevice(request.headers.get('User-Agent') ?? '')
@@ -145,11 +154,11 @@ async function handleTrack(request: Request, env: Env, payload: BeaconPayload): 
 
   await sql`
     INSERT INTO quote_events (
-      quote_id, event_type, device_type, session_id, scroll_depth, duration_ms,
+      quote_id, recipient_id, event_type, device_type, session_id, scroll_depth, duration_ms,
       ip_hash, ip, geo_country, geo_city, geo_region, geo_isp, page_number
     )
     VALUES (
-      ${quoteId}, ${event}, ${deviceType},
+      ${quoteId}, ${recipientId ?? null}, ${event}, ${deviceType},
       ${session}::uuid, ${depth ?? null}, ${eventDuration}, ${ipHash},
       ${geo.ip}, ${geo.country}, ${geo.city}, ${geo.region}, ${geo.isp}, ${pageNumber ?? null}
     )

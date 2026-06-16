@@ -2,9 +2,10 @@ name = "rg-viewer"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 [vars]
-TRACKER_URL = "https://rg-tracker.royalglass666.workers.dev/track"
+TRACKER_URL = "https://rg-tracker.royalglass.workers.dev/track"
 
 # R2 bucket binding - PDF storage
 [[r2_buckets]]
@@ -15,7 +16,10 @@ bucket_name = "rg-quotes"
 #   wrangler secret put DATABASE_URL
 # (paste the Neon DATABASE_URL from .env.local when prompted)
 
-# Custom domain - uncomment after adding royalglass.co.nz to Cloudflare:
+# Custom domain - enable next week once royalglass.co.nz is on Cloudflare
+# (nameservers moved to Cloudflare at the 1st Domains registrar). Until then
+# the zone isn't in this account, so deploying this route would fail.
+# Cloudflare auto-creates the DNS record + edge TLS cert on deploy.
 # [[routes]]
-# pattern = "quotes.royalglass.co.nz/*"
-# zone_name = "royalglass.co.nz"
+# pattern = "quotes.royalglass.co.nz"
+# custom_domain = true

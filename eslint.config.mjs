@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "build/**",
     "cost-calculator/**",
     "cost-calculator-copy/**",
+    "**/.wrangler/**",
+    "**/node_modules/**",
+    "**/dist/**",
     "next-env.d.ts",
   ]),
 ]);
