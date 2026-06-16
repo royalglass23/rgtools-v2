@@ -61,9 +61,21 @@ export const quotes = pgTable('quotes', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const quoteRecipients = pgTable('quote_recipients', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  name: text('name'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('quote_recipients_quote_id_idx').on(table.quoteId),
+  index('quote_recipients_email_idx').on(table.email),
+])
+
 export const quoteEvents = pgTable('quote_events', {
   id: uuid('id').primaryKey().defaultRandom(),
   quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  recipientId: uuid('recipient_id').references(() => quoteRecipients.id, { onDelete: 'set null' }),
   eventType: eventTypeEnum('event_type').notNull(),
   deviceType: text('device_type'),
   sessionId: uuid('session_id').notNull(),
@@ -76,6 +88,17 @@ export const quoteEvents = pgTable('quote_events', {
   geoIsp: text('geo_isp'),
   pageNumber: integer('page_number'),
   ipHash: text('ip_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const quoteViewerEmails = pgTable('quote_viewer_emails', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  recipientId: uuid('recipient_id').references(() => quoteRecipients.id, { onDelete: 'set null' }),
+  email: text('email').notNull(),
+  name: text('name'),
+  sessionId: uuid('session_id').notNull(),
+  ip: text('ip'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

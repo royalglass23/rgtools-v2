@@ -1,19 +1,23 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { requireModule } from '@/lib/guard'
 import { CopyLinkButton } from '@/modules/quote-tracker/CopyLinkButton'
-import { getQuoteDetail, setManualTag, updateQuoteScore } from '@/modules/quote-tracker/queries'
+import { EmailGateSettingsForm } from '@/modules/quote-tracker/EmailGateSettingsForm'
+import { getQuoteDetail, setManualTag, updateQuoteEmailGate, updateQuoteScore } from '@/modules/quote-tracker/queries'
 import { computeScore, computeStatusTag, type EngagementData, type StatusTag } from '@/modules/quote-tracker/score'
 
 export default async function QuoteDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireModule('quote-tracker')
   const { id } = await params
+  const notices = await searchParams
   const detail = await getQuoteDetail(id)
   if (!detail) notFound()
 
@@ -43,6 +47,24 @@ export default async function QuoteDetailPage({
     revalidatePath('/quote-tracker')
   }
 
+  async function saveEmailGate(formData: FormData) {
+    'use server'
+
+    await requireModule('quote-tracker')
+    const result = await updateQuoteEmailGate(id, {
+      enabled: formData.get('emailGateEnabled') === 'on',
+      recipientEmails: formData.get('recipientEmails')?.toString() ?? null,
+    })
+
+    if (!result.ok) {
+      redirect(`/quote-tracker/${id}?gateError=${encodeURIComponent(result.message)}`)
+    }
+
+    revalidatePath(`/quote-tracker/${id}`)
+    revalidatePath('/quote-tracker')
+    redirect(`/quote-tracker/${id}?gateSaved=1`)
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -60,6 +82,16 @@ export default async function QuoteDetailPage({
       </div>
 
       <Section title="Quote">
+        {typeof notices.gateError === 'string' && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {notices.gateError}
+          </div>
+        )}
+        {notices.gateSaved === '1' && (
+          <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            Email gate settings saved.
+          </div>
+        )}
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Field label="Job" value={detail.quote.jobDescription ?? '-'} />
           <Field label="Job Address" value={detail.quote.jobAddress ?? '-'} />
@@ -67,7 +99,14 @@ export default async function QuoteDetailPage({
           <Field label="Expires" value={formatDateTime(detail.quote.expiresAt)} />
           <Field label="Short code" value={detail.quote.shortCode ?? '-'} />
           <Field label="Link" value={quoteUrl || '-'} />
+          <Field label="Email gate" value={detail.quote.emailGateEnabled ? 'Enabled' : 'Disabled'} />
+          <Field label="Shared with" value={formatRecipients(detail.recipients)} />
         </dl>
+        <EmailGateSettingsForm
+          action={saveEmailGate}
+          enabled={detail.quote.emailGateEnabled}
+          recipientEmails={detail.recipients.map((recipient) => recipient.email).join(', ')}
+        />
       </Section>
 
       <Section title="Engagement">
@@ -99,44 +138,11 @@ export default async function QuoteDetailPage({
       </Section>
 
       <Section title="Viewers">
-        <div className="overflow-hidden rounded border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-3">IP</th>
-                <th className="px-4 py-3">City and ISP</th>
-                <th className="px-4 py-3">Device</th>
-                <th className="px-4 py-3">Opens</th>
-                <th className="px-4 py-3">Time spent</th>
-                <th className="px-4 py-3">Pages seen</th>
-                <th className="px-4 py-3">CTA</th>
-                <th className="px-4 py-3">First seen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {detail.viewerSessions.map((session) => (
-                <tr key={session.sessionId}>
-                  <td className="px-4 py-3 text-gray-700">{maskIp(session.ip)}</td>
-                  <td className="px-4 py-3 text-gray-700">
-                    <span className="block">{session.geoCity ?? session.geoCountry ?? '-'}</span>
-                    <span className="block text-xs text-gray-500">{session.geoIsp ?? '-'}</span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{session.deviceType ?? '-'}</td>
-                  <td className="px-4 py-3 text-gray-700">{session.opens}</td>
-                  <td className="px-4 py-3 text-gray-700">{formatDuration(session.totalTimeMs)}</td>
-                  <td className="px-4 py-3 text-gray-700">{session.maxPageSeen || '-'}</td>
-                  <td className="px-4 py-3 text-gray-700">{session.hasCta ? 'Yes' : 'No'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatDateTime(session.firstSeenAt)}</td>
-                </tr>
-              ))}
-              {detail.viewerSessions.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No viewer sessions yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {detail.quote.emailGateEnabled ? (
+          <RecipientAnalyticsTable recipients={detail.recipientAnalytics} />
+        ) : (
+          <LinkAnalyticsTable sessions={detail.viewerSessions} />
+        )}
       </Section>
 
       <Section title="Event Timeline">
@@ -215,6 +221,98 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+function RecipientAnalyticsTable({
+  recipients,
+}: {
+  recipients: NonNullable<Awaited<ReturnType<typeof getQuoteDetail>>>['recipientAnalytics']
+}) {
+  return (
+    <div className="overflow-hidden rounded border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr>
+            <th className="px-4 py-3">Recipient</th>
+            <th className="px-4 py-3">Opens</th>
+            <th className="px-4 py-3">Last seen</th>
+            <th className="px-4 py-3">Time spent</th>
+            <th className="px-4 py-3">Max scroll</th>
+            <th className="px-4 py-3">Pages seen</th>
+            <th className="px-4 py-3">Downloaded</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {recipients.map((recipient) => (
+            <tr key={recipient.recipientId}>
+              <td className="px-4 py-3 text-gray-700">
+                <span className="font-medium text-gray-950">{recipient.email}</span>
+                {recipient.name && <span className="block text-xs text-gray-500">{recipient.name}</span>}
+              </td>
+              <td className="px-4 py-3 text-gray-700">{recipient.opens}</td>
+              <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatDateTime(recipient.lastSeenAt)}</td>
+              <td className="px-4 py-3 text-gray-700">{formatDuration(recipient.totalTimeMs)}</td>
+              <td className="px-4 py-3 text-gray-700">{recipient.maxScrollDepth}%</td>
+              <td className="px-4 py-3 text-gray-700">{recipient.maxPageSeen || '-'}</td>
+              <td className="px-4 py-3 text-gray-700">{recipient.downloaded ? 'Yes' : 'No'}</td>
+            </tr>
+          ))}
+          {recipients.length === 0 && (
+            <tr>
+              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No recipients configured.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function LinkAnalyticsTable({
+  sessions,
+}: {
+  sessions: NonNullable<Awaited<ReturnType<typeof getQuoteDetail>>>['viewerSessions']
+}) {
+  return (
+    <div className="overflow-hidden rounded border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr>
+            <th className="px-4 py-3">IP</th>
+            <th className="px-4 py-3">City and ISP</th>
+            <th className="px-4 py-3">Device</th>
+            <th className="px-4 py-3">Opens</th>
+            <th className="px-4 py-3">Time spent</th>
+            <th className="px-4 py-3">Pages seen</th>
+            <th className="px-4 py-3">CTA</th>
+            <th className="px-4 py-3">First seen</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {sessions.map((session) => (
+            <tr key={session.sessionId}>
+              <td className="px-4 py-3 text-gray-700">{maskIp(session.ip)}</td>
+              <td className="px-4 py-3 text-gray-700">
+                <span className="block">{session.geoCity ?? session.geoCountry ?? '-'}</span>
+                <span className="block text-xs text-gray-500">{session.geoIsp ?? '-'}</span>
+              </td>
+              <td className="px-4 py-3 text-gray-700">{session.deviceType ?? '-'}</td>
+              <td className="px-4 py-3 text-gray-700">{session.opens}</td>
+              <td className="px-4 py-3 text-gray-700">{formatDuration(session.totalTimeMs)}</td>
+              <td className="px-4 py-3 text-gray-700">{session.maxPageSeen || '-'}</td>
+              <td className="px-4 py-3 text-gray-700">{session.hasCta ? 'Yes' : 'No'}</td>
+              <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatDateTime(session.firstSeenAt)}</td>
+            </tr>
+          ))}
+          {sessions.length === 0 && (
+            <tr>
+              <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No viewer sessions yet.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -222,6 +320,11 @@ function Field({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 break-words text-sm text-gray-950">{value}</dd>
     </div>
   )
+}
+
+function formatRecipients(recipients: Array<{ email: string }>) {
+  if (recipients.length === 0) return '-'
+  return recipients.map((recipient) => recipient.email).join(', ')
 }
 
 function StatusBadge({ tag }: { tag: StatusTag }) {
