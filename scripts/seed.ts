@@ -33,19 +33,24 @@ async function seed() {
 
   // Upsert modules
   const modulesToSeed = [
-    { slug: 'lead-intake', name: 'Lead Intake', adminOnly: false, sortOrder: 0 },
-    { slug: 'leads', name: 'Leads', adminOnly: false, sortOrder: 1 },
-    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 2 },
-    { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99 },
-    { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100 },
-    { slug: 'admin/calculator-pricing', name: 'Cost Calculator Price', adminOnly: true, sortOrder: 101 },
-    { slug: 'admin/dashboard-settings', name: 'Dashboard Settings', adminOnly: true, sortOrder: 102 },
+    { slug: 'lead-intake', name: 'Lead Intake', adminOnly: false, sortOrder: 0, isActive: true },
+    { slug: 'leads', name: 'Leads', adminOnly: false, sortOrder: 1, isActive: true },
+    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 2, isActive: true },
+    { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99, isActive: true },
+    { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100, isActive: true },
+    { slug: 'admin/calculator-pricing', name: 'Cost Calculator Price', adminOnly: true, sortOrder: 101, isActive: true },
+    { slug: 'admin/dashboard-settings', name: 'Dashboard Settings', adminOnly: true, sortOrder: 102, isActive: true },
+    { slug: 'admin/tracking', name: 'Tracking Settings', adminOnly: true, sortOrder: 103, isActive: true },
   ]
 
   for (const moduleSeed of modulesToSeed) {
     const existing = await db.select().from(modules).where(eq(modules.slug, moduleSeed.slug))
     if (existing.length > 0) {
-      console.log(`Module '${moduleSeed.slug}' already exists`)
+      await db
+        .update(modules)
+        .set({ ...moduleSeed, updatedAt: new Date() })
+        .where(eq(modules.slug, moduleSeed.slug))
+      console.log(`Updated module: ${moduleSeed.slug}`)
     } else {
       await db.insert(modules).values(moduleSeed)
       console.log(`Created module: ${moduleSeed.slug}`)

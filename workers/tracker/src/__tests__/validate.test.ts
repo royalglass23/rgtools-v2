@@ -29,4 +29,17 @@ describe('validatePayload', () => {
   it('accepts valid close payload with duration', () => {
     expect(validatePayload({ token: 'uuid', event: 'close', session: 'uuid', duration: 12000 })).toBe(true)
   })
+
+  it('accepts valid page view payload with a page number', () => {
+    expect(validatePayload({ token: 'uuid', event: 'page_view', session: 'uuid', pageNumber: 3 })).toBe(true)
+  })
+
+  it('rejects invalid page numbers', () => {
+    expect(validatePayload({ token: 'uuid', event: 'page_view', session: 'uuid', pageNumber: 0 })).toBe(false)
+  })
+
+  it('accepts download and cta payloads', () => {
+    expect(validatePayload({ token: 'uuid', event: 'download', session: 'uuid' })).toBe(true)
+    expect(validatePayload({ token: 'uuid', event: 'cta', session: 'uuid', ctaType: 'accept' })).toBe(true)
+  })
 })

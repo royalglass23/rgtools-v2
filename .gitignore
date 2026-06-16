@@ -45,6 +45,9 @@ next-env.d.ts
 # Tooling and planning artifacts
 .claude/
 .superpowers/
+
+# Local scratch (e.g. quote-pull test output)
+tmp/
 .playwright-mcp/
 docs/superpowers/
 docs/codex/

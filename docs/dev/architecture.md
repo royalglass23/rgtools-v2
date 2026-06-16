@@ -127,6 +127,56 @@ Cloudflare Worker deployed separately. Receives POST `/track` beacon events from
 
 IPs are SHA-256 hashed before storage. Device type (mobile/desktop) is detected from User-Agent.
 
+## Shared libraries (`lib/`)
+
+Utilities used across multiple modules and scripts live in `lib/`:
+
+| File | Responsibility |
+|------|---------------|
+| `access.ts` / `access-db.ts` | Module access checks (in-memory and DB-backed) |
+| `admin-navigation.ts` | Navigation registry for admin sidebar |
+| `audit.ts` | Typed audit log writer |
+| `auth.ts` / `auth-helpers.ts` | NextAuth session helpers |
+| `db.ts` | Drizzle + Neon database client |
+| `error-message.ts` | Safe error-to-string helper |
+| `guard.ts` | Page-level auth/role guard |
+| `logger.ts` | Structured server logger |
+| `short-code.ts` | Base62 short code generator (`generateShortCode`) and validator (`isValidShortCode`) — 7-char URL-safe codes used as public quote link identifiers |
+| `servicem8/client.ts` | Shared ServiceM8 REST client — see below |
+
+### ServiceM8 client (`lib/servicem8/client.ts`)
+
+Centralises authentication and base-URL handling so both the leads module and the quote scripts talk to ServiceM8 identically. Uses `X-API-Key` header auth against the `api_1.0` base URL.
+
+Key exports:
+
+| Export | What it does |
+|--------|-------------|
+| `createServiceM8RequestFromEnv()` | Returns a `ServiceM8FetchRequest` bound to `SERVICEM8_API_KEY` |
+| `getJobQuoteMeta(jobUuid, request)` | Fetches job metadata + resolves client name via `company_uuid` |
+| `getQuoteAttachmentPdf(jobUuid, request)` | Finds the `QUOTE`-source PDF attachment and downloads it |
+| `waitForQuoteAttachmentPdf(jobUuid, request, opts)` | Polls until the quote PDF appears (for watch mode) |
+| `resolveJobUuid(opts, request)` | Resolves a job UUID from a job number, explicit UUID, or "latest quote" |
+| `downloadAttachmentFile(attachmentUuid, apiKey)` | Downloads raw attachment bytes (follows 302 CDN redirect) |
+
+The injectable `ServiceM8FetchRequest` type allows tests to pass a mock instead of hitting the real API.
+
+## Quote pipeline scripts (`scripts/`)
+
+Developer scripts for testing the quote delivery pipeline before the full staff UI is built. All accept `--job <number>`, `--uuid <jobUuid>`, or `--latest` to select a ServiceM8 job.
+
+| Script | npm alias | What it does |
+|--------|-----------|-------------|
+| `quote-pull-test.ts` | `pnpm quote:pull` | Pulls job metadata + quote PDF, saves PDF to `tmp/`. For verifying a job is pullable without serving it. |
+| `quote-preview.ts` | `pnpm quote:preview` | Pulls the quote, starts the local viewer at `localhost:<port>/q/<code>`, and opens the browser. |
+| `quote-share.ts` | `pnpm quote:share` | Same as preview, plus opens a Cloudflare quick-tunnel and prints a temporary public URL. Downloads `cloudflared.exe` to `tmp/` on first run. |
+
+The scripts share `scripts/lib/quote-server.ts`, which starts a Node HTTP server that:
+- Serves the PDF at `/q/<code>/pdf`
+- Serves a PDF.js viewer HTML page at `/q/<code>`
+- Generates the short code via `lib/short-code.ts`
+- Supports a `--watch` flag to poll until ServiceM8 generates the quote PDF
+
 ## Scoring engine
 
 The scoring engine is config-driven. The active config is a JSONB blob in `scoring_config_versions`. It defines:
@@ -168,12 +218,15 @@ After Stage 1 the lead has no ServiceM8 job UUID — ServiceM8 creates a job fro
 
 ### Stage 2 — Job fetch (manual, on demand)
 
-Staff click **Fetch from ServiceM8** on the lead detail page (`/leads/[id]`). This calls `POST /api/leads/[id]/servicem8-fetch`, which runs `fetchLeadFromServiceM8`:
+Staff click **Fetch from ServiceM8** on the lead detail page (`/leads/[id]`). This calls `POST /api/leads/[id]/servicem8-fetch`, which runs `fetchLeadFromServiceM8` in `modules/leads/servicem8-fetch.ts`:
 
-1. Fetches all jobs from `GET /job.json` via the ServiceM8 REST API
-2. Finds the job whose `job_description` contains `RGTools Lead {leadId}`
-3. Stores `servicem8_job_uuid` and `servicem8_status` on the lead
-4. On the first link only: writes the lead tier to the `SERVICEM8_LEAD_QUALITY_FIELD` custom field via `POST /JobCustomFieldData.json`
-5. An audit log entry (`lead.servicem8_fetch`) is written
+1. Queries `GET /job.json` with a date filter (`date gt <leadCreatedAt - 1 day>`) — the one-day margin guards against timezone skew
+2. Searches the result for a job whose `job_description` contains `RGTools Lead {leadId}`
+3. **Inbox fallback**: if no matching job is found by date, searches `GET /inboxmessage.json` for a message containing the reference in `message_text`, `message_html`, or `subject`, then follows `converted_to_job_uuid` to the job record
+4. Stores `servicem8_job_uuid` and `servicem8_status` on the lead row
+5. On the **first** link only: writes the lead tier to the `SERVICEM8_LEAD_QUALITY_FIELD` custom field via `POST /job/{uuid}.json`
+6. An audit log entry (`lead.servicem8_fetch`) is written
+
+`modules/leads/servicem8-fetch.ts` re-exports `createServiceM8RequestFromEnv` and `ServiceM8FetchRequest` from `lib/servicem8/client` so existing importers and tests do not need path changes.
 
 `sync_status` badges on the list: **Linked** = job UUID exists; **Pending** = email sent, UUID not yet fetched; **Failed** = inbox email failed.

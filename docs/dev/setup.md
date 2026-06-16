@@ -94,6 +94,28 @@ pnpm seed
 
 This runs `scripts/seed.ts`, which creates a default admin account. Check the script for the default credentials. **Change the seed password before sharing access to any shared or production environment.**
 
+## Quote pipeline scripts
+
+Three scripts for testing the quote delivery pipeline. All require `SERVICEM8_API_KEY` to be set.
+
+```bash
+# Pull job metadata + PDF to tmp/ (no server)
+pnpm quote:pull --job 123
+pnpm quote:pull --uuid <jobUuid>
+pnpm quote:pull --latest
+
+# Pull + serve a local viewer, open in browser
+pnpm quote:preview --job 123
+pnpm quote:preview --latest --port 4321
+
+# Pull + serve + open a public Cloudflare quick-tunnel
+pnpm quote:share --job 123
+```
+
+`quote:share` downloads `cloudflared.exe` (~50 MB) to `tmp/` on the first run. Press Ctrl+C to shut down the tunnel and server.
+
+The PDF must exist as a `QUOTE`-source attachment on the ServiceM8 job. Finalise/send the quote in ServiceM8 first, then run the script.
+
 ## Run tests
 
 ```bash

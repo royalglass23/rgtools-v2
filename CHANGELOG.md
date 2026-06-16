@@ -6,6 +6,15 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ## [Unreleased]
 
+### Added
+- Shared `lib/servicem8/client.ts` — REST client for the ServiceM8 API (`X-API-Key` auth, `api_1.0` base). Exposes `getJobQuoteMeta`, `getQuoteAttachmentPdf`, `waitForQuoteAttachmentPdf`, `resolveJobUuid`, `downloadAttachmentFile`. Previously only the leads module had its own SM8 HTTP logic; this client is shared across all modules and scripts.
+- `lib/short-code.ts` — base62 short code generator (`generateShortCode`) and validator (`isValidShortCode`). Codes are URL-safe 7-char strings used as public quote link identifiers (e.g. `q/a7Kp9Qz`).
+- `scripts/lib/quote-server.ts` — local Node HTTP server that pulls a quote from ServiceM8 and serves a PDF.js viewer at `/q/<code>`. Used by the preview and share scripts. Supports a `--watch` mode that polls until ServiceM8 generates the quote PDF.
+- `pnpm quote:pull` (`scripts/quote-pull-test.ts`) — CLI harness to pull a ServiceM8 quote (metadata + PDF) without touching the database. Saves the PDF to `tmp/quote-<n>.pdf`. Accepts `--job <number>`, `--uuid <jobUuid>`, or `--latest`.
+- `pnpm quote:preview` (`scripts/quote-preview.ts`) — pulls a quote, starts the local viewer, and opens the browser. Accepts the same job selector flags plus `--port`.
+- `pnpm quote:share` (`scripts/quote-share.ts`) — pulls a quote, starts the local viewer, and opens a Cloudflare quick-tunnel (`trycloudflare.com`), printing a temporary public link. Downloads `cloudflared.exe` on first run to `tmp/`.
+- `modules/leads/servicem8-fetch.ts` — inbox message fallback: when the date-filtered job search returns no match, the fetch now also searches `/inboxmessage.json` for a message containing the `RGTools Lead {uuid}` reference and follows `converted_to_job_uuid` to the job. Handles cases where the job was created from an inbox email that isn't yet returned by the job-date filter.
+
 ---
 
 ## [0.5.0] — 2026-06-09
