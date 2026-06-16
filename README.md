@@ -50,6 +50,14 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Quote pipeline scripts
+
+```bash
+pnpm quote:pull --latest        # pull metadata + PDF from ServiceM8 to tmp/
+pnpm quote:preview --latest     # local viewer in browser
+pnpm quote:share --latest       # public Cloudflare tunnel link
+```
+
 ## Tests
 
 ```bash

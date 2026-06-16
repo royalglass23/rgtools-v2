@@ -24,6 +24,7 @@ describe('buildDashboardNavigation', () => {
       moduleRow('m3', 'leads', 'Leads', 1),
       moduleRow('m4', 'admin/calculator-pricing', 'Cost Calculator Price', 102, true),
       moduleRow('m5', 'admin', 'Administration', 99, true),
+      moduleRow('m6', 'admin/tracking', 'Tracking Settings', 103, true),
     ])
 
     expect(nav.primaryModules.map((mod) => mod.slug)).toEqual([
@@ -38,6 +39,12 @@ describe('buildDashboardNavigation', () => {
         slug: 'admin/calculator-pricing',
         name: 'Cost Calculator Price',
         href: '/admin/calculator-pricing',
+      },
+      {
+        id: 'm6',
+        slug: 'admin/tracking',
+        name: 'Tracking Settings',
+        href: '/admin/tracking',
       },
     ])
   })

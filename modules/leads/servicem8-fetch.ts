@@ -2,17 +2,12 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { leads } from '@/drizzle/schema-leads'
+import { createServiceM8RequestFromEnv } from '@/lib/servicem8/client'
+import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 
-type ServiceM8JsonResponse = {
-  ok: boolean
-  status: number
-  json: () => Promise<unknown>
-}
-
-export type ServiceM8FetchRequest = (
-  path: string,
-  init?: RequestInit,
-) => Promise<ServiceM8JsonResponse>
+// Re-exported for existing importers/tests that reference these from this module.
+export { createServiceM8RequestFromEnv }
+export type { ServiceM8FetchRequest }
 
 type ServiceM8Job = {
   uuid?: string
@@ -190,29 +185,6 @@ async function findMatchingInboxJob(
   const job = await jobResponse.json()
   if (!job || typeof job !== 'object') return undefined
   return job as ServiceM8Job
-}
-
-export function createServiceM8RequestFromEnv(): ServiceM8FetchRequest {
-  const apiKey = process.env.SERVICEM8_API_KEY?.trim()
-  if (!apiKey) throw new Error('SERVICEM8_API_KEY is not configured')
-
-  return async (path, init) => {
-    const headers = new Headers(init?.headers)
-    headers.set('X-API-Key', apiKey)
-    headers.set('Accept', 'application/json')
-    if (init?.body) headers.set('Content-Type', 'application/json')
-
-    const response = await fetch(`https://api.servicem8.com/api_1.0${path}`, {
-      ...init,
-      headers,
-    })
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      json: () => response.json(),
-    }
-  }
 }
 
 async function setLeadsQualityCustomField(
