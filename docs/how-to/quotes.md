@@ -117,6 +117,17 @@ Each quote is automatically tagged based on engagement. Manual overrides are ava
 
 The KPI cards at the top of the Quote Tracker list summarise counts across all quotes.
 
+### 7. Get notified by email (optional)
+
+You don't have to keep checking the dashboard — rgtools can email the team automatically:
+
+- **Quote opened** — sent the first time a client (not internal staff) opens a quote.
+- **High interest** — sent when a quote crosses the high-intent threshold (3+ opens, a return visit on another day, a CTA click, forwarding suspected, or deep reading).
+
+Internal-only opens (you previewing your own link) are skipped, and each email is sent at most once per quote so you won't get spammed. Notifications are checked every few minutes, so allow a short delay after an open.
+
+Turn this on and choose who receives the emails at **Admin → Tracking Settings → Open notifications** (see [Tracking settings](#tracking-settings) below).
+
 ---
 
 ## Common tasks
@@ -176,6 +187,17 @@ Admins can toggle individual tracking signals at **Admin → Tracking Settings**
 | `viewer.contact_us` | Show Contact Us button (off by default, coming soon) |
 
 Settings are cached for 60 seconds in the tracker worker. Changes take up to a minute to propagate to new events.
+
+### Open notifications
+
+The same Admin → Tracking Settings page controls the email alerts (see [step 7](#7-get-notified-by-email-optional)):
+
+| Setting key | What it controls |
+|---|---|
+| `notifications.enabled` | Master on/off for "Quote opened" and "High interest" emails |
+| `notifications.to` | Who receives them — one or more addresses, comma-separated (defaults to `support@royalglass.co.nz`) |
+
+Notifications are sent by the `rg-notifier` worker on a schedule (every ~10 minutes) via Resend, so there is a short delay between an open and the email.
 
 ---
 
@@ -289,6 +311,7 @@ pnpm quote:create --uuid <jobUuid>
 | Viewer worker code | `workers/viewer/src/index.ts` |
 | Tracker worker code | `workers/tracker/src/index.ts` |
 | Cleanup cron worker | `workers/cleanup/src/index.ts` |
+| Notifier cron worker (open emails) | `workers/notifier/src/index.ts` |
 | Quote creation logic | `modules/quote-tracker/create-tracked-quote.ts` |
 | Engagement scoring | `modules/quote-tracker/score.ts` |
 | Email gate logic | `modules/quote-tracker/email-gate.ts` |
