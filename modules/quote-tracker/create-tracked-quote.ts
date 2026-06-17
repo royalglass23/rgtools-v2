@@ -30,6 +30,7 @@ export type CreateTrackedQuoteResult =
       link: string
       expiresAt: Date
       clientName: string
+      jobAddress: string | null
       quoteValue: string
       storageDriver: string
     }
@@ -171,6 +172,7 @@ export async function createTrackedQuote(
         link: `${baseUrl}/q/${finalShortCode}`,
         expiresAt,
         clientName,
+        jobAddress: meta.jobAddress ?? null,
         quoteValue,
         storageDriver,
       }
