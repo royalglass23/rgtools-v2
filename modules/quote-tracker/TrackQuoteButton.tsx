@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { CopyLinkButton } from './CopyLinkButton'
 import { formatRelative } from './presentation'
@@ -18,8 +18,10 @@ export function TrackQuoteButton({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SuccessResult | null>(null)
+  const requestIdRef = useRef(0)
 
   function reset() {
+    requestIdRef.current++
     setJobNumber('')
     setLoading(false)
     setError(null)
@@ -33,14 +35,22 @@ export function TrackQuoteButton({
 
   async function submit() {
     if (loading) return
+    const requestId = ++requestIdRef.current
     setLoading(true)
     setError(null)
-    const res = await action(jobNumber)
-    setLoading(false)
-    if (res.ok) {
-      setResult(res)
-    } else {
-      setError(res.message)
+    try {
+      const res = await action(jobNumber)
+      if (requestId !== requestIdRef.current) return
+      if (res.ok) {
+        setResult(res)
+      } else {
+        setError(res.message)
+      }
+    } catch {
+      if (requestId !== requestIdRef.current) return
+      setError('Something went wrong. Please try again.')
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }
 
@@ -61,6 +71,10 @@ export function TrackQuoteButton({
           aria-label="Track a quote"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={close}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') close()
+          }}
         >
           <div
             className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"

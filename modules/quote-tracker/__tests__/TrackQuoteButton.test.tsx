@@ -73,4 +73,44 @@ describe('TrackQuoteButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByLabelText('Job ID')).not.toBeInTheDocument()
   })
+
+  it('recovers after an error: editing and resubmitting can succeed', async () => {
+    const action = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, message: 'No matching ServiceM8 job found.' })
+      .mockResolvedValueOnce({
+        ok: true,
+        link: 'https://quotes-worker.example/q/AB12CD34',
+        clientName: 'Acme Ltd',
+        jobAddress: '12 Glass St',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      })
+    render(<TrackQuoteButton action={action} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Track Quote' }))
+    fireEvent.change(screen.getByLabelText('Job ID'), { target: { value: 'R999999' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() =>
+      expect(screen.getByText('No matching ServiceM8 job found.')).toBeInTheDocument(),
+    )
+
+    fireEvent.change(screen.getByLabelText('Job ID'), { target: { value: 'R260210' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() => expect(screen.getByText('Quote found')).toBeInTheDocument())
+    expect(screen.queryByText('No matching ServiceM8 job found.')).not.toBeInTheDocument()
+  })
+
+  it('shows a generic message when the action throws', async () => {
+    const action = vi.fn().mockRejectedValue(new Error('network down'))
+    render(<TrackQuoteButton action={action} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Track Quote' }))
+    fireEvent.change(screen.getByLabelText('Job ID'), { target: { value: 'R260210' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText('Job ID')).toHaveValue('R260210')
+  })
 })
