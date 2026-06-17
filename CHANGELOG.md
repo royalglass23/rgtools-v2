@@ -7,6 +7,21 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [Unreleased]
 
 ### Added
+- **Quote Tracker dashboard** — the `quote-tracker` module is now a full staff-facing feature (previously a stub). Includes:
+  - List page at `/quote-tracker` with KPI cards, status/search filters (`QuoteTableControls`), and a **Track Quote** button in the page header.
+  - `TrackQuoteButton` modal + `createTrackedQuoteAction` server action — staff enter a ServiceM8 Job ID, the PDF is pulled, stored in R2, and a short link is minted. The action returns the client name, job address, link, and expiry. Hardened with try/catch, escape-to-close, and a stale-response guard.
+  - Recreate is blocked while a live (unexpired) tracked quote already exists for the job — the modal returns the existing link instead of re-pulling.
+  - Quote detail page (`/quote-tracker/[id]`) presentation extracted into `presentation.tsx`.
+- **Email gate** — `EmailGateSettingsForm` + `email-gate.ts`. Quotes can require the viewer to enter a recipient email before the PDF loads. Backed by new `quote_recipients` and `quote_viewer_emails` tables; `quote_events.recipient_id` links events to a recipient.
+- **Viewer analytics** — `ViewerAnalyticsTable` + `viewer-analytics.ts` showing per-session / per-recipient engagement, with a `PageTimeModal` for per-page time breakdown.
+- **Open notifications** — new `rg-notifier` Cloudflare Worker (`workers/notifier`, cron every 10 min) sends staff a "Quote opened" email on first external open and a "High interest" email when engagement crosses the high-intent threshold, via Resend. Internal-only opens (single session, same IP as first open) are skipped. Configurable from **Admin → Tracking Settings** (`notifications.enabled`, `notifications.to`). New `opened_notified_at` / `high_intent_notified_at` columns on `quotes` guard against duplicate sends.
+- **Cleanup cron** — new `rg-cleanup` Cloudflare Worker (`workers/cleanup`, cron daily 02:00) deletes expired quote PDFs from R2, archives the quote row, and purges raw IPs from `quote_events` after 90 days.
+- **Viewer worker** — `workers/viewer` serves the PDF.js viewer and email gate from the R2 bucket at `quotes.royalglass.co.nz/q/<code>`.
+- **Configurable dashboard tables** — dashboard table registry (`modules/dashboard/registry.tsx`, `tables.ts`) with an admin editor (`DashboardTablesEditor`).
+- `pnpm quote:create` — create a tracked quote in the database from a ServiceM8 job (`--job` / `--uuid`), with an optional `--expiry` flag (`1h`, `3h`, `12h`, `1d`, `7d`, `30d`, or ISO date).
+- Tracking Settings admin page (`/admin/tracking`) — toggle individual tracking signals and viewer features, plus open-notification settings.
+- Docs: staff [Quote Tracker how-to](docs/how-to/quotes.md) and the [quote-tracking privacy note](docs/dev/quote-tracking.md).
+- Migrations 0014–0017 — `opened_notified_at`/`high_intent_notified_at`, `quote_recipients`, `quote_viewer_emails`, and `quote_events.recipient_id`.
 - Shared `lib/servicem8/client.ts` — REST client for the ServiceM8 API (`X-API-Key` auth, `api_1.0` base). Exposes `getJobQuoteMeta`, `getQuoteAttachmentPdf`, `waitForQuoteAttachmentPdf`, `resolveJobUuid`, `downloadAttachmentFile`. Previously only the leads module had its own SM8 HTTP logic; this client is shared across all modules and scripts.
 - `lib/short-code.ts` — base62 short code generator (`generateShortCode`) and validator (`isValidShortCode`). Codes are URL-safe 7-char strings used as public quote link identifiers (e.g. `q/a7Kp9Qz`).
 - `scripts/lib/quote-server.ts` — local Node HTTP server that pulls a quote from ServiceM8 and serves a PDF.js viewer at `/q/<code>`. Used by the preview and share scripts. Supports a `--watch` mode that polls until ServiceM8 generates the quote PDF.

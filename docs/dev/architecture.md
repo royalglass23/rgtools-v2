@@ -3,27 +3,33 @@
 ## System overview
 
 ```
-┌─────────────────────────────────┐     ┌──────────────────────────┐
-│  Next.js app (Vercel)           │     │  Cloudflare Worker       │
-│                                 │     │  rg-tracker              │
-│  ┌──────────┐  ┌─────────────┐  │     │                          │
-│  │ Dashboard │  │ Lead Intake │  │     │  POST /track             │
-│  └──────────┘  └─────────────┘  │     │  (open / scroll / close) │
-│  ┌──────────┐  ┌─────────────┐  │     └────────────┬─────────────┘
-│  │  Admin   │  │Quote Tracker│  │                  │
-│  └──────────┘  └─────────────┘  │                  │
-└────────────────┬────────────────┘                  │
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│  Next.js app (Vercel)           │     │  Cloudflare Workers + R2         │
+│                                 │     │                                  │
+│  ┌──────────┐  ┌─────────────┐  │     │  rg-viewer   /q/<code>           │
+│  │ Dashboard │  │ Lead Intake │  │◀───▶│  (PDF.js viewer + email gate)    │
+│  └──────────┘  └─────────────┘  │     │  rg-tracker  POST /track         │
+│  ┌──────────┐  ┌─────────────┐  │     │  (open / scroll / close / cta)   │
+│  │  Admin   │  │Quote Tracker│  │     │  rg-notifier (cron, open emails) │
+│  └──────────┘  └─────────────┘  │     │  rg-cleanup  (cron, expiry+purge)│
+└────────────────┬────────────────┘     └────────────┬─────────────────────┘
                  │                                    │
                  ▼                                    ▼
-        ┌─────────────────────────────────────────────────┐
-        │           Neon PostgreSQL                        │
-        │  users · sessions · quotes · quote_events        │
-        │  quote_engagement · leads · clients              │
-        │  scoring_config_versions · audit_log · error_log │
-        └──────────────────────────────────────────────────┘
+        ┌──────────────────────────────────────────────────────────┐
+        │           Neon PostgreSQL                                 │
+        │  users · sessions · quotes · quote_events                 │
+        │  quote_recipients · quote_viewer_emails                   │
+        │  quote_engagement · leads · clients                       │
+        │  scoring_config_versions · audit_log · error_log          │
+        └──────────────────────────────────────────────────────────┘
 ```
 
-The Next.js app handles all staff-facing UI and business logic. The `rg-tracker` Cloudflare Worker handles quote engagement beacons from clients — it is a separate deploy with its own `wrangler.toml` and shares only the database.
+The Next.js app handles all staff-facing UI and business logic. Four Cloudflare Workers handle the client-facing quote lifecycle — each is a separate deploy with its own `wrangler.toml` and shares only the Neon database (and, for the viewer/cleanup, the `rg-quotes` R2 bucket):
+
+- **`rg-viewer`** — serves the PDF.js viewer (and the optional email gate) at `quotes.royalglass.co.nz/q/<code>`, streaming the PDF from R2.
+- **`rg-tracker`** — receives engagement beacons (`POST /track`).
+- **`rg-notifier`** — cron (every 10 min); emails staff on first external open and on high intent.
+- **`rg-cleanup`** — cron (daily 02:00); deletes expired PDFs from R2, archives the quote row, and purges raw IPs after 90 days.
 
 ## Authentication
 
@@ -41,7 +47,8 @@ Two schema files in `drizzle/`:
 
 **`schema.ts`** — core tables:
 - `users`, `sessions` — auth
-- `quotes`, `quote_events`, `quote_engagement`, `tag_overrides` — quote pipeline and engagement tracking
+- `quotes`, `quote_events`, `quote_engagement`, `tag_overrides` — quote pipeline and engagement tracking. `quotes` carries `opened_notified_at` / `high_intent_notified_at` (notifier dedup) and `archived_at` (expiry/cleanup).
+- `quote_recipients`, `quote_viewer_emails` — email-gate recipients and captured viewer-email submissions; `quote_events.recipient_id` links an event to a recipient
 - `settings`, `modules`, `user_module_access` — configuration and access control
 - `audit_log`, `error_log` — observability
 
@@ -116,16 +123,45 @@ User management (create/list/delete users), CSV export of quotes, error log view
 
 ### `modules/quote-tracker/`
 
-Stub — reserved for a future staff-facing view of quote engagement data.
+The staff-facing quote engagement feature. Key files:
 
-### `workers/tracker/`
+| File | Responsibility |
+|------|---------------|
+| `create-tracked-quote.ts` | Pulls a ServiceM8 quote (metadata + PDF), uploads the PDF to R2, mints a short code, and inserts the `quotes` row. Returns client name, job address, link, and expiry. Refuses to recreate while a live (unexpired) quote already exists for the job. |
+| `actions.ts` | `createTrackedQuoteAction` (server action behind the Track Quote modal) and related mutations |
+| `TrackQuoteButton.tsx` | Header button + modal — enter a Job ID, create, copy link. Hardened with try/catch, escape-to-close, and a stale-response guard |
+| `QuoteTableControls.tsx` | List filters, search, and table for `/quote-tracker` |
+| `presentation.tsx` | Shared presentation helpers for the list and detail pages |
+| `queries.ts` | List + detail queries, KPI aggregates |
+| `list-filters.ts` | Status/search filter parsing for the list |
+| `expiry.ts` | Expiry window parsing (`1h`, `1d`, ISO date, …) and "is live" checks |
+| `email-gate.ts` + `EmailGateSettingsForm.tsx` | Email-gate recipient management and matching |
+| `viewer-analytics.ts` + `ViewerAnalyticsTable.tsx` + `PageTimeModal.tsx` | Per-session/per-recipient engagement analytics and per-page time breakdown |
+| `settings-query.ts` | Reads tracking-signal, viewer-feature, and notification settings |
+| `admin-settings-actions.ts` | `saveTrackingSettings` — persists the Admin → Tracking Settings form |
+| `score.ts` | Engagement → status (hot/warm/cold/dead) and interest score |
 
-Cloudflare Worker deployed separately. Receives POST `/track` beacon events from quote pages:
+### `workers/viewer/` (`rg-viewer`)
+
+Serves the public quote viewer at `quotes.royalglass.co.nz/q/<code>`: looks up the quote by short code, enforces expiry and (if enabled) the email gate, streams the PDF from the `rg-quotes` R2 bucket, and renders a PDF.js page that beacons events to `rg-tracker` (`TRACKER_URL`).
+
+### `workers/tracker/` (`rg-tracker`)
+
+Receives `POST /track` beacon events from the viewer:
 - `open` — increments `total_opens`, `unique_sessions`, `unique_devices`
 - `scroll` — updates `max_scroll_depth`
 - `close` — accumulates `total_time_ms`
+- `cta` — records Accept / Contact Us clicks
 
-IPs are SHA-256 hashed before storage. Device type (mobile/desktop) is detected from User-Agent.
+IPs are SHA-256 hashed before storage. Device type (mobile/desktop) is detected from User-Agent. Tracking signals are gated by the `track.*` settings (cached ~60s).
+
+### `workers/notifier/` (`rg-notifier`)
+
+Cron worker (every 10 min). Emails staff (via Resend) when a quote is first opened by an external viewer, and again when it crosses the high-intent threshold (≥3 opens, return visit on another day, forwarding suspected, CTA click, or >80% scroll with >5 min reading time). Internal-only opens (single session, same IP as the first open) are skipped. `opened_notified_at` / `high_intent_notified_at` prevent duplicate sends. Recipients and on/off come from the `notifications.enabled` / `notifications.to` settings.
+
+### `workers/cleanup/` (`rg-cleanup`)
+
+Cron worker (daily 02:00). Deletes expired quote PDFs from R2, archives the quote (clears `pdf_storage_key`, sets `archived_at`), and purges raw IPs from `quote_events` older than 90 days.
 
 ## Shared libraries (`lib/`)
 
@@ -170,6 +206,7 @@ Developer scripts for testing the quote delivery pipeline before the full staff 
 | `quote-pull-test.ts` | `pnpm quote:pull` | Pulls job metadata + quote PDF, saves PDF to `tmp/`. For verifying a job is pullable without serving it. |
 | `quote-preview.ts` | `pnpm quote:preview` | Pulls the quote, starts the local viewer at `localhost:<port>/q/<code>`, and opens the browser. |
 | `quote-share.ts` | `pnpm quote:share` | Same as preview, plus opens a Cloudflare quick-tunnel and prints a temporary public URL. Downloads `cloudflared.exe` to `tmp/` on first run. |
+| `quote-create.ts` | `pnpm quote:create` | Creates a tracked quote in the database (uploads PDF to R2, mints a short link). Accepts `--expiry` in addition to the job selectors. The CLI counterpart of the Track Quote button. |
 
 The scripts share `scripts/lib/quote-server.ts`, which starts a Node HTTP server that:
 - Serves the PDF at `/q/<code>/pdf`
