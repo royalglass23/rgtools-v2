@@ -113,4 +113,26 @@ describe('TrackQuoteButton', () => {
     )
     expect(screen.getByLabelText('Job ID')).toHaveValue('R260210')
   })
+
+  it('shows the existing link when a live quote already exists', async () => {
+    const action = vi.fn().mockResolvedValue({
+      ok: false,
+      message: 'A live tracked quote already exists for this job.',
+      link: 'https://quotes-worker.example/q/EXISTING1',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    render(<TrackQuoteButton action={action} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Track Quote' }))
+    fireEvent.change(screen.getByLabelText('Job ID'), { target: { value: 'R260210' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('A live tracked quote already exists for this job.'),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByText('https://quotes-worker.example/q/EXISTING1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
+  })
 })

@@ -87,4 +87,25 @@ describe('createTrackedQuoteAction', () => {
 
     expect(result).toEqual({ ok: false, message: 'Generate the quote in ServiceM8 first.' })
   })
+
+  it('passes through quote_exists with the existing link and expiry', async () => {
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+    createTrackedQuote.mockResolvedValue({
+      ok: false,
+      reason: 'quote_exists',
+      message: 'A live tracked quote already exists for this job.',
+      link: 'https://quotes-worker.example/q/EXISTING1',
+      expiresAt,
+    })
+
+    const result = await createTrackedQuoteAction('R260210')
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'A live tracked quote already exists for this job.',
+      link: 'https://quotes-worker.example/q/EXISTING1',
+      expiresAt,
+    })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
 })

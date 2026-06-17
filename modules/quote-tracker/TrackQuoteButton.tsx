@@ -16,7 +16,7 @@ export function TrackQuoteButton({
   const [open, setOpen] = useState(false)
   const [jobNumber, setJobNumber] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; link?: string; expiresAt?: Date } | null>(null)
   const [result, setResult] = useState<SuccessResult | null>(null)
   const requestIdRef = useRef(0)
 
@@ -44,11 +44,11 @@ export function TrackQuoteButton({
       if (res.ok) {
         setResult(res)
       } else {
-        setError(res.message)
+        setError({ message: res.message, link: res.link, expiresAt: res.expiresAt })
       }
     } catch {
       if (requestId !== requestIdRef.current) return
-      setError('Something went wrong. Please try again.')
+      setError({ message: 'Something went wrong. Please try again.' })
     } finally {
       if (requestId === requestIdRef.current) setLoading(false)
     }
@@ -85,13 +85,7 @@ export function TrackQuoteButton({
                 <p className="text-lg font-semibold text-green-700">Quote found</p>
                 <p className="font-medium text-gray-950">{result.clientName}</p>
                 {result.jobAddress && <p className="text-sm text-gray-600">{result.jobAddress}</p>}
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <p className="break-all text-sm text-gray-800">{result.link}</p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Expires {formatRelative(result.expiresAt)}</span>
-                    <CopyLinkButton value={result.link} />
-                  </div>
-                </div>
+                <LinkBlock link={result.link} expiresAt={result.expiresAt} />
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -124,7 +118,12 @@ export function TrackQuoteButton({
                   />
                 </label>
                 <p className="text-xs text-gray-500">Make sure the quote PDF is generated in ServiceM8 first.</p>
-                {error && <p className="text-sm font-medium text-red-700">{error}</p>}
+                {error && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-red-700">{error.message}</p>
+                    {error.link && <LinkBlock link={error.link} expiresAt={error.expiresAt} />}
+                  </div>
+                )}
                 {loading && <p className="text-sm text-gray-600">Fetching quote from ServiceM8…</p>}
                 <div className="flex justify-end gap-2">
                   <button
@@ -149,5 +148,21 @@ export function TrackQuoteButton({
         </div>
       )}
     </>
+  )
+}
+
+function LinkBlock({ link, expiresAt }: { link: string; expiresAt?: Date }) {
+  return (
+    <div className="rounded border border-gray-200 bg-gray-50 p-3">
+      <p className="break-all text-sm text-gray-800">{link}</p>
+      <div className="mt-2 flex items-center justify-between">
+        {expiresAt ? (
+          <span className="text-xs text-gray-500">Expires {formatRelative(expiresAt)}</span>
+        ) : (
+          <span />
+        )}
+        <CopyLinkButton value={link} />
+      </div>
+    </div>
   )
 }

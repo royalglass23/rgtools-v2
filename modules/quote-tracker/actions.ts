@@ -8,7 +8,7 @@ import { createTrackedQuote } from './create-tracked-quote'
 
 export type TrackQuoteActionResult =
   | { ok: true; link: string; clientName: string; jobAddress: string | null; expiresAt: Date }
-  | { ok: false; message: string }
+  | { ok: false; message: string; link?: string; expiresAt?: Date }
 
 export async function createTrackedQuoteAction(jobNumber: string): Promise<TrackQuoteActionResult> {
   const session = await auth()
@@ -24,6 +24,9 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
   const result = await createTrackedQuote({ jobNumber: trimmed, ownerUserId: session.user.id })
 
   if (!result.ok) {
+    if (result.reason === 'quote_exists') {
+      return { ok: false, message: result.message, link: result.link, expiresAt: result.expiresAt }
+    }
     return { ok: false, message: result.message }
   }
 

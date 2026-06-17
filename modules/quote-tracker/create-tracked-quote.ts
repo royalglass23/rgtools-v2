@@ -35,6 +35,7 @@ export type CreateTrackedQuoteResult =
       storageDriver: string
     }
   | { ok: false; reason: 'job_not_found' | 'no_quote_pdf'; message: string }
+  | { ok: false; reason: 'quote_exists'; message: string; link: string; expiresAt: Date }
 
 function isUniqueViolation(err: unknown, constraint?: string): boolean {
   const candidate = err as { code?: string; constraint?: string }
@@ -63,11 +64,17 @@ async function resolveJobUuidFromOptions(opts: CreateTrackedQuoteOptions): Promi
   return null
 }
 
+function viewerLink(shortCode: string): string {
+  const baseUrl = process.env.VIEWER_BASE_URL ?? 'https://quotes.royalglass.co.nz'
+  return `${baseUrl}/q/${shortCode}`
+}
+
 async function findExistingQuote(jobUuid: string) {
   const [existing] = await db
     .select({
       id: quotes.id,
       shortCode: quotes.shortCode,
+      expiresAt: quotes.expiresAt,
     })
     .from(quotes)
     .where(eq(quotes.servicem8Uuid, jobUuid))
@@ -99,6 +106,17 @@ export async function createTrackedQuote(
     return { ok: false, reason: 'job_not_found', message: 'No matching ServiceM8 job found.' }
   }
 
+  const existing = await findExistingQuote(jobUuid)
+  if (existing?.shortCode && existing.expiresAt && existing.expiresAt.getTime() > Date.now()) {
+    return {
+      ok: false,
+      reason: 'quote_exists',
+      message: 'A live tracked quote already exists for this job.',
+      link: viewerLink(existing.shortCode),
+      expiresAt: existing.expiresAt,
+    }
+  }
+
   const request = createServiceM8RequestFromEnv()
   const meta = await getJobQuoteMeta(jobUuid, request)
   const pdf = await getQuoteAttachmentPdf(jobUuid, request)
@@ -106,7 +124,6 @@ export async function createTrackedQuote(
     return { ok: false, reason: 'no_quote_pdf', message: 'Generate the quote in ServiceM8 first.' }
   }
 
-  const existing = await findExistingQuote(jobUuid)
   const expiresAt = resolveExpiry(opts.expiry)
   const storageDriver = getStorageDriver()
   const storage = getStorage()
@@ -163,13 +180,11 @@ export async function createTrackedQuote(
         detail: { jobUuid, shortCode: finalShortCode, storageDriver },
       })
 
-      const baseUrl = process.env.VIEWER_BASE_URL ?? 'https://quotes.royalglass.co.nz'
-
       return {
         ok: true,
         quoteId,
         shortCode: finalShortCode,
-        link: `${baseUrl}/q/${finalShortCode}`,
+        link: viewerLink(finalShortCode),
         expiresAt,
         clientName,
         jobAddress: meta.jobAddress ?? null,
