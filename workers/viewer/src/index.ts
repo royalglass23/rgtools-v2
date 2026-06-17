@@ -423,10 +423,18 @@ function viewerHtml(
     var closed = false;
     var initialized = false;
 
-    if (!sessionStorage.getItem('rg_sid')) {
-      sessionStorage.setItem('rg_sid', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    // Persist the viewer id in localStorage (not sessionStorage) so a returning
+    // reader on the same browser keeps one id and is counted as a single unique
+    // viewer across visits. Return-visit detection is independent of this (it
+    // uses distinct open-days), so persistence doesn't distort that signal.
+    if (!localStorage.getItem('rg_sid')) {
+      localStorage.setItem('rg_sid', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     }
-    var SESSION_ID = sessionStorage.getItem('rg_sid');
+    var SESSION_ID = localStorage.getItem('rg_sid');
+
+    var perPageActiveMs = {};   // pageNumber -> accumulated active ms
+    var trackedPage = null;     // page currently being timed
+    var pageStartedAt = null;   // when the current active page segment began
 
     function isEnabled(key) {
       return TRACKING_CONFIG[key] !== false;
@@ -438,7 +446,11 @@ function viewerHtml(
       var body = JSON.stringify(payload);
 
       if (!immediate && navigator.sendBeacon) {
-        navigator.sendBeacon('/track', new Blob([body], { type: 'application/json' }));
+        // Must target the cross-origin tracker worker (not the viewer's own
+        // origin) and use a CORS-safelisted content type so the unload beacon
+        // is sent without a preflight. The tracker reads request.json()
+        // regardless of the declared content type.
+        navigator.sendBeacon(TRACKER_URL, new Blob([body], { type: 'text/plain' }));
         return;
       }
 
@@ -458,10 +470,31 @@ function viewerHtml(
         activeDurationMs += Date.now() - activeStartedAt;
         activeStartedAt = null;
       }
+      syncPageTimer();
+    }
+
+    function syncPageTimer(nextPage) {
+      // Bank the in-progress active segment for the page we were on, then (re)start
+      // timing the current page only while the tab is actually active.
+      if (trackedPage !== null && pageStartedAt !== null) {
+        perPageActiveMs[trackedPage] = (perPageActiveMs[trackedPage] || 0) + (Date.now() - pageStartedAt);
+      }
+      pageStartedAt = null;
+      if (nextPage !== undefined && nextPage !== null) trackedPage = nextPage;
+      var activeNow = document.visibilityState === 'visible' && document.hasFocus();
+      if (activeNow && trackedPage !== null) pageStartedAt = Date.now();
     }
 
     function currentActiveDuration() {
-      updateActiveTime();
+      // Flush the in-progress active segment. updateActiveTime() only banks time
+      // on a visible->hidden transition, so when sampled while still active (the
+      // common case: read, then close) the open segment must be added here, with
+      // activeStartedAt rebased so repeated samples don't double-count.
+      if (activeStartedAt !== null) {
+        var now = Date.now();
+        activeDurationMs += now - activeStartedAt;
+        activeStartedAt = now;
+      }
       return activeDurationMs;
     }
 
@@ -528,6 +561,7 @@ function viewerHtml(
 
         if (bestPage !== null) {
           updatePageLabel(bestPage);
+          if (bestPage !== trackedPage) syncPageTimer(bestPage);
           if (isEnabled('track.page_completion') && !viewedPages[bestPage]) {
             viewedPages[bestPage] = true;
             beacon({ event: 'page_view', pageNumber: bestPage }, true);
@@ -617,6 +651,18 @@ function viewerHtml(
       if (!initialized) return;
       if (closed) return;
       closed = true;
+      // Bank the final active segment for the current page, then report per-page time.
+      syncPageTimer();
+      if (trackedPage !== null && pageStartedAt !== null) {
+        perPageActiveMs[trackedPage] = (perPageActiveMs[trackedPage] || 0) + (Date.now() - pageStartedAt);
+        pageStartedAt = null;
+      }
+      if (isEnabled('track.page_completion')) {
+        for (var pageKey in perPageActiveMs) {
+          if (!Object.prototype.hasOwnProperty.call(perPageActiveMs, pageKey)) continue;
+          beacon({ event: 'page_view', pageNumber: Number(pageKey), duration: perPageActiveMs[pageKey] }, false);
+        }
+      }
       beacon({
         event: 'close',
         duration: Date.now() - openedAt,

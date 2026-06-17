@@ -41,11 +41,39 @@ export const DASHBOARD_TABLES: DashboardTableMeta[] = [
       { name: 'tier', label: 'Tier', options: [['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']], default: 'all' },
       { name: 'sm8', label: 'SM8', options: [['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']], default: 'all' },
       { name: 'date', label: 'Date', options: [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']], default: '30' },
-      { name: 'size', label: 'Page size', options: [['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']], default: '10' },
+      { name: 'size', label: 'Page size', options: [['5', '5'], ['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']], default: '10' },
     ],
   },
-  // Placeholders — flip `available` to true once their list page + table-controls component exist.
-  { key: 'quotes', label: 'Quotes', available: false, paramPrefix: 'quotes_', filterFields: [] },
+  {
+    key: 'quotes',
+    label: 'Quotes',
+    available: true,
+    paramPrefix: 'quotes_',
+    filterFields: [
+      {
+        name: 'status',
+        label: 'Status',
+        options: [['all', 'All'], ['hot', 'Hot'], ['warm', 'Warm'], ['cold', 'Cold'], ['dead', 'Dead']],
+        default: 'all',
+      },
+      {
+        name: 'sort',
+        label: 'Sort',
+        options: [
+          ['last_opened', 'Latest opened'],
+          ['client_asc', 'Client A-Z'],
+          ['client_desc', 'Client Z-A'],
+          ['value_asc', 'Value low-high'],
+          ['value_desc', 'Value high-low'],
+          ['interest_desc', 'Interest high-low'],
+          ['interest_asc', 'Interest low-high'],
+        ],
+        default: 'last_opened',
+      },
+      { name: 'size', label: 'Page size', options: [['5', '5'], ['10', '10'], ['20', '20'], ['50', '50']], default: '10' },
+    ],
+  },
+  // Placeholder — flip `available` to true once its list page + table-controls component exist.
   { key: 'work_orders', label: 'Work Orders', available: false, paramPrefix: 'wo_', filterFields: [] },
 ]
 

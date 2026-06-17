@@ -4,7 +4,12 @@ config({ path: '.env.local' })
 async function seedTrackingSettings() {
   const { db } = await import('../lib/db')
   const { settings } = await import('../drizzle/schema')
-  const { TRACKING_SETTING_DEFAULTS, trackingSettingKeys } = await import('../modules/quote-tracker/settings-query')
+  const {
+    NOTIFICATION_SETTING_DEFAULTS,
+    TRACKING_SETTING_DEFAULTS,
+    notificationSettingKeys,
+    trackingSettingKeys,
+  } = await import('../modules/quote-tracker/settings-query')
 
   for (const key of trackingSettingKeys) {
     await db
@@ -13,7 +18,19 @@ async function seedTrackingSettings() {
       .onConflictDoNothing()
   }
 
-  console.log(`Seeded ${trackingSettingKeys.length} quote tracking settings`)
+  const notificationDefaults = {
+    'notifications.enabled': String(NOTIFICATION_SETTING_DEFAULTS.enabled),
+    'notifications.to': NOTIFICATION_SETTING_DEFAULTS.to.join(','),
+  }
+
+  for (const key of notificationSettingKeys) {
+    await db
+      .insert(settings)
+      .values({ key, value: notificationDefaults[key] })
+      .onConflictDoNothing()
+  }
+
+  console.log(`Seeded ${trackingSettingKeys.length + notificationSettingKeys.length} quote tracking settings`)
   process.exit(0)
 }
 

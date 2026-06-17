@@ -39,3 +39,32 @@ export function formatRelative(date: Date | null) {
 
   return 'Just now'
 }
+
+export function formatDateTime(value: Date | null) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('en-NZ', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(value)
+}
+
+export function formatDuration(ms: number) {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return `${hours}h ${remainingMinutes}m`
+}
+
+export function maskIp(ip: string | null) {
+  if (!ip) return '-'
+  const parts = ip.split('.')
+  if (parts.length === 4) return `${parts.slice(0, 3).join('.')}.xxx`
+  return `${ip.slice(0, 12)}...`
+}

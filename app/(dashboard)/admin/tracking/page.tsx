@@ -1,5 +1,6 @@
 import { requireModule } from '@/lib/guard'
 import {
+  getNotificationSettings,
   getTrackingSettings,
   trackSettingKeys,
   viewerSettingKeys,
@@ -65,6 +66,7 @@ export default async function TrackingAdminPage() {
   await requireModule('admin')
 
   const settings = await getTrackingSettings()
+  const notificationSettings = await getNotificationSettings()
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -78,6 +80,35 @@ export default async function TrackingAdminPage() {
       <form action={saveTrackingSettings} className="space-y-8">
         <SettingsSection title="Tracking signals" keys={trackSettingKeys} settings={settings} />
         <SettingsSection title="Viewer features" keys={viewerSettingKeys} settings={settings} />
+
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold text-gray-900">Open notifications</h2>
+          <div className="grid gap-3 rounded border border-gray-200 bg-white p-4">
+            <label className="flex items-center justify-between gap-4">
+              <span>
+                <span className="block text-sm font-medium text-gray-900">Email notifications</span>
+                <span className="mt-0.5 block font-mono text-xs text-gray-500">notifications.enabled</span>
+              </span>
+              <input
+                type="checkbox"
+                name="notifications.enabled"
+                defaultChecked={notificationSettings.enabled}
+                className="h-5 w-5 rounded border-gray-300 text-[#142B3A]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-900">Send notifications to</span>
+              <span className="mt-0.5 block font-mono text-xs text-gray-500">notifications.to</span>
+              <textarea
+                name="notifications.to"
+                rows={2}
+                defaultValue={notificationSettings.to.join(', ')}
+                placeholder="support@royalglass.co.nz, sales@royalglass.co.nz"
+                className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+              />
+            </label>
+          </div>
+        </section>
 
         <div className="flex justify-end border-t border-gray-200 pt-4">
           <button

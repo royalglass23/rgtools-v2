@@ -9,7 +9,7 @@ describe('parseQuoteListFilters', () => {
       status: 'all',
       sort: 'last_opened',
       page: 1,
-      size: 10,
+      size: 5,
     })
   })
 
@@ -29,6 +29,14 @@ describe('parseQuoteListFilters', () => {
     })
   })
 
+  it('accepts a page size of 5', () => {
+    expect(parseQuoteListFilters({ size: '5' }).size).toBe(5)
+  })
+
+  it('accepts a page size of 10', () => {
+    expect(parseQuoteListFilters({ size: '10' }).size).toBe(10)
+  })
+
   it('falls back when params are invalid', () => {
     expect(parseQuoteListFilters({
       search: ['first', 'second'],
@@ -41,7 +49,7 @@ describe('parseQuoteListFilters', () => {
       status: 'all',
       sort: 'last_opened',
       page: 1,
-      size: 10,
+      size: 5,
     })
   })
 })

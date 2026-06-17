@@ -9,7 +9,7 @@ export type QuoteListSort =
   | 'value_desc'
   | 'interest_asc'
   | 'interest_desc'
-export type QuoteListPageSize = 10 | 20 | 50
+export type QuoteListPageSize = 5 | 10 | 20 | 50
 
 export type QuoteListFilters = {
   search: string
@@ -19,20 +19,32 @@ export type QuoteListFilters = {
   size: QuoteListPageSize
 }
 
+export type ParseQuoteListFiltersOptions = {
+  /** Prefix applied to every param name, e.g. `quotes_` when the table is embedded alongside others. */
+  prefix?: string
+  /** Default values (admin-set) used when a param is absent from the URL. */
+  defaults?: Partial<Record<'status' | 'sort' | 'size', string>>
+}
+
 export function parseQuoteListFilters(
   searchParams: Record<string, string | string[] | undefined>,
+  options: ParseQuoteListFiltersOptions = {},
 ): QuoteListFilters {
-  const status = stringValue(searchParams.status)
-  const sort = stringValue(searchParams.sort)
-  const page = Number(stringValue(searchParams.page) ?? '1')
-  const size = Number(stringValue(searchParams.size) ?? '10')
+  const { prefix = '', defaults = {} } = options
+  const pick = (name: 'status' | 'sort' | 'size') =>
+    stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
+
+  const status = pick('status')
+  const sort = pick('sort')
+  const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
+  const size = Number(pick('size') ?? '5')
 
   return {
-    search: (stringValue(searchParams.search) ?? '').trim(),
+    search: (stringValue(searchParams[`${prefix}search`]) ?? '').trim(),
     status: isQuoteListStatus(status) ? status : 'all',
     sort: isQuoteListSort(sort) ? sort : 'last_opened',
     page: Number.isInteger(page) && page > 0 ? page : 1,
-    size: size === 20 || size === 50 ? size : 10,
+    size: size === 5 || size === 10 || size === 20 || size === 50 ? size : 5,
   }
 }
 

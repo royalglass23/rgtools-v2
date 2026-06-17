@@ -8,7 +8,7 @@ export type LeadsListFilters = {
   sm8: 'all' | 'linked' | 'pending' | 'failed'
   date: '7' | '30' | 'all'
   page: number
-  size: 10 | 20 | 50 | 100
+  size: 5 | 10 | 20 | 50 | 100
 }
 
 export type ParseLeadsListFiltersOptions = {
@@ -37,7 +37,7 @@ export function parseLeadsListFilters(
     sm8: sm8 === 'linked' || sm8 === 'pending' || sm8 === 'failed' ? sm8 : 'all',
     date: date === '7' || date === '30' || date === 'all' ? date : '30',
     page: Number.isInteger(page) && page > 0 ? page : 1,
-    size: size === 20 || size === 50 || size === 100 ? size : 10,
+    size: size === 5 || size === 20 || size === 50 || size === 100 ? size : 10,
   }
 }
 

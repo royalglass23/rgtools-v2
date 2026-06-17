@@ -5,7 +5,15 @@ import { auth } from '@/lib/auth'
 import { requireModule } from '@/lib/guard'
 import { CopyLinkButton } from '@/modules/quote-tracker/CopyLinkButton'
 import { EmailGateSettingsForm } from '@/modules/quote-tracker/EmailGateSettingsForm'
+import { isExpired } from '@/modules/quote-tracker/expiry'
 import { getQuoteDetail, setManualTag, updateQuoteEmailGate, updateQuoteScore } from '@/modules/quote-tracker/queries'
+import {
+  formatCurrency,
+  formatDateTime,
+  formatDuration,
+  StatusBadge,
+} from '@/modules/quote-tracker/presentation'
+import { ViewerAnalyticsTable } from '@/modules/quote-tracker/ViewerAnalyticsTable'
 import { computeScore, computeStatusTag, type EngagementData, type StatusTag } from '@/modules/quote-tracker/score'
 
 export default async function QuoteDetailPage({
@@ -21,7 +29,8 @@ export default async function QuoteDetailPage({
   const detail = await getQuoteDetail(id)
   if (!detail) notFound()
 
-  const quoteUrl = detail.quote.shortCode
+  const expired = isExpired(detail.quote.expiresAt)
+  const quoteUrl = !expired && detail.quote.shortCode
     ? `https://quotes.royalglass.co.nz/q/${detail.quote.shortCode}`
     : ''
   const engagementData = buildEngagementData(detail)
@@ -97,8 +106,8 @@ export default async function QuoteDetailPage({
           <Field label="Job Address" value={detail.quote.jobAddress ?? '-'} />
           <Field label="Value" value={formatCurrency(detail.quote.quoteValue)} />
           <Field label="Expires" value={formatDateTime(detail.quote.expiresAt)} />
-          <Field label="Short code" value={detail.quote.shortCode ?? '-'} />
-          <Field label="Link" value={quoteUrl || '-'} />
+          <Field label="Short code" value={expired ? '-' : (detail.quote.shortCode ?? '-')} />
+          <Field label="Link" value={expired ? 'Link expired' : (quoteUrl || '-')} />
           <Field label="Email gate" value={detail.quote.emailGateEnabled ? 'Enabled' : 'Disabled'} />
           <Field label="Shared with" value={formatRecipients(detail.recipients)} />
         </dl>
@@ -139,29 +148,10 @@ export default async function QuoteDetailPage({
 
       <Section title="Viewers">
         {detail.quote.emailGateEnabled ? (
-          <RecipientAnalyticsTable recipients={detail.recipientAnalytics} />
+          <ViewerAnalyticsTable gated emails={detail.gatedEmailAnalytics} />
         ) : (
-          <LinkAnalyticsTable sessions={detail.viewerSessions} />
+          <ViewerAnalyticsTable gated={false} devices={detail.viewerSessions} />
         )}
-      </Section>
-
-      <Section title="Event Timeline">
-        <div className="divide-y divide-gray-100 rounded border border-gray-200">
-          {detail.events.slice(0, 50).map((event) => (
-            <div key={event.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[160px_1fr_180px]">
-              <span className="font-medium capitalize text-gray-950">{event.eventType.replace('_', ' ')}</span>
-              <span className="text-gray-700">
-                {event.pageNumber ? `Page ${event.pageNumber} - ` : ''}
-                {event.deviceType ?? 'Unknown device'}
-                {(event.geoCity || event.geoCountry) ? ` from ${[event.geoCity, event.geoCountry].filter(Boolean).join(', ')}` : ''}
-              </span>
-              <span className="text-gray-500">{formatDateTime(event.createdAt)}</span>
-            </div>
-          ))}
-          {detail.events.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">No events recorded yet.</div>
-          )}
-        </div>
       </Section>
 
       <Section title="Manual Status Override">
@@ -221,98 +211,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function RecipientAnalyticsTable({
-  recipients,
-}: {
-  recipients: NonNullable<Awaited<ReturnType<typeof getQuoteDetail>>>['recipientAnalytics']
-}) {
-  return (
-    <div className="overflow-hidden rounded border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-          <tr>
-            <th className="px-4 py-3">Recipient</th>
-            <th className="px-4 py-3">Opens</th>
-            <th className="px-4 py-3">Last seen</th>
-            <th className="px-4 py-3">Time spent</th>
-            <th className="px-4 py-3">Max scroll</th>
-            <th className="px-4 py-3">Pages seen</th>
-            <th className="px-4 py-3">Downloaded</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {recipients.map((recipient) => (
-            <tr key={recipient.recipientId}>
-              <td className="px-4 py-3 text-gray-700">
-                <span className="font-medium text-gray-950">{recipient.email}</span>
-                {recipient.name && <span className="block text-xs text-gray-500">{recipient.name}</span>}
-              </td>
-              <td className="px-4 py-3 text-gray-700">{recipient.opens}</td>
-              <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatDateTime(recipient.lastSeenAt)}</td>
-              <td className="px-4 py-3 text-gray-700">{formatDuration(recipient.totalTimeMs)}</td>
-              <td className="px-4 py-3 text-gray-700">{recipient.maxScrollDepth}%</td>
-              <td className="px-4 py-3 text-gray-700">{recipient.maxPageSeen || '-'}</td>
-              <td className="px-4 py-3 text-gray-700">{recipient.downloaded ? 'Yes' : 'No'}</td>
-            </tr>
-          ))}
-          {recipients.length === 0 && (
-            <tr>
-              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No recipients configured.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function LinkAnalyticsTable({
-  sessions,
-}: {
-  sessions: NonNullable<Awaited<ReturnType<typeof getQuoteDetail>>>['viewerSessions']
-}) {
-  return (
-    <div className="overflow-hidden rounded border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-          <tr>
-            <th className="px-4 py-3">IP</th>
-            <th className="px-4 py-3">City and ISP</th>
-            <th className="px-4 py-3">Device</th>
-            <th className="px-4 py-3">Opens</th>
-            <th className="px-4 py-3">Time spent</th>
-            <th className="px-4 py-3">Pages seen</th>
-            <th className="px-4 py-3">CTA</th>
-            <th className="px-4 py-3">First seen</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {sessions.map((session) => (
-            <tr key={session.sessionId}>
-              <td className="px-4 py-3 text-gray-700">{maskIp(session.ip)}</td>
-              <td className="px-4 py-3 text-gray-700">
-                <span className="block">{session.geoCity ?? session.geoCountry ?? '-'}</span>
-                <span className="block text-xs text-gray-500">{session.geoIsp ?? '-'}</span>
-              </td>
-              <td className="px-4 py-3 text-gray-700">{session.deviceType ?? '-'}</td>
-              <td className="px-4 py-3 text-gray-700">{session.opens}</td>
-              <td className="px-4 py-3 text-gray-700">{formatDuration(session.totalTimeMs)}</td>
-              <td className="px-4 py-3 text-gray-700">{session.maxPageSeen || '-'}</td>
-              <td className="px-4 py-3 text-gray-700">{session.hasCta ? 'Yes' : 'No'}</td>
-              <td className="whitespace-nowrap px-4 py-3 text-gray-700">{formatDateTime(session.firstSeenAt)}</td>
-            </tr>
-          ))}
-          {sessions.length === 0 && (
-            <tr>
-              <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No viewer sessions yet.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -327,50 +225,6 @@ function formatRecipients(recipients: Array<{ email: string }>) {
   return recipients.map((recipient) => recipient.email).join(', ')
 }
 
-function StatusBadge({ tag }: { tag: StatusTag }) {
-  const classes: Record<StatusTag, string> = {
-    hot: 'bg-red-100 text-red-800',
-    warm: 'bg-amber-100 text-amber-800',
-    cold: 'bg-blue-100 text-blue-800',
-    dead: 'bg-gray-100 text-gray-700',
-  }
-
-  return <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold capitalize ${classes[tag]}`}>{tag}</span>
-}
-
 function isStatusTag(value: FormDataEntryValue | null): value is StatusTag {
   return value === 'hot' || value === 'warm' || value === 'cold' || value === 'dead'
-}
-
-function formatCurrency(value: string | null) {
-  return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(Number(value ?? 0))
-}
-
-function formatDateTime(value: Date | null) {
-  if (!value) return '-'
-  return new Intl.DateTimeFormat('en-NZ', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(value)
-}
-
-function formatDuration(ms: number) {
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h ${remainingMinutes}m`
-}
-
-function maskIp(ip: string | null) {
-  if (!ip) return '-'
-  const parts = ip.split('.')
-  if (parts.length === 4) return `${parts.slice(0, 3).join('.')}.xxx`
-  return `${ip.slice(0, 12)}...`
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { CopyLinkButton } from './CopyLinkButton'
+import { isExpired } from './expiry'
 import type { QuoteListFilters } from './list-filters'
 import { StatusBadge, formatCurrency, formatRelative } from './presentation'
 import type { StatusTag } from './score'
@@ -20,6 +21,7 @@ type QuoteRow = {
   totalOpens: number | null
   lastOpenedAt: Date | null
   forwardingSuspected: boolean | null
+  expiresAt: Date | null
 }
 
 /** Param names this table owns; used for carry-over of other tables' params on shared URLs. */
@@ -57,13 +59,14 @@ export function QuoteTableControls({
               <th className="px-4 py-3">Interest</th>
               <th className="px-4 py-3">Opens</th>
               <th className="px-4 py-3">Last opened</th>
-              <th className="px-4 py-3">Forwarding</th>
+              <th className="px-4 py-3">Link status</th>
               <th className="px-4 py-3">Link</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((quote) => {
-              const quoteUrl = quote.shortCode
+              const expired = isExpired(quote.expiresAt)
+              const quoteUrl = !expired && quote.shortCode
                 ? `https://quotes.royalglass.co.nz/q/${quote.shortCode}`
                 : ''
 
@@ -97,10 +100,10 @@ export function QuoteTableControls({
                   </td>
                   <td className="px-4 py-3">
                     <Link href={`/quote-tracker/${quote.id}`} className="block">
-                      {quote.forwardingSuspected ? (
-                        <span className="inline-flex rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">Flagged</span>
+                      {expired ? (
+                        <span className="inline-flex rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">Expired</span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="inline-flex rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">Active</span>
                       )}
                     </Link>
                   </td>
@@ -113,7 +116,7 @@ export function QuoteTableControls({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  No tracked quotes yet. Create one from a lead.
+                  No tracked quotes yet. Use the Track Quote button to create one.
                 </td>
               </tr>
             )}
