@@ -21,9 +21,22 @@ export const TRACKING_SETTING_DEFAULTS = {
 export type TrackingSettingKey = keyof typeof TRACKING_SETTING_DEFAULTS
 export type TrackingSettings = Record<TrackingSettingKey, boolean>
 
+export const NOTIFICATION_SETTING_DEFAULTS = {
+  enabled: true,
+  to: ['support@royalglass.co.nz'],
+} as const
+
+export const notificationSettingKeys = ['notifications.enabled', 'notifications.to'] as const
+export type NotificationSettingKey = typeof notificationSettingKeys[number]
+export type NotificationSettings = {
+  enabled: boolean
+  to: string[]
+}
+
 export const trackingSettingKeys = Object.keys(TRACKING_SETTING_DEFAULTS) as TrackingSettingKey[]
 export const trackSettingKeys = trackingSettingKeys.filter((key) => key.startsWith('track.'))
 export const viewerSettingKeys = trackingSettingKeys.filter((key) => key.startsWith('viewer.'))
+export const allSettingsKeys = [...trackingSettingKeys, ...notificationSettingKeys]
 
 export type TrackingSettingRow = {
   key: string
@@ -46,6 +59,36 @@ export function normalizeTrackingSettings(rows: TrackingSettingRow[]): TrackingS
   return normalized
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export function parseNotificationRecipients(value: string): string[] {
+  const recipients = new Set<string>()
+
+  for (const part of value.split(/[;,\n]/)) {
+    const email = part.trim().toLowerCase()
+    if (EMAIL_RE.test(email)) recipients.add(email)
+  }
+
+  return Array.from(recipients)
+}
+
+export function normalizeNotificationSettings(rows: TrackingSettingRow[]): NotificationSettings {
+  const normalized: NotificationSettings = {
+    enabled: NOTIFICATION_SETTING_DEFAULTS.enabled,
+    to: [...NOTIFICATION_SETTING_DEFAULTS.to],
+  }
+
+  for (const row of rows) {
+    if (row.key === 'notifications.enabled') normalized.enabled = row.value !== 'false'
+    if (row.key === 'notifications.to') {
+      const recipients = parseNotificationRecipients(row.value)
+      normalized.to = recipients.length > 0 ? recipients : [...NOTIFICATION_SETTING_DEFAULTS.to]
+    }
+  }
+
+  return normalized
+}
+
 export async function getTrackingSettings(): Promise<TrackingSettings> {
   const rows = await db
     .select({ key: settings.key, value: settings.value })
@@ -53,6 +96,15 @@ export async function getTrackingSettings(): Promise<TrackingSettings> {
     .where(inArray(settings.key, trackingSettingKeys))
 
   return normalizeTrackingSettings(rows)
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(inArray(settings.key, notificationSettingKeys))
+
+  return normalizeNotificationSettings(rows)
 }
 
 export async function getTrackingSetting(key: TrackingSettingKey): Promise<boolean> {

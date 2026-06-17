@@ -16,3 +16,9 @@ export function resolveExpiry(input: ExpiryPreset | { customDate: string } = '1h
 
   return new Date(Date.now() + PRESET_MS[input])
 }
+
+/** True when the quote link has passed its expiry. A missing date is treated as not expired. */
+export function isExpired(expiresAt: Date | null | undefined, now: Date = new Date()): boolean {
+  if (!expiresAt) return false
+  return expiresAt.getTime() <= now.getTime()
+}

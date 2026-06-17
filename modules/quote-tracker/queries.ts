@@ -1,8 +1,9 @@
 import { and, asc, count, desc, eq, ilike, or, sql, sum } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { quoteEngagement, quoteEvents, quoteRecipients, quotes, tagOverrides } from '@/drizzle/schema'
+import { quoteEngagement, quoteEvents, quoteRecipients, quoteViewerEmails, quotes, tagOverrides } from '@/drizzle/schema'
 import type { QuoteListFilters } from './list-filters'
 import { validateEmailGateSettings } from './email-gate'
+import { rollupDeviceSessions, rollupGatedEmails } from './viewer-analytics'
 import type { StatusTag } from './score'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -97,13 +98,13 @@ export async function getQuoteDetail(id: string) {
       .orderBy(desc(tagOverrides.createdAt)),
     getViewerSessions(id),
   ])
-  const [recipients, recipientAnalytics] = await Promise.all([
+  const [recipients, gatedEmailAnalytics] = await Promise.all([
     db
       .select()
       .from(quoteRecipients)
       .where(eq(quoteRecipients.quoteId, id))
       .orderBy(asc(quoteRecipients.email)),
-    getRecipientAnalytics(id),
+    getGatedEmailAnalytics(id),
   ])
 
   return {
@@ -113,43 +114,8 @@ export async function getQuoteDetail(id: string) {
     overrides,
     viewerSessions,
     recipients,
-    recipientAnalytics,
+    gatedEmailAnalytics,
   }
-}
-
-export async function getRecipientAnalytics(quoteId: string) {
-  if (!UUID_RE.test(quoteId)) return []
-
-  const [recipients, events] = await Promise.all([
-    db
-      .select()
-      .from(quoteRecipients)
-      .where(eq(quoteRecipients.quoteId, quoteId))
-      .orderBy(asc(quoteRecipients.email)),
-    db
-      .select()
-      .from(quoteEvents)
-      .where(eq(quoteEvents.quoteId, quoteId))
-      .orderBy(asc(quoteEvents.createdAt)),
-  ])
-
-  return recipients.map((recipient) => {
-    const recipientEvents = events.filter((event) => event.recipientId === recipient.id)
-    const openEvents = recipientEvents.filter((event) => event.eventType === 'open')
-
-    return {
-      recipientId: recipient.id,
-      email: recipient.email,
-      name: recipient.name,
-      opens: openEvents.length,
-      totalTimeMs: recipientEvents.reduce((total, event) => total + (event.durationMs ?? 0), 0),
-      maxScrollDepth: Math.max(0, ...recipientEvents.map((event) => event.scrollDepth ?? 0)),
-      maxPageSeen: Math.max(0, ...recipientEvents.map((event) => event.pageNumber ?? 0)),
-      downloaded: recipientEvents.some((event) => event.eventType === 'download'),
-      firstSeenAt: openEvents[0]?.createdAt ?? null,
-      lastSeenAt: recipientEvents.at(-1)?.createdAt ?? null,
-    }
-  })
 }
 
 export async function getViewerSessions(quoteId: string) {
@@ -161,57 +127,29 @@ export async function getViewerSessions(quoteId: string) {
     .where(eq(quoteEvents.quoteId, quoteId))
     .orderBy(asc(quoteEvents.createdAt))
 
-  const sessions = new Map<string, {
-    sessionId: string
-    ip: string | null
-    geoCity: string | null
-    geoIsp: string | null
-    geoCountry: string | null
-    deviceType: string | null
-    opens: number
-    totalTimeMs: number
-    maxScrollDepth: number
-    maxPageSeen: number
-    hasCta: boolean
-    firstSeenAt: Date
-    lastSeenAt: Date
-  }>()
+  return rollupDeviceSessions(events)
+}
 
-  for (const event of events) {
-    const existing = sessions.get(event.sessionId)
-    const session = existing ?? {
-      sessionId: event.sessionId,
-      ip: event.ip,
-      geoCity: event.geoCity,
-      geoIsp: event.geoIsp,
-      geoCountry: event.geoCountry,
-      deviceType: event.deviceType,
-      opens: 0,
-      totalTimeMs: 0,
-      maxScrollDepth: 0,
-      maxPageSeen: 0,
-      hasCta: false,
-      firstSeenAt: event.createdAt,
-      lastSeenAt: event.createdAt,
-    }
+export async function getGatedEmailAnalytics(quoteId: string) {
+  if (!UUID_RE.test(quoteId)) return []
 
-    session.ip ??= event.ip
-    session.geoCity ??= event.geoCity
-    session.geoIsp ??= event.geoIsp
-    session.geoCountry ??= event.geoCountry
-    session.deviceType ??= event.deviceType
-    session.opens += event.eventType === 'open' ? 1 : 0
-    session.totalTimeMs += event.durationMs ?? 0
-    session.maxScrollDepth = Math.max(session.maxScrollDepth, event.scrollDepth ?? 0)
-    session.maxPageSeen = Math.max(session.maxPageSeen, event.pageNumber ?? 0)
-    session.hasCta = session.hasCta || event.eventType === 'cta'
-    session.firstSeenAt = session.firstSeenAt < event.createdAt ? session.firstSeenAt : event.createdAt
-    session.lastSeenAt = session.lastSeenAt > event.createdAt ? session.lastSeenAt : event.createdAt
+  const [events, links] = await Promise.all([
+    db
+      .select()
+      .from(quoteEvents)
+      .where(eq(quoteEvents.quoteId, quoteId))
+      .orderBy(asc(quoteEvents.createdAt)),
+    db
+      .select({
+        email: quoteViewerEmails.email,
+        name: quoteViewerEmails.name,
+        sessionId: quoteViewerEmails.sessionId,
+      })
+      .from(quoteViewerEmails)
+      .where(eq(quoteViewerEmails.quoteId, quoteId)),
+  ])
 
-    sessions.set(event.sessionId, session)
-  }
-
-  return Array.from(sessions.values()).sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime())
+  return rollupGatedEmails(events, links)
 }
 
 export async function setManualTag(quoteId: string, tag: StatusTag, actorId: string) {

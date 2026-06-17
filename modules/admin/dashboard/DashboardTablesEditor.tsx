@@ -5,8 +5,10 @@ import {
   DASHBOARD_TABLES,
   MAX_DASHBOARD_TABLES,
   defaultFilterFor,
+  getTableMeta,
   type DashboardTableConfig,
   type DashboardTableKey,
+  type DashboardTableMeta,
 } from '@/modules/dashboard/tables'
 import { saveDashboardTables, type SaveDashboardTablesResult } from './actions'
 
@@ -25,6 +27,16 @@ export function DashboardTablesEditor({ initialConfig }: { initialConfig: Dashbo
 
   const selectedKeys = useMemo(() => new Set(selected.map((entry) => entry.key)), [selected])
   const atLimit = selected.length >= MAX_DASHBOARD_TABLES
+
+  // Ticked tables come first in their chosen order (reorderable); unticked tables
+  // are locked to the bottom in the canonical order and cannot be moved.
+  const orderedMetas = useMemo<DashboardTableMeta[]>(() => {
+    const selectedMetas = selected
+      .map((entry) => getTableMeta(entry.key))
+      .filter((meta): meta is DashboardTableMeta => Boolean(meta))
+    const unselectedMetas = DASHBOARD_TABLES.filter((meta) => !selectedKeys.has(meta.key))
+    return [...selectedMetas, ...unselectedMetas]
+  }, [selected, selectedKeys])
 
   function toggle(key: DashboardTableKey) {
     setSelected((current) => {
@@ -76,7 +88,7 @@ export function DashboardTablesEditor({ initialConfig }: { initialConfig: Dashbo
       </p>
 
       <div className="space-y-4">
-        {DASHBOARD_TABLES.map((meta) => {
+        {orderedMetas.map((meta) => {
           const isSelected = selectedKeys.has(meta.key)
           const order = selected.findIndex((entry) => entry.key === meta.key)
           const entry = order >= 0 ? selected[order] : null

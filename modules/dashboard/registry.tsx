@@ -5,6 +5,9 @@
 import type { ReactNode } from 'react'
 import { getLeadsList, parseLeadsListFilters } from '@/modules/leads/queries'
 import { LeadsTableControls } from '@/modules/leads/LeadsTableControls'
+import { listQuotes } from '@/modules/quote-tracker/queries'
+import { parseQuoteListFilters } from '@/modules/quote-tracker/list-filters'
+import { QuoteTableControls } from '@/modules/quote-tracker/QuoteTableControls'
 import { getTableMeta, type DashboardTableKey } from './tables'
 
 type RenderArgs = {
@@ -41,7 +44,30 @@ const leadsTable: ServerTable = {
   },
 }
 
+const quotesTable: ServerTable = {
+  async render({ searchParams, filter }) {
+    const meta = getTableMeta('quotes')!
+    const filters = parseQuoteListFilters(searchParams, {
+      prefix: meta.paramPrefix,
+      defaults: filter,
+    })
+    const { rows, total, pageCount } = await listQuotes(filters)
+
+    return (
+      <QuoteTableControls
+        filters={filters}
+        rows={rows}
+        total={total}
+        pageCount={pageCount}
+        basePath="/"
+        paramPrefix={meta.paramPrefix}
+      />
+    )
+  },
+}
+
 /** Only available tables are registered here; placeholders are intentionally absent. */
 export const SERVER_TABLES: Partial<Record<DashboardTableKey, ServerTable>> = {
   leads: leadsTable,
+  quotes: quotesTable,
 }

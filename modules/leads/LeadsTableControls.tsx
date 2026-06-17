@@ -138,7 +138,7 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: LeadsListFilte
       <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
       <Select name={`${paramPrefix}sm8`} label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
       <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
-      <Select name={`${paramPrefix}size`} label="Page size" value={String(filters.size)} options={[['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']]} />
+      <Select name={`${paramPrefix}size`} label="Page size" value={String(filters.size)} options={[['5', '5'], ['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']]} />
       <input type="hidden" name={`${paramPrefix}page`} value="1" />
     </form>
   )

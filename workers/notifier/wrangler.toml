@@ -1,0 +1,11 @@
+name = "rg-notifier"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+# Secrets:
+#   wrangler secret put DATABASE_URL
+#   wrangler secret put RESEND_API_KEY

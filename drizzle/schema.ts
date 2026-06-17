@@ -56,6 +56,8 @@ export const quotes = pgTable('quotes', {
   aiComplexity: aiComplexityEnum('ai_complexity'),
   internalNotes: text('internal_notes'),
   sentAt: timestamp('sent_at', { withTimezone: true }),
+  openedNotifiedAt: timestamp('opened_notified_at', { withTimezone: true }),
+  highIntentNotifiedAt: timestamp('high_intent_notified_at', { withTimezone: true }),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
