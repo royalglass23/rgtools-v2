@@ -4,6 +4,8 @@ import { parseQuoteListFilters } from '@/modules/quote-tracker/list-filters'
 import { QuoteTableControls } from '@/modules/quote-tracker/QuoteTableControls'
 import { StatusBadge, formatCurrency } from '@/modules/quote-tracker/presentation'
 import { STATUS_TAG_RULES, type StatusTag } from '@/modules/quote-tracker/score'
+import { TrackQuoteButton } from '@/modules/quote-tracker/TrackQuoteButton'
+import { createTrackedQuoteAction } from '@/modules/quote-tracker/actions'
 
 export default async function QuoteTrackerPage({
   searchParams,
@@ -18,6 +20,7 @@ export default async function QuoteTrackerPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-gray-950">Quote Tracker</h1>
+        <TrackQuoteButton action={createTrackedQuoteAction} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
