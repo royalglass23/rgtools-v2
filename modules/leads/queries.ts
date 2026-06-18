@@ -1,7 +1,8 @@
-import { and, count, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { DEFAULT_LEADS_PREFS, LEADS_SORT_COLUMNS } from './table-prefs-shared'
 
 export type LeadsListFilters = {
   tier: 'all' | 'A' | 'B' | 'C' | 'D'
@@ -16,6 +17,11 @@ export type ParseLeadsListFiltersOptions = {
   prefix?: string
   /** Default values (admin-set) used when a param is absent from the URL. */
   defaults?: Partial<Record<'tier' | 'sm8' | 'date' | 'size', string>>
+}
+
+export type LeadsListSort = {
+  sortColumn?: string
+  sortDir?: 'asc' | 'desc'
 }
 
 export function parseLeadsListFilters(
@@ -41,7 +47,7 @@ export function parseLeadsListFilters(
   }
 }
 
-export async function getLeadsList(filters: LeadsListFilters) {
+export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSort = DEFAULT_LEADS_PREFS) {
   const where = listWhere(filters)
   const offset = (filters.page - 1) * filters.size
 
@@ -59,11 +65,17 @@ export async function getLeadsList(filters: LeadsListFilters) {
       servicem8JobUuid: leads.servicem8JobUuid,
       syncStatus: leads.syncStatus,
       completeness: leads.completeness,
+      rcStatus: leads.rcStatus,
+      bcStatus: leads.bcStatus,
+      buildingStage: leads.buildingStage,
+      followUpDate: leads.followUpDate,
+      updatedAt: leads.updatedAt,
+      aiSuggestion: leads.aiSuggestion,
     })
     .from(leads)
     .innerJoin(clients, eq(leads.clientId, clients.id))
     .where(where)
-    .orderBy(desc(leads.createdAt))
+    .orderBy(...listOrderBy(sort))
     .limit(filters.size)
     .offset(offset)
 
@@ -102,6 +114,13 @@ export async function getLeadDetail(leadId: string) {
       scoreReason: leads.scoreReason,
       servicem8JobUuid: leads.servicem8JobUuid,
       servicem8Status: leads.servicem8Status,
+      rcStatus: leads.rcStatus,
+      bcStatus: leads.bcStatus,
+      buildingStage: leads.buildingStage,
+      followUpDate: leads.followUpDate,
+      updatedAt: leads.updatedAt,
+      aiSuggestion: leads.aiSuggestion,
+      aiSuggestionAt: leads.aiSuggestionAt,
     })
     .from(leads)
     .innerJoin(clients, eq(leads.clientId, clients.id))
@@ -121,7 +140,7 @@ export async function getLeadDetail(leadId: string) {
     .orderBy(leadCategoryScores.category)
 
   const optionLists = await getActiveScoringOptionLists()
-  const scoredFields = [1, 2, 3, 4, 5, 6, 7].map((category) => {
+  const scoredFields = [1, 2, 4, 5, 6, 7, 8, 9, 10].map((category) => {
     const row = categoryRows.find((candidate) => candidate.category === category)
     const configCategory = optionLists.categories[String(category)]
     const label = configCategory?.label ?? categoryLabel(category)
@@ -161,6 +180,22 @@ function listWhere(filters: LeadsListFilters) {
   return and(...conditions) ?? sql`true`
 }
 
+function listOrderBy(sort: LeadsListSort) {
+  const validSortColumn = LEADS_SORT_COLUMNS.includes(sort.sortColumn as (typeof LEADS_SORT_COLUMNS)[number])
+  const sortableColumn = validSortColumn ? sort.sortColumn : DEFAULT_LEADS_PREFS.sortColumn
+  const sortDir = validSortColumn ? sort.sortDir : DEFAULT_LEADS_PREFS.sortDir
+  const direction = sortDir === 'asc' ? asc : desc
+
+  if (sortableColumn === 'clientName') return [direction(clients.name), desc(leads.createdAt)]
+  if (sortableColumn === 'tier') return [direction(leads.tier), desc(leads.createdAt)]
+  if (sortableColumn === 'seedScore') return [direction(leads.seedScore), desc(leads.createdAt)]
+  if (sortableColumn === 'completeness') return [direction(leads.completeness), desc(leads.createdAt)]
+  if (sortableColumn === 'followUpDate') return [direction(leads.followUpDate), desc(leads.createdAt)]
+  if (sortableColumn === 'updatedAt') return [direction(leads.updatedAt), desc(leads.createdAt)]
+
+  return [direction(leads.createdAt)]
+}
+
 function stringValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
@@ -169,11 +204,13 @@ function categoryLabel(category: number) {
   const labels: Record<number, string> = {
     1: 'Client Type',
     2: 'Budget Band',
-    3: 'Consent Status',
     4: 'Complexity',
     5: 'Price-sensitivity Read',
     6: 'Decision-makers',
     7: 'Distance',
+    8: 'Resource Consent',
+    9: 'Building Consent',
+    10: 'Building Stage',
   }
 
   return labels[category] ?? `Category ${category}`

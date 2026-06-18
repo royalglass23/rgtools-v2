@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { LeadsTableControls } from '@/modules/leads/LeadsTableControls'
 import { getLeadsList, parseLeadsListFilters } from '@/modules/leads/queries'
+import { loadTablePrefs } from '@/modules/leads/table-prefs'
+import { DEFAULT_LEADS_PREFS } from '@/modules/leads/table-prefs-shared'
 
 export default async function LeadsPage({
   searchParams,
@@ -9,10 +11,14 @@ export default async function LeadsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const filters = parseLeadsListFilters(await searchParams)
-  const [{ rows, total, pageCount }, session] = await Promise.all([
-    getLeadsList(filters),
-    auth(),
-  ])
+  const session = await auth()
+  const prefs = session?.user?.id
+    ? await loadTablePrefs(session.user.id, 'leads')
+    : DEFAULT_LEADS_PREFS
+  const { rows, total, pageCount } = await getLeadsList(filters, {
+    sortColumn: prefs.sortColumn,
+    sortDir: prefs.sortDir,
+  })
 
   return (
     <div className="space-y-5">
@@ -32,6 +38,7 @@ export default async function LeadsPage({
         total={total}
         pageCount={pageCount}
         isAdmin={session?.user?.role === 'admin'}
+        prefs={prefs}
       />
     </div>
   )

@@ -25,11 +25,18 @@ describe('buildDashboardNavigation', () => {
       moduleRow('m4', 'admin/calculator-pricing', 'Cost Calculator Price', 102, true),
       moduleRow('m5', 'admin', 'Administration', 99, true),
       moduleRow('m6', 'admin/tracking', 'Tracking Settings', 103, true),
-    ])
+    ], { isAdmin: true })
 
-    expect(nav.primaryModules.map((mod) => mod.slug)).toEqual([
-      'lead-intake',
-      'leads',
+    expect(nav.primaryModules.map((mod) => mod.slug)).toEqual([])
+    expect(nav.leadIntakeItems).toEqual([
+      { id: 'lead-intake-form', slug: 'lead-intake', name: 'Form', href: '/lead-intake' },
+      { id: 'lead-intake-list', slug: 'leads', name: 'List', href: '/leads' },
+      {
+        id: 'lead-intake-configuration',
+        slug: 'lead-intake/configuration',
+        name: 'Configuration',
+        href: '/lead-intake/configuration',
+      },
     ])
     expect(nav.adminItems).toEqual([
       { id: 'm5', slug: 'admin', name: 'Administration', href: '/admin/administration' },
@@ -46,6 +53,18 @@ describe('buildDashboardNavigation', () => {
         name: 'Tracking Settings',
         href: '/admin/tracking',
       },
+    ])
+  })
+
+  it('hides lead intake configuration for non-admin navigation', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('m1', 'lead-intake', 'Lead Intake', 0),
+      moduleRow('m3', 'leads', 'Leads', 1),
+    ])
+
+    expect(nav.leadIntakeItems).toEqual([
+      { id: 'lead-intake-form', slug: 'lead-intake', name: 'Form', href: '/lead-intake' },
+      { id: 'lead-intake-list', slug: 'leads', name: 'List', href: '/leads' },
     ])
   })
 

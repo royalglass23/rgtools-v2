@@ -14,6 +14,27 @@ export interface DashboardNavItem {
   href: string
 }
 
+const LEAD_INTAKE_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
+  'lead-intake': {
+    id: 'lead-intake-form',
+    slug: 'lead-intake',
+    name: 'Form',
+    href: '/lead-intake',
+  },
+  leads: {
+    id: 'lead-intake-list',
+    slug: 'leads',
+    name: 'List',
+    href: '/leads',
+  },
+}
+
+const LEAD_INTAKE_SORT_ORDER: Record<string, number> = {
+  'lead-intake': 0,
+  leads: 1,
+  'lead-intake/configuration': 2,
+}
+
 const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   admin: '/admin/administration',
   'admin/administration': '/admin/administration',
@@ -36,13 +57,33 @@ function adminItemKey(slug: string) {
   return slug === 'admin/administration' ? 'admin' : slug
 }
 
-export function buildDashboardNavigation(modules: DashboardModule[]) {
+export function buildDashboardNavigation(modules: DashboardModule[], options: { isAdmin?: boolean } = {}) {
   const activeModules = modules
     .filter((mod) => mod.isActive)
     .toSorted((a, b) => a.sortOrder - b.sortOrder)
 
-  const primaryModules = activeModules.filter((mod) => !(mod.slug in ADMIN_ROUTE_BY_SLUG))
+  const primaryModules = activeModules.filter((mod) => (
+    !(mod.slug in ADMIN_ROUTE_BY_SLUG) &&
+    !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG)
+  ))
+  const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()
   const adminItemsByKey = new Map<string, DashboardNavItem>()
+
+  for (const mod of activeModules) {
+    const item = LEAD_INTAKE_ROUTE_BY_SLUG[mod.slug]
+    if (!item) continue
+
+    leadIntakeItemsByKey.set(item.slug, item)
+  }
+
+  if (options.isAdmin && leadIntakeItemsByKey.size > 0) {
+    leadIntakeItemsByKey.set('lead-intake/configuration', {
+      id: 'lead-intake-configuration',
+      slug: 'lead-intake/configuration',
+      name: 'Configuration',
+      href: '/lead-intake/configuration',
+    })
+  }
 
   for (const mod of activeModules) {
     const href = ADMIN_ROUTE_BY_SLUG[mod.slug]
@@ -65,5 +106,11 @@ export function buildDashboardNavigation(modules: DashboardModule[]) {
     return aOrder - bOrder
   })
 
-  return { primaryModules, adminItems }
+  const leadIntakeItems = Array.from(leadIntakeItemsByKey.values()).toSorted((a, b) => {
+    const aOrder = LEAD_INTAKE_SORT_ORDER[a.slug] ?? Number.MAX_SAFE_INTEGER
+    const bOrder = LEAD_INTAKE_SORT_ORDER[b.slug] ?? Number.MAX_SAFE_INTEGER
+    return aOrder - bOrder
+  })
+
+  return { primaryModules, leadIntakeItems, adminItems }
 }

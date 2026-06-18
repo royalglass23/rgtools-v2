@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "cost-calculator/**",
     "cost-calculator-copy/**",
+    "jobcard-export/**",
     "**/.wrangler/**",
     "**/node_modules/**",
     "**/dist/**",

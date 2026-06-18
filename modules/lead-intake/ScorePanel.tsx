@@ -5,7 +5,9 @@ import { scoreLead, type ScoringConfig } from '@/modules/lead-intake/scoring/sco
 type ScoredFields = {
   clientProfileKey: string
   budgetBand?: string
-  consentStatus?: string
+  rcStatus?: string
+  bcStatus?: string
+  buildingStage?: string
   cat4?: string
   priceSensitivityRead?: string
   decisionMakers?: string
@@ -15,6 +17,8 @@ type ScoredFields = {
 type Props = {
   input: ScoredFields
   config: ScoringConfig
+  lastUpdated?: string | null
+  followUpDate?: string | null
 }
 
 const tierStyles: Record<string, string> = {
@@ -24,18 +28,30 @@ const tierStyles: Record<string, string> = {
   D: 'bg-red-100 text-red-800',
 }
 
-export function ScorePanel({ input, config }: Props) {
+const CONSENT_CATEGORY_KEYS = new Set(['8', '9', '10'])
+const EMPTY_MARK = '—'
+
+export function ScorePanel({ input, config, lastUpdated, followUpDate }: Props) {
   const answers = {
     cat1: input.clientProfileKey || undefined,
     cat2: input.budgetBand || undefined,
-    cat3: input.consentStatus || undefined,
     cat4: input.cat4 || undefined,
     cat5: input.priceSensitivityRead || undefined,
     cat6: input.decisionMakers || undefined,
     cat7: input.distanceBand || undefined,
+    cat8: input.rcStatus || undefined,
+    cat9: input.bcStatus || undefined,
+    cat10: input.buildingStage || undefined,
   }
 
   const result = scoreLead(answers, config)
+  const sortedCategories = Object.entries(config.categories).sort(([a], [b]) => Number(a) - Number(b))
+  const regularCategories = sortedCategories.filter(([key]) => !CONSENT_CATEGORY_KEYS.has(key))
+  const consentCategories = sortedCategories.filter(([key]) => CONSENT_CATEGORY_KEYS.has(key))
+  const consentPoints = consentCategories.reduce((total, [key]) => {
+    const row = result.categoryRows.find((r) => r.category === Number(key))
+    return total + (row?.points ?? 0)
+  }, 0)
 
   return (
     <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
@@ -53,28 +69,88 @@ export function ScorePanel({ input, config }: Props) {
       )}
       {!result.flagNote && <div className="mb-4" />}
       <div className="space-y-2">
-        {Object.entries(config.categories)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([key, category]) => {
-            const row = result.categoryRows.find((r) => r.category === Number(key))
-            const points = row?.points ?? 0
-            const pct = category.max > 0 ? Math.round((points / category.max) * 100) : 0
-            return (
-              <div key={key} className="flex items-center gap-3">
-                <span className="w-44 truncate text-xs text-gray-600">{category.label}</span>
-                <span className={`w-6 text-right text-xs font-medium ${points > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {points > 0 ? points : '—'}
-                </span>
-                <div className="h-1.5 flex-1 rounded-full bg-gray-100">
-                  {points > 0 && (
-                    <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
-                  )}
-                </div>
-                <span className="w-8 text-right text-xs text-gray-400">/ {category.max}</span>
+        {regularCategories.map(([key, category]) => {
+          const row = result.categoryRows.find((r) => r.category === Number(key))
+          return <ScoreRow key={key} label={category.label} points={row?.points ?? 0} max={category.max} />
+        })}
+
+        {consentCategories.length > 0 && (
+          <div className="space-y-1.5 border-t border-gray-100 pt-2">
+            <div className="flex items-center gap-3">
+              <span className="w-44 truncate text-xs font-semibold text-gray-700">Consent readiness</span>
+              <span className={`w-6 text-right text-xs font-semibold ${consentPoints > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                {consentPoints > 0 ? consentPoints : EMPTY_MARK}
+              </span>
+              <div className="h-1.5 flex-1 rounded-full bg-gray-100">
+                {consentPoints > 0 && (
+                  <div className="h-1.5 rounded-full bg-blue-600" style={{ width: `${Math.round((consentPoints / 19) * 100)}%` }} />
+                )}
               </div>
-            )
-          })}
+              <span className="w-8 text-right text-xs text-gray-500">/ 19</span>
+            </div>
+            <div className="space-y-1 pl-3">
+              {consentCategories.map(([key, category]) => {
+                const row = result.categoryRows.find((r) => r.category === Number(key))
+                return (
+                  <ScoreRow
+                    key={key}
+                    label={category.label}
+                    points={row?.points ?? 0}
+                    max={category.max}
+                    compact
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-1 border-t border-gray-100 pt-3 text-xs text-gray-500 sm:grid-cols-2">
+        <div>
+          <span className="font-medium text-gray-600">Last update:</span>{' '}
+          <span>{formatMetaDate(lastUpdated)}</span>
+        </div>
+        <div>
+          <span className="font-medium text-gray-600">Follow-up:</span>{' '}
+          <span>{formatMetaDate(followUpDate)}</span>
+        </div>
       </div>
     </div>
   )
+}
+
+function ScoreRow({
+  label,
+  points,
+  max,
+  compact = false,
+}: {
+  label: string
+  points: number
+  max: number
+  compact?: boolean
+}) {
+  const pct = max > 0 ? Math.round((points / max) * 100) : 0
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`${compact ? 'w-40' : 'w-44'} truncate text-xs text-gray-600`}>{label}</span>
+      <span className={`w-6 text-right text-xs font-medium ${points > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+        {points > 0 ? points : EMPTY_MARK}
+      </span>
+      <div className="h-1.5 flex-1 rounded-full bg-gray-100">
+        {points > 0 && (
+          <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+        )}
+      </div>
+      <span className="w-8 text-right text-xs text-gray-400">/ {max}</span>
+    </div>
+  )
+}
+
+function formatMetaDate(value: string | null | undefined): string {
+  if (!value) return EMPTY_MARK
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString().slice(0, 10)
 }

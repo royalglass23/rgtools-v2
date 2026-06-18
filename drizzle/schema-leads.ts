@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum, uuid, text, timestamp, boolean,
-  integer, numeric, jsonb, index, uniqueIndex,
+  integer, numeric, jsonb, date, index, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { users } from './schema'
 
@@ -79,6 +79,12 @@ export const leads = pgTable('leads', {
   budgetBand: text('budget_band'),
   timeline: text('timeline'),
   consentStatus: text('consent_status'),
+  rcStatus: text('rc_status'),
+  bcStatus: text('bc_status'),
+  buildingStage: text('building_stage'),
+  followUpDate: date('follow_up_date'),
+  aiSuggestion: text('ai_suggestion'),
+  aiSuggestionAt: timestamp('ai_suggestion_at', { withTimezone: true }),
   decisionMakers: text('decision_makers'),
   priceSensitivityRead: text('price_sensitivity_read'),
   hasOtherQuotes: boolean('has_other_quotes'),
@@ -113,6 +119,17 @@ export const leadCategoryScores = pgTable('lead_category_scores', {
 }, (t) => [
   index('lead_cat_scores_lead_idx').on(t.leadId),
   uniqueIndex('lead_cat_uq').on(t.leadId, t.category),
+])
+
+export const userTablePrefs = pgTable('user_table_prefs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  tableKey: text('table_key').notNull(),
+  prefs: jsonb('prefs').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('user_table_prefs_user_table_key_uq').on(t.userId, t.tableKey),
 ])
 
 export const leadOutcomes = pgTable('lead_outcomes', {

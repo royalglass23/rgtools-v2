@@ -6,6 +6,9 @@ const config: ScoringConfig = {
   categories: {
     '1': { label: 'Customer profile', max: 20, options: { repeat_builder: 19, owner_occupier: 9 } },
     '2': { label: 'Project value', max: 20, options: { ge_50k: 19, lt_2k: 3 } },
+    '8': { label: 'Resource Consent', max: 7, options: { approved: 7, under_review: 4 } },
+    '9': { label: 'Building Consent', max: 6, options: { not_required: 6, not_applied: 1 } },
+    '10': { label: 'Building Stage', max: 6, options: { fitout_complete: 6, planning: 1 } },
   },
   bonuses: {},
   penalties: {},
@@ -17,7 +20,9 @@ const emptyInput = {
   budgetBand: '',
   cat4: '',
   timeline: '',
-  consentStatus: '',
+  rcStatus: '',
+  bcStatus: '',
+  buildingStage: '',
   decisionMakers: '',
   priceSensitivityRead: '',
 }
@@ -39,34 +44,38 @@ it('shows correct tier and score when fields are filled', () => {
   expect(screen.getByText('38')).toBeInTheDocument()
 })
 
-it('renders a row for every scoring category', () => {
+it('renders normal scoring rows and the consent readiness group', () => {
   render(<ScorePanel input={emptyInput} config={config} />)
   expect(screen.getByText('Customer profile')).toBeInTheDocument()
   expect(screen.getByText('Project value')).toBeInTheDocument()
+  expect(screen.getByText('Consent readiness')).toBeInTheDocument()
+  expect(screen.getByText('Resource Consent')).toBeInTheDocument()
+  expect(screen.getByText('Building Consent')).toBeInTheDocument()
+  expect(screen.getByText('Building Stage')).toBeInTheDocument()
 })
 
-it('shows dashes for zero-point categories', () => {
+it('shows dashes for zero-point categories and meta lines by default', () => {
   render(<ScorePanel input={emptyInput} config={config} />)
   const dashes = screen.getAllByText('—')
-  expect(dashes).toHaveLength(2)
+  expect(dashes.length).toBeGreaterThanOrEqual(5)
+  expect(screen.getByText('Last update:')).toBeInTheDocument()
+  expect(screen.getByText('Follow-up:')).toBeInTheDocument()
 })
 
-it('uses consentStatus over timeline for cat3 when both are set', () => {
-  const cat3Config: ScoringConfig = {
-    categories: {
-      '3': { label: 'Consent', max: 20, options: { approved: 19, enquiry_only: 2 } },
-    },
-    bonuses: {},
-    penalties: {},
-    tiers: { A: 75, B: 55, C: 30 },
-  }
+it('groups RC, BC, and Building Stage into a combined consent readiness score with meta lines', () => {
   render(
     <ScorePanel
-      input={{ ...emptyInput, consentStatus: 'approved' }}
-      config={cat3Config}
+      input={{ ...emptyInput, rcStatus: 'approved', bcStatus: 'not_required', buildingStage: 'fitout_complete' }}
+      config={config}
+      lastUpdated="2026-06-18"
+      followUpDate="2026-07-01"
     />,
   )
-  const nineTeens = screen.getAllByText('19')
-  expect(nineTeens).toHaveLength(2)
-  expect(nineTeens[0]).toBeInTheDocument()
+  expect(screen.getByText('Consent readiness')).toBeInTheDocument()
+  expect(screen.getAllByText('19')).toHaveLength(2)
+  expect(screen.getByText('/ 19')).toBeInTheDocument()
+  expect(screen.getByText('Last update:')).toBeInTheDocument()
+  expect(screen.getByText('2026-06-18')).toBeInTheDocument()
+  expect(screen.getByText('Follow-up:')).toBeInTheDocument()
+  expect(screen.getByText('2026-07-01')).toBeInTheDocument()
 })

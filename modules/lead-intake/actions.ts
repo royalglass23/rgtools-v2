@@ -33,6 +33,11 @@ export type LeadIntakeInput = {
   suburb?: string
   cat4?: string
   consentStatus?: string
+  rcStatus?: string
+  bcStatus?: string
+  buildingStage?: string
+  followUpDate?: string
+  lastUpdated?: string
   budgetBand?: string
   decisionMakers?: string
   priceSensitivityRead?: string
@@ -68,10 +73,15 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
       location: leads.location,
       suburb: leads.suburb,
       consentStatus: leads.consentStatus,
+      rcStatus: leads.rcStatus,
+      bcStatus: leads.bcStatus,
+      buildingStage: leads.buildingStage,
+      followUpDate: leads.followUpDate,
       budgetBand: leads.budgetBand,
       decisionMakers: leads.decisionMakers,
       priceSensitivityRead: leads.priceSensitivityRead,
       freeText: leads.freeText,
+      updatedAt: leads.updatedAt,
       clientName: clients.name,
       companyName: clients.companyName,
       phone: clients.phone,
@@ -108,7 +118,12 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
     suburb: row.suburb ?? '',
     cat4: answerByCategory[4] ?? '',
     distanceBand: answerByCategory[7] ?? '',
-    consentStatus: row.consentStatus ? answerByCategory[3] ?? row.consentStatus ?? '' : '',
+    consentStatus: '',
+    rcStatus: answerByCategory[8] ?? row.rcStatus ?? '',
+    bcStatus: answerByCategory[9] ?? row.bcStatus ?? '',
+    buildingStage: answerByCategory[10] ?? row.buildingStage ?? '',
+    followUpDate: row.followUpDate ?? '',
+    lastUpdated: row.updatedAt.toISOString(),
     budgetBand: answerByCategory[2] ?? row.budgetBand ?? '',
     decisionMakers: answerByCategory[6] ?? row.decisionMakers ?? '',
     priceSensitivityRead: answerByCategory[5] ?? row.priceSensitivityRead ?? '',
@@ -144,6 +159,7 @@ export async function submitLeadIntakeForUser(
 
   const distanceBand = await computeDistanceBand(normalized.location)
   const categoryAnswers = buildCategoryAnswers(normalized, distanceBand)
+  const followUpDate = parseFollowUpDate(normalized.followUpDate)
   const now = new Date()
   let leadId = ''
   let clientId = ''
@@ -183,7 +199,11 @@ export async function submitLeadIntakeForUser(
           suburb: normalized.suburb || null,
           timeline: normalized.timeline || null,
           budgetBand: normalized.budgetBand || null,
-          consentStatus: normalized.consentStatus || null,
+          consentStatus: null,
+          rcStatus: normalized.rcStatus || null,
+          bcStatus: normalized.bcStatus || null,
+          buildingStage: normalized.buildingStage || null,
+          followUpDate,
           decisionMakers: normalized.decisionMakers || null,
           priceSensitivityRead: normalized.priceSensitivityRead || null,
           freeText: normalized.freeText || null,
@@ -234,7 +254,11 @@ export async function submitLeadIntakeForUser(
           timeline: normalized.timeline || null,
           externalRef: normalized.externalRef || null,
           budgetBand: normalized.budgetBand || null,
-          consentStatus: normalized.consentStatus || null,
+          consentStatus: null,
+          rcStatus: normalized.rcStatus || null,
+          bcStatus: normalized.bcStatus || null,
+          buildingStage: normalized.buildingStage || null,
+          followUpDate,
           decisionMakers: normalized.decisionMakers || null,
           priceSensitivityRead: normalized.priceSensitivityRead || null,
           freeText: normalized.freeText || null,
@@ -296,6 +320,14 @@ export async function submitLeadIntakeForUser(
     flagNote: score.flagNote,
     servicem8Sync,
   }
+}
+
+function parseFollowUpDate(value: string | undefined): string | null {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  const date = new Date(`${trimmed}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString().slice(0, 10)
 }
 
 async function findMatchingClient(

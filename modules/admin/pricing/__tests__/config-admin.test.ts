@@ -19,7 +19,6 @@ describe('validatePricingConfigDraft', () => {
         stair_balustrade: undefined as never,
       },
     }
-    delete config.scenarios.stair_balustrade
 
     expect(validatePricingConfigDraft(config)).toContain(
       'Missing scenario pricing for stair_balustrade.',
