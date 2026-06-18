@@ -1,11 +1,14 @@
 'use server'
 
 import { eq } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { leads } from '@/drizzle/schema-leads'
+import { getLeadDetail } from '@/modules/leads/queries'
+import { generateSuggestion, MissingOpenAIKeyError } from '@/modules/lead-intake/ai/suggest-next-step'
 
 export async function deleteLeadAction(leadId: string) {
   const session = await auth()
@@ -26,4 +29,37 @@ export async function deleteLeadAction(leadId: string) {
   })
 
   redirect('/leads')
+}
+
+export async function generateLeadSuggestionAction(leadId: string): Promise<{ text: string } | { error: string }> {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { error: 'Sign in to generate a suggestion.' }
+  }
+
+  const lead = await getLeadDetail(leadId)
+  if (!lead) return { error: 'Lead not found.' }
+
+  try {
+    const suggestion = await generateSuggestion(lead)
+    const generatedAt = new Date()
+
+    await db
+      .update(leads)
+      .set({
+        aiSuggestion: suggestion.text,
+        aiSuggestionAt: generatedAt,
+        updatedAt: generatedAt,
+      })
+      .where(eq(leads.id, leadId))
+
+    revalidatePath(`/leads/${leadId}`)
+    return suggestion
+  } catch (error) {
+    if (error instanceof MissingOpenAIKeyError) {
+      return { error: 'AI suggestions are not configured yet. Add OPENAI_API_KEY to enable this.' }
+    }
+
+    return { error: error instanceof Error ? error.message : 'Could not generate a suggestion. Try again later.' }
+  }
 }

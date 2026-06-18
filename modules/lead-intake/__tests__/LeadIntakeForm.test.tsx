@@ -37,11 +37,13 @@ const optionLists: ActiveScoringOptionLists = {
     categories: {
       '1': { label: 'Client type', max: 20, options: { owner_occupier: 9 } },
       '2': { label: 'Budget', max: 20, options: {} },
-      '3': { label: 'Consent', max: 20, options: {} },
       '4': { label: 'Complexity', max: 15, options: {} },
       '5': { label: 'Price sensitivity', max: 15, options: {} },
       '6': { label: 'Decision makers', max: 10, options: {} },
       '7': { label: 'Distance', max: 6, options: { within_30km: 6 } },
+      '8': { label: 'Resource Consent', max: 7, options: { approved: 7 } },
+      '9': { label: 'Building Consent', max: 6, options: { not_required: 6 } },
+      '10': { label: 'Building Stage', max: 6, options: { fitout_complete: 6 } },
     },
     bonuses: {},
     penalties: {},
@@ -50,11 +52,13 @@ const optionLists: ActiveScoringOptionLists = {
   categories: {
     '1': { label: 'Client type', options: [{ key: 'owner_occupier', label: 'Owner occupier' }] },
     '2': { label: 'Budget', options: [] },
-    '3': { label: 'Consent', options: [] },
     '4': { label: 'Complexity', options: [] },
     '5': { label: 'Price sensitivity', options: [] },
     '6': { label: 'Decision makers', options: [] },
     '7': { label: 'Distance', options: [{ key: 'within_30km', label: 'Within 30 km' }] },
+    '8': { label: 'Resource Consent', options: [{ key: 'approved', label: 'Approved / granted' }] },
+    '9': { label: 'Building Consent', options: [{ key: 'not_required', label: 'Not required / N/A' }] },
+    '10': { label: 'Building Stage', options: [{ key: 'fitout_complete', label: 'Fit-out / finishing / completed' }] },
   },
 }
 
@@ -77,6 +81,46 @@ beforeEach(() => {
 })
 
 describe('LeadIntakeForm', () => {
+  it('renders RC, BC, Building Stage, and follow-up fields without the legacy consent select', () => {
+    render(<LeadIntakeForm optionLists={optionLists} />)
+
+    expect(screen.getByLabelText(/Resource Consent \(RC\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Building Consent \(BC\)/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Building Stage/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Follow-up date/)).toHaveAttribute('type', 'date')
+    expect(screen.queryByLabelText(/Consent status/)).not.toBeInTheDocument()
+  })
+
+  it('submits the new consent readiness and follow-up fields', async () => {
+    render(<LeadIntakeForm optionLists={optionLists} />)
+
+    fireEvent.change(screen.getByLabelText(/Resource Consent \(RC\)/), {
+      target: { value: 'approved' },
+    })
+    fireEvent.change(screen.getByLabelText(/Building Consent \(BC\)/), {
+      target: { value: 'not_required' },
+    })
+    fireEvent.change(screen.getByLabelText(/Building Stage/), {
+      target: { value: 'fitout_complete' },
+    })
+    fireEvent.change(screen.getByLabelText(/Follow-up date/), {
+      target: { value: '2026-07-01' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Save and score/ }))
+
+    await waitFor(() => {
+      expect(submitLeadIntakeMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rcStatus: 'approved',
+          bcStatus: 'not_required',
+          buildingStage: 'fitout_complete',
+          followUpDate: '2026-07-01',
+        }),
+      )
+    })
+  })
+
   it('resets driving distance after saving a new lead', async () => {
     render(<LeadIntakeForm optionLists={optionLists} />)
 

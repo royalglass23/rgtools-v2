@@ -11,7 +11,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session?.user?.id) redirect('/login')
 
   const accessibleModules = await getAccessibleModules(session.user.id)
-  const { primaryModules, adminItems } = buildDashboardNavigation(accessibleModules)
+  const { primaryModules, leadIntakeItems, adminItems } = buildDashboardNavigation(accessibleModules, {
+    isAdmin: session.user.role === 'admin',
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -32,8 +34,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="h-[72px] w-auto"
             />
           </Link>
-          {(primaryModules.length > 0 || adminItems.length > 0) && (
+          {(primaryModules.length > 0 || leadIntakeItems.length > 0 || adminItems.length > 0) && (
             <div className="flex items-center gap-4">
+              {leadIntakeItems.length > 0 && (
+                <DropdownMenu label="Lead Intake" items={leadIntakeItems} />
+              )}
               {primaryModules.map((mod) => (
                 <Link
                   key={mod.id}
@@ -44,34 +49,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 </Link>
               ))}
               {adminItems.length > 0 && (
-                <div className="group relative">
-                  <button
-                    type="button"
-                    className="text-sm text-slate-100/85 transition-colors hover:text-white focus:text-white focus:outline-none"
-                    aria-haspopup="menu"
-                  >
-                    Admin
-                  </button>
-                  <div
-                    className="invisible absolute left-0 top-full z-20 min-w-56 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
-                  >
-                    <div
-                      className="rounded border border-slate-200 bg-white py-2 shadow-lg"
-                      role="menu"
-                    >
-                      {adminItems.map((item) => (
-                        <Link
-                          key={item.id}
-                          href={item.href}
-                          className="block px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950"
-                          role="menuitem"
-                        >
-                          {item.name}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <DropdownMenu label="Admin" items={adminItems} />
               )}
             </div>
           )}
@@ -91,6 +69,45 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </nav>
       <main className="p-6">{children}</main>
+    </div>
+  )
+}
+
+function DropdownMenu({
+  label,
+  items,
+}: {
+  label: string
+  items: Array<{ id: string; href: string; name: string }>
+}) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        className="text-sm text-slate-100/85 transition-colors hover:text-white focus:text-white focus:outline-none"
+        aria-haspopup="menu"
+      >
+        {label}
+      </button>
+      <div
+        className="invisible absolute left-0 top-full z-20 min-w-56 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+      >
+        <div
+          className="rounded border border-slate-200 bg-white py-2 shadow-lg"
+          role="menu"
+        >
+          {items.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="block px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950"
+              role="menuitem"
+            >
+              {item.name}
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

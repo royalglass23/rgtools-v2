@@ -36,7 +36,10 @@ const initialState: LeadIntakeInput = {
   location: '',
   suburb: '',
   cat4: '',
-  consentStatus: '',
+  rcStatus: '',
+  bcStatus: '',
+  buildingStage: '',
+  followUpDate: '',
   budgetBand: '',
   decisionMakers: '',
   priceSensitivityRead: '',
@@ -81,7 +84,12 @@ export function LeadIntakeForm({
 
   return (
     <>
-      <ScorePanel input={{ ...input, distanceBand }} config={optionLists.config} />
+      <ScorePanel
+        input={{ ...input, distanceBand }}
+        config={optionLists.config}
+        lastUpdated={input.lastUpdated}
+        followUpDate={input.followUpDate}
+      />
 
       <div className="space-y-5 rounded border border-gray-200 bg-white p-5 shadow-sm">
         {result && 'error' in result && (
@@ -146,10 +154,28 @@ export function LeadIntakeForm({
             onChange={(value) => update('budgetBand', value)}
           />
           <SelectField
-            label="Consent status"
-            value={input.consentStatus ?? ''}
-            options={optionLists.categories['3']?.options ?? []}
-            onChange={(value) => update('consentStatus', value)}
+            label="Resource Consent (RC)"
+            value={input.rcStatus ?? ''}
+            options={optionLists.categories['8']?.options ?? []}
+            onChange={(value) => update('rcStatus', value)}
+          />
+          <SelectField
+            label="Building Consent (BC)"
+            value={input.bcStatus ?? ''}
+            options={optionLists.categories['9']?.options ?? []}
+            onChange={(value) => update('bcStatus', value)}
+          />
+          <SelectField
+            label="Building Stage"
+            value={input.buildingStage ?? ''}
+            options={optionLists.categories['10']?.options ?? []}
+            onChange={(value) => update('buildingStage', value)}
+          />
+          <TextField
+            label="Follow-up date"
+            type="date"
+            value={input.followUpDate ?? ''}
+            onChange={(value) => update('followUpDate', value)}
           />
           <SelectField
             label="Complexity"

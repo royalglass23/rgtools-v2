@@ -17,6 +17,7 @@ vi.mock('@/modules/lead-intake/servicem8/client', () => ({
 }))
 
 import {
+  getLeadIntakeForEdit,
   submitLeadIntakeForUser,
   type LeadIntakeInput,
 } from '../actions'
@@ -198,6 +199,64 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
       'lead.score',
       'lead.servicem8_sync',
     ])
+  }, 30000)
+
+  it('persists RC, BC, Building Stage, follow-up date, and clears legacy consent status', async () => {
+    const [actor] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, 'rgadmin'))
+      .limit(1)
+
+    expect(actor).toBeDefined()
+
+    const result = await submitLeadIntakeForUser(
+      minimumInput({
+        clientProfileKey: 'repeat_builder',
+        budgetBand: '50k_plus',
+        rcStatus: 'approved',
+        bcStatus: 'not_required',
+        buildingStage: 'fitout_complete',
+        followUpDate: '2026-07-01',
+        consentStatus: 'both_consents_approved',
+      }),
+      actor.id,
+      { syncServiceM8: false },
+    )
+    expect('success' in result).toBe(true)
+    if (!('success' in result)) throw new Error(result.error)
+
+    createdLeadIds.push(result.leadId)
+    createdClientIds.push(result.clientId)
+
+    const [lead] = await db
+      .select({
+        consentStatus: leads.consentStatus,
+        rcStatus: leads.rcStatus,
+        bcStatus: leads.bcStatus,
+        buildingStage: leads.buildingStage,
+        followUpDate: leads.followUpDate,
+      })
+      .from(leads)
+      .where(eq(leads.id, result.leadId))
+      .limit(1)
+
+    expect(lead).toEqual({
+      consentStatus: null,
+      rcStatus: 'approved',
+      bcStatus: 'not_required',
+      buildingStage: 'fitout_complete',
+      followUpDate: '2026-07-01',
+    })
+
+    const editInput = await getLeadIntakeForEdit(result.leadId)
+    expect(editInput).toMatchObject({
+      consentStatus: '',
+      rcStatus: 'approved',
+      bcStatus: 'not_required',
+      buildingStage: 'fitout_complete',
+      followUpDate: '2026-07-01',
+    })
   }, 30000)
 
   it('still saves the lead when immediate ServiceM8 sync fails', async () => {

@@ -4,7 +4,8 @@ import { auth } from '@/lib/auth'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { ServiceM8FetchButton } from '@/modules/leads/ServiceM8FetchButton'
 import { DeleteLeadButton } from '@/modules/leads/DeleteLeadButton'
-import { deleteLeadAction } from './actions'
+import { AiSuggestionButton } from '@/modules/leads/AiSuggestionButton'
+import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
 
 export default async function LeadDetailPage({
   params,
@@ -59,6 +60,11 @@ export default async function LeadDetailPage({
           <Field label="Driving Distance" value={lead.distanceBand} />
           <Field label="Project Type" value={lead.projectType ?? '-'} />
           <Field label="Source" value={lead.source} />
+          <Field label="Resource Consent" value={lead.rcStatus ?? '-'} />
+          <Field label="Building Consent" value={lead.bcStatus ?? '-'} />
+          <Field label="Building Stage" value={lead.buildingStage ?? '-'} />
+          <Field label="Follow-up date" value={formatNullableDate(lead.followUpDate)} />
+          <Field label="Last update" value={formatDateTime(lead.updatedAt)} />
           <Field label="Anything else" value={lead.freeText ?? '-'} />
         </dl>
       </Section>
@@ -96,6 +102,15 @@ export default async function LeadDetailPage({
         </dl>
       </Section>
 
+      <Section title="Suggested next step">
+        <AiSuggestionButton
+          leadId={lead.id}
+          initialSuggestion={lead.aiSuggestion}
+          initialGeneratedAt={lead.aiSuggestionAt}
+          action={generateLeadSuggestionAction}
+        />
+      </Section>
+
       <Section title="ServiceM8">
         <ServiceM8FetchButton
           leadId={lead.id}
@@ -124,6 +139,21 @@ function Field({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 break-words text-sm text-gray-950">{value}</dd>
     </div>
   )
+}
+
+function formatNullableDate(date: Date | string | null) {
+  if (!date) return '-'
+  return new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(date))
+}
+
+function formatDateTime(date: Date | string) {
+  return new Intl.DateTimeFormat('en-NZ', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(date))
 }
 
 function TierBadge({ tier }: { tier: string }) {

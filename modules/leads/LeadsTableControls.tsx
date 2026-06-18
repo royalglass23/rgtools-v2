@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import type { LeadsListFilters } from './queries'
 import { batchDeleteLeadsAction } from './actions'
+import { saveTablePrefs } from './table-prefs-actions'
+import { DEFAULT_LEADS_PREFS, type TablePrefs } from './table-prefs-shared'
 
 type LeadRow = {
   id: string
@@ -18,7 +20,45 @@ type LeadRow = {
   servicem8JobUuid: string | null
   syncStatus: string
   completeness: number | null
+  rcStatus: string | null
+  bcStatus: string | null
+  buildingStage: string | null
+  followUpDate: string | null
+  updatedAt: Date
+  aiSuggestion: string | null
 }
+
+type ColumnDef = {
+  key: string
+  label: string
+  sortKey?: string
+  className?: string
+  render: (lead: LeadRow) => React.ReactNode
+}
+
+const COLUMN_DEFS: ColumnDef[] = [
+  { key: 'date', label: 'Date', sortKey: 'createdAt', className: 'whitespace-nowrap text-gray-600', render: (lead) => formatDate(lead.createdAt) },
+  { key: 'client', label: 'Client', sortKey: 'clientName', render: (lead) => (
+    <>
+      <span className="font-medium text-gray-950">{lead.clientName}</span>
+      {lead.companyName && <span className="block text-xs text-gray-500">{lead.companyName}</span>}
+    </>
+  ) },
+  { key: 'address', label: 'Job Address', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.location ?? '-'}</span> },
+  { key: 'project', label: 'Project', className: 'text-gray-700', render: (lead) => lead.projectType ?? '-' },
+  { key: 'tier', label: 'Tier', sortKey: 'tier', render: (lead) => <TierBadge tier={lead.tier} /> },
+  { key: 'score', label: 'Score', sortKey: 'seedScore', className: 'text-gray-700', render: (lead) => lead.seedScore ?? 0 },
+  { key: 'sm8', label: 'SM8', render: (lead) => <Sm8Badge linked={Boolean(lead.servicem8JobUuid)} status={lead.syncStatus} /> },
+  { key: 'completeness', label: 'Completeness', sortKey: 'completeness', className: 'text-gray-700', render: (lead) => `${lead.completeness ?? 0}%` },
+  { key: 'rcStatus', label: 'RC', className: 'text-gray-700', render: (lead) => lead.rcStatus ?? '-' },
+  { key: 'bcStatus', label: 'BC', className: 'text-gray-700', render: (lead) => lead.bcStatus ?? '-' },
+  { key: 'buildingStage', label: 'Building Stage', className: 'text-gray-700', render: (lead) => lead.buildingStage ?? '-' },
+  { key: 'followUpDate', label: 'Follow-up date', sortKey: 'followUpDate', className: 'whitespace-nowrap text-gray-700', render: (lead) => formatNullableDate(lead.followUpDate) },
+  { key: 'updatedAt', label: 'Last update', sortKey: 'updatedAt', className: 'whitespace-nowrap text-gray-700', render: (lead) => formatDate(lead.updatedAt) },
+  { key: 'aiSuggestion', label: 'AI suggestion', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.aiSuggestion ?? '-'}</span> },
+]
+
+const columnDefByKey = new Map(COLUMN_DEFS.map((column) => [column.key, column]))
 
 export function LeadsTableControls({
   filters,
@@ -26,6 +66,7 @@ export function LeadsTableControls({
   total,
   pageCount,
   isAdmin,
+  prefs = DEFAULT_LEADS_PREFS,
   basePath = '/leads',
   paramPrefix = '',
 }: {
@@ -34,14 +75,36 @@ export function LeadsTableControls({
   total: number
   pageCount: number
   isAdmin: boolean
+  prefs?: TablePrefs
   /** Path the filter form + pagination links target. Defaults to the Leads page. */
   basePath?: string
   /** Prefix applied to query param names so multiple tables can coexist on one URL. */
   paramPrefix?: string
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [tablePrefs, setTablePrefs] = useState(prefs)
+  const [, startTransition] = useTransition()
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const allVisibleSelected = rows.length > 0 && rows.every((lead) => selectedSet.has(lead.id))
+  const visibleColumns = useMemo(
+    () => tablePrefs.columns
+      .filter((column) => column.visible)
+      .map((column) => columnDefByKey.get(column.key))
+      .filter((column): column is ColumnDef => Boolean(column)),
+    [tablePrefs.columns],
+  )
+
+  function persistPrefs(nextPrefs: TablePrefs) {
+    setTablePrefs(nextPrefs)
+    startTransition(() => {
+      void saveTablePrefs('leads', nextPrefs)
+    })
+  }
+
+  function sortBy(sortColumn: string) {
+    const sortDir = tablePrefs.sortColumn === sortColumn && tablePrefs.sortDir === 'asc' ? 'desc' : 'asc'
+    persistPrefs({ ...tablePrefs, sortColumn, sortDir })
+  }
 
   function toggleLead(leadId: string) {
     setSelectedIds((current) => (
@@ -92,10 +155,13 @@ export function LeadsTableControls({
           <LeadsTable
             rows={rows}
             isAdmin={isAdmin}
+            columns={visibleColumns}
+            prefs={tablePrefs}
             selectedSet={selectedSet}
             allVisibleSelected={allVisibleSelected}
             onToggleLead={toggleLead}
             onToggleAllVisible={toggleAllVisible}
+            onSort={sortBy}
           />
         </form>
       )}
@@ -104,10 +170,13 @@ export function LeadsTableControls({
         <LeadsTable
           rows={rows}
           isAdmin={isAdmin}
+          columns={visibleColumns}
+          prefs={tablePrefs}
           selectedSet={selectedSet}
           allVisibleSelected={allVisibleSelected}
           onToggleLead={toggleLead}
           onToggleAllVisible={toggleAllVisible}
+          onSort={sortBy}
         />
       )}
 
@@ -163,17 +232,23 @@ function Select({ name, label, value, options }: { name: string; label: string; 
 function LeadsTable({
   rows,
   isAdmin,
+  columns,
+  prefs,
   selectedSet,
   allVisibleSelected,
   onToggleLead,
   onToggleAllVisible,
+  onSort,
 }: {
   rows: LeadRow[]
   isAdmin: boolean
+  columns: ColumnDef[]
+  prefs: TablePrefs
   selectedSet: Set<string>
   allVisibleSelected: boolean
   onToggleLead: (leadId: string) => void
   onToggleAllVisible: () => void
+  onSort: (sortColumn: string) => void
 }) {
   return (
     <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
@@ -191,14 +266,11 @@ function LeadsTable({
                 />
               </th>
             )}
-            <th className="px-4 py-3">Date</th>
-            <th className="px-4 py-3">Client</th>
-            <th className="px-4 py-3">Job Address</th>
-            <th className="px-4 py-3">Project</th>
-            <th className="px-4 py-3">Tier</th>
-            <th className="px-4 py-3">Score</th>
-            <th className="px-4 py-3">SM8</th>
-            <th className="px-4 py-3">Completeness</th>
+            {columns.map((column) => (
+              <th key={column.key} className="px-4 py-3">
+                <SortableHeader column={column} prefs={prefs} onSort={onSort} />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -215,45 +287,38 @@ function LeadsTable({
                   />
                 </td>
               )}
-              <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                <Link href={`/leads/${lead.id}`} className="block">
-                  {formatDate(lead.createdAt)}
-                </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Link href={`/leads/${lead.id}`} className="block">
-                  <span className="font-medium text-gray-950">{lead.clientName}</span>
-                  {lead.companyName && <span className="block text-xs text-gray-500">{lead.companyName}</span>}
-                </Link>
-              </td>
-              <td className="max-w-xs px-4 py-3 text-gray-700">
-                <Link href={`/leads/${lead.id}`} className="block truncate">{lead.location ?? '-'}</Link>
-              </td>
-              <td className="px-4 py-3 text-gray-700">
-                <Link href={`/leads/${lead.id}`} className="block">{lead.projectType ?? '-'}</Link>
-              </td>
-              <td className="px-4 py-3">
-                <Link href={`/leads/${lead.id}`} className="block"><TierBadge tier={lead.tier} /></Link>
-              </td>
-              <td className="px-4 py-3 text-gray-700">
-                <Link href={`/leads/${lead.id}`} className="block">{lead.seedScore ?? 0}</Link>
-              </td>
-              <td className="px-4 py-3">
-                <Link href={`/leads/${lead.id}`} className="block"><Sm8Badge linked={Boolean(lead.servicem8JobUuid)} status={lead.syncStatus} /></Link>
-              </td>
-              <td className="px-4 py-3 text-gray-700">
-                <Link href={`/leads/${lead.id}`} className="block">{lead.completeness ?? 0}%</Link>
-              </td>
+              {columns.map((column) => (
+                <td key={column.key} className={`px-4 py-3 ${column.className ?? ''}`}>
+                  <Link href={`/leads/${lead.id}`} className="block">{column.render(lead)}</Link>
+                </td>
+              ))}
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-gray-500">No leads found.</td>
+              <td colSpan={columns.length + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">No leads found.</td>
             </tr>
           )}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function SortableHeader({ column, prefs, onSort }: { column: ColumnDef; prefs: TablePrefs; onSort: (sortColumn: string) => void }) {
+  if (!column.sortKey) return <span>{column.label}</span>
+
+  const active = prefs.sortColumn === column.sortKey
+  const marker = active ? (prefs.sortDir === 'asc' ? ' (asc)' : ' (desc)') : ''
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column.sortKey as string)}
+      className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900"
+    >
+      {column.label}{marker}
+    </button>
   )
 }
 
@@ -287,6 +352,10 @@ function Sm8Badge({ linked, status }: { linked: boolean; status: string }) {
   return <span className="inline-flex rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Pending</span>
 }
 
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short' }).format(date)
+function formatDate(date: Date | string) {
+  return new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short' }).format(new Date(date))
+}
+
+function formatNullableDate(date: Date | string | null) {
+  return date ? formatDate(date) : '-'
 }
