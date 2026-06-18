@@ -33,6 +33,9 @@ export type LeadIntakeInput = {
   suburb?: string
   cat4?: string
   consentStatus?: string
+  rcStatus?: string
+  bcStatus?: string
+  buildingStage?: string
   budgetBand?: string
   decisionMakers?: string
   priceSensitivityRead?: string

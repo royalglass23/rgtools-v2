@@ -6,6 +6,9 @@ export type LeadAnswers = {
   cat5?: string
   cat6?: string
   cat7?: string
+  cat8?: string
+  cat9?: string
+  cat10?: string
   bonuses?: string[]
   penalties?: string[]
 }
@@ -34,7 +37,10 @@ export type ScoringConfig = {
 }
 
 export type LeadTier = 'A' | 'B' | 'C' | 'D'
-type CategoryAnswerField = keyof Pick<LeadAnswers, 'cat1' | 'cat2' | 'cat3' | 'cat4' | 'cat5' | 'cat6' | 'cat7'>
+type CategoryAnswerField = keyof Pick<
+  LeadAnswers,
+  'cat1' | 'cat2' | 'cat3' | 'cat4' | 'cat5' | 'cat6' | 'cat7' | 'cat8' | 'cat9' | 'cat10'
+>
 
 type StrikeEffect = 'none' | 'soft_demote' | 'cap'
 
@@ -63,6 +69,9 @@ const answerFieldByCategory: Record<string, CategoryAnswerField> = {
   '5': 'cat5',
   '6': 'cat6',
   '7': 'cat7',
+  '8': 'cat8',
+  '9': 'cat9',
+  '10': 'cat10',
 }
 
 const TIER_SEVERITY: Record<LeadTier, number> = { A: 0, B: 1, C: 2, D: 3 }

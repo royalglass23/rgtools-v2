@@ -26,6 +26,9 @@ export function normalizeInput(input: LeadIntakeInput): NormalizedLeadIntakeInpu
     externalRef: input.externalRef?.trim() || '',
     cat4: input.cat4?.trim() || '',
     consentStatus: input.consentStatus?.trim() || '',
+    rcStatus: input.rcStatus?.trim() || '',
+    bcStatus: input.bcStatus?.trim() || '',
+    buildingStage: input.buildingStage?.trim() || '',
     budgetBand: input.budgetBand?.trim() || '',
     decisionMakers: input.decisionMakers?.trim() || '',
     priceSensitivityRead: input.priceSensitivityRead?.trim() || '',
@@ -48,10 +51,12 @@ export function validateScoredOptions(
   const checks = [
     ['1', input.clientProfileKey, 'Client type'],
     ['4', input.cat4, 'Distance / complexity'],
-    ['3', input.consentStatus, 'Consent status'],
     ['2', input.budgetBand, 'Budget band'],
     ['6', input.decisionMakers, 'Decision-makers'],
     ['5', input.priceSensitivityRead, 'Price-sensitivity read'],
+    ['8', input.rcStatus, 'Resource Consent'],
+    ['9', input.bcStatus, 'Building Consent'],
+    ['10', input.buildingStage, 'Building Stage'],
   ] as const
 
   for (const [category, value, label] of checks) {
@@ -67,11 +72,13 @@ export function buildCategoryAnswers(input: NormalizedLeadIntakeInput, distanceB
   return [
     { category: 1, answerKey: input.clientProfileKey },
     { category: 2, answerKey: input.budgetBand },
-    { category: 3, answerKey: input.consentStatus },
     { category: 4, answerKey: input.cat4 },
     { category: 5, answerKey: input.priceSensitivityRead },
     { category: 6, answerKey: input.decisionMakers },
     { category: 7, answerKey: distanceBand ?? undefined },
+    { category: 8, answerKey: input.rcStatus },
+    { category: 9, answerKey: input.bcStatus },
+    { category: 10, answerKey: input.buildingStage },
   ]
 }
 

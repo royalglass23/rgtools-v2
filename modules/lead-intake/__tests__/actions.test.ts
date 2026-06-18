@@ -111,16 +111,21 @@ describe('lead intake validation', () => {
         clientProfileKey: 'owner_occupier',
         budgetBand: '10k_50k',
         consentStatus: 'under_review',
+        rcStatus: 'approved',
+        bcStatus: 'not_required',
+        buildingStage: 'fitout_complete',
       }),
       phoneNormalized: '+6421333444',
     })).toEqual([
       { category: 1, answerKey: 'owner_occupier' },
       { category: 2, answerKey: '10k_50k' },
-      { category: 3, answerKey: 'under_review' },
       { category: 4, answerKey: undefined },
       { category: 5, answerKey: undefined },
       { category: 6, answerKey: undefined },
       { category: 7, answerKey: undefined },
+      { category: 8, answerKey: 'approved' },
+      { category: 9, answerKey: 'not_required' },
+      { category: 10, answerKey: 'fitout_complete' },
     ])
   })
 })

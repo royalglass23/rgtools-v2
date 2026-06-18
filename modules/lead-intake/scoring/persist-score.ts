@@ -20,6 +20,9 @@ type LeadScoreSource = {
   budgetBand: string | null
   timeline: string | null
   consentStatus: string | null
+  rcStatus: string | null
+  bcStatus: string | null
+  buildingStage: string | null
   location: string | null
   suburb: string | null
   decisionMakers: string | null
@@ -121,6 +124,9 @@ async function loadLeadScoreSource(leadId: string): Promise<LeadScoreSource> {
       budgetBand: leads.budgetBand,
       timeline: leads.timeline,
       consentStatus: leads.consentStatus,
+      rcStatus: leads.rcStatus,
+      bcStatus: leads.bcStatus,
+      buildingStage: leads.buildingStage,
       location: leads.location,
       suburb: leads.suburb,
       decisionMakers: leads.decisionMakers,
@@ -157,11 +163,13 @@ function leadSourceToAnswers(source: LeadScoreSource, config: ScoringConfig): Le
   return {
     cat1: optionKeyOrUndefined(config, '1', source.storedAnswers.cat1 ?? source.clientType),
     cat2: optionKeyOrUndefined(config, '2', source.storedAnswers.cat2 ?? source.budgetBand),
-    cat3: optionKeyOrUndefined(config, '3', source.storedAnswers.cat3 ?? source.consentStatus ?? source.timeline),
     cat4: optionKeyOrUndefined(config, '4', source.storedAnswers.cat4 ?? null),
     cat5: optionKeyOrUndefined(config, '5', source.storedAnswers.cat5 ?? source.priceSensitivityRead),
     cat6: optionKeyOrUndefined(config, '6', source.storedAnswers.cat6 ?? source.decisionMakers),
     cat7: optionKeyOrUndefined(config, '7', source.storedAnswers.cat7 ?? null),
+    cat8: optionKeyOrUndefined(config, '8', source.storedAnswers.cat8 ?? source.rcStatus),
+    cat9: optionKeyOrUndefined(config, '9', source.storedAnswers.cat9 ?? source.bcStatus),
+    cat10: optionKeyOrUndefined(config, '10', source.storedAnswers.cat10 ?? source.buildingStage),
   }
 }
 
