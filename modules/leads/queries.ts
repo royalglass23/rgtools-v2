@@ -1,22 +1,25 @@
-import { and, asc, count, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { DEFAULT_LEADS_PREFS, LEADS_SORT_COLUMNS } from './table-prefs-shared'
 
 export type LeadsListFilters = {
+  q: string
   tier: 'all' | 'A' | 'B' | 'C' | 'D'
   sm8: 'all' | 'linked' | 'pending' | 'failed'
   date: '7' | '30' | 'all'
   page: number
   size: 5 | 10 | 20 | 50 | 100
+  sortColumn: string
+  sortDir: 'asc' | 'desc'
 }
 
 export type ParseLeadsListFiltersOptions = {
   /** Prefix applied to every param name, e.g. `leads_` when the table is embedded alongside others. */
   prefix?: string
   /** Default values (admin-set) used when a param is absent from the URL. */
-  defaults?: Partial<Record<'tier' | 'sm8' | 'date' | 'size', string>>
+  defaults?: Partial<Record<'tier' | 'sm8' | 'date' | 'size' | 'sortColumn' | 'sortDir', string>>
 }
 
 export type LeadsListSort = {
@@ -29,29 +32,41 @@ export function parseLeadsListFilters(
   options: ParseLeadsListFiltersOptions = {},
 ): LeadsListFilters {
   const { prefix = '', defaults = {} } = options
-  const pick = (name: 'tier' | 'sm8' | 'date' | 'size') =>
+  const pick = (name: 'tier' | 'sm8' | 'date' | 'size' | 'sortColumn' | 'sortDir') =>
     stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
 
+  const q = stringValue(searchParams[`${prefix}q`])?.trim() ?? ''
   const tier = pick('tier')
   const sm8 = pick('sm8')
   const date = pick('date')
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
   const size = Number(pick('size') ?? '10')
+  const sortColumn = pick('sortColumn') ?? DEFAULT_LEADS_PREFS.sortColumn
+  const sortDir = pick('sortDir')
 
   return {
+    q,
     tier: tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D' ? tier : 'all',
     sm8: sm8 === 'linked' || sm8 === 'pending' || sm8 === 'failed' ? sm8 : 'all',
     date: date === '7' || date === '30' || date === 'all' ? date : '30',
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: size === 5 || size === 20 || size === 50 || size === 100 ? size : 10,
+    sortColumn: LEADS_SORT_COLUMNS.includes(sortColumn as (typeof LEADS_SORT_COLUMNS)[number])
+      ? sortColumn
+      : DEFAULT_LEADS_PREFS.sortColumn,
+    sortDir: sortDir === 'asc' ? 'asc' : 'desc',
   }
 }
 
-export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSort = DEFAULT_LEADS_PREFS) {
+export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSort = filters) {
   const where = listWhere(filters)
   const offset = (filters.page - 1) * filters.size
 
-  const [totalRow] = await db.select({ total: count() }).from(leads).where(where)
+  const [totalRow] = await db
+    .select({ total: count() })
+    .from(leads)
+    .innerJoin(clients, eq(leads.clientId, clients.id))
+    .where(where)
   const rows = await db
     .select({
       id: leads.id,
@@ -63,6 +78,7 @@ export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSor
       tier: leads.tier,
       seedScore: leads.seedScore,
       servicem8JobUuid: leads.servicem8JobUuid,
+      servicem8JobNumber: leads.servicem8JobNumber,
       syncStatus: leads.syncStatus,
       completeness: leads.completeness,
       rcStatus: leads.rcStatus,
@@ -113,6 +129,7 @@ export async function getLeadDetail(leadId: string) {
       strikeFlag: leads.strikeFlag,
       scoreReason: leads.scoreReason,
       servicem8JobUuid: leads.servicem8JobUuid,
+      servicem8JobNumber: leads.servicem8JobNumber,
       servicem8Status: leads.servicem8Status,
       rcStatus: leads.rcStatus,
       bcStatus: leads.bcStatus,
@@ -148,8 +165,8 @@ export async function getLeadDetail(leadId: string) {
 
     return {
       category,
-      label,
-      answer: selected ?? row?.answerKey ?? 'Not selected',
+      label: cleanDisplayText(label),
+      answer: cleanDisplayText(selected ?? row?.answerKey ?? 'Not selected'),
       points: row?.points ?? 0,
     }
   })
@@ -159,6 +176,16 @@ export async function getLeadDetail(leadId: string) {
     scoredFields,
     distanceBand: scoredFields.find((field) => field.category === 7)?.answer ?? 'Not selected',
   }
+}
+
+function cleanDisplayText(value: string) {
+  return value
+    .replaceAll('â€“', '-')
+    .replaceAll('â€”', '-')
+    .replaceAll('â€‘', '-')
+    .replaceAll('Ã¢â‚¬â€œ', '-')
+    .replaceAll('Ã¢â‚¬â€', '-')
+    .replaceAll('Ã¢â‚¬â€˜', '-')
 }
 
 function listWhere(filters: LeadsListFilters) {
@@ -176,8 +203,26 @@ function listWhere(filters: LeadsListFilters) {
     start.setDate(start.getDate() - Number(filters.date))
     conditions.push(gte(leads.createdAt, start))
   }
+  if (filters.q) {
+    const query = `%${escapeLike(filters.q)}%`
+    const searchCondition = or(
+      ilike(clients.name, query),
+      ilike(clients.companyName, query),
+      ilike(clients.email, query),
+      ilike(clients.phone, query),
+      ilike(leads.location, query),
+      ilike(leads.projectType, query),
+      ilike(leads.externalRef, query),
+      ilike(leads.servicem8JobNumber, query),
+    )
+    if (searchCondition) conditions.push(searchCondition)
+  }
 
   return and(...conditions) ?? sql`true`
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`)
 }
 
 function listOrderBy(sort: LeadsListSort) {

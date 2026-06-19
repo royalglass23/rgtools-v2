@@ -7,6 +7,7 @@ import type { TablePrefs } from './table-prefs-shared'
 const COLUMN_LABELS: Record<string, string> = {
   date: 'Date',
   client: 'Client',
+  jobNumber: 'Job Number',
   address: 'Job Address',
   project: 'Project',
   tier: 'Tier',
@@ -20,16 +21,6 @@ const COLUMN_LABELS: Record<string, string> = {
   updatedAt: 'Last update',
   aiSuggestion: 'AI suggestion',
 }
-
-const SORT_OPTIONS = [
-  ['createdAt', 'Date'],
-  ['clientName', 'Client'],
-  ['tier', 'Tier'],
-  ['seedScore', 'Score'],
-  ['completeness', 'Completeness'],
-  ['followUpDate', 'Follow-up date'],
-  ['updatedAt', 'Last update'],
-] as const
 
 export function LeadTableConfiguration({ prefs }: { prefs: TablePrefs }) {
   const [tablePrefs, setTablePrefs] = useState(prefs)
@@ -67,10 +58,6 @@ export function LeadTableConfiguration({ prefs }: { prefs: TablePrefs }) {
     const [column] = columns.splice(index, 1)
     columns.splice(targetIndex, 0, column)
     persistPrefs({ ...tablePrefs, columns })
-  }
-
-  function updateSort(sortColumn: string, sortDir: 'asc' | 'desc') {
-    persistPrefs({ ...tablePrefs, sortColumn, sortDir })
   }
 
   return (
@@ -115,35 +102,6 @@ export function LeadTableConfiguration({ prefs }: { prefs: TablePrefs }) {
               </div>
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className="space-y-4 rounded border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-gray-950">Default Sort</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-medium text-gray-600">Sort column</span>
-            <select
-              value={tablePrefs.sortColumn}
-              onChange={(event) => updateSort(event.currentTarget.value, tablePrefs.sortDir)}
-              className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
-            >
-              {SORT_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-gray-600">Direction</span>
-            <select
-              value={tablePrefs.sortDir}
-              onChange={(event) => updateSort(tablePrefs.sortColumn, event.currentTarget.value === 'asc' ? 'asc' : 'desc')}
-              className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
-            >
-              <option value="desc">Descending</option>
-              <option value="asc">Ascending</option>
-            </select>
-          </label>
         </div>
       </section>
 

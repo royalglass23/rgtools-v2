@@ -38,7 +38,7 @@ If you clear the address, the distance resets.
 
 ### Scored dropdowns
 
-These seven dropdowns feed into the scoring engine. Each choice adds a different number of points. See the [Scoring Guide](scoring-guide.md) for full point values.
+These seven dropdowns feed into the scoring engine. Each choice adds a different number of points. See the [Scoring Guide](../user/scoring-guide.md) for full point values.
 
 | Field | What to assess |
 |-------|---------------|
@@ -79,7 +79,7 @@ After saving, a green banner shows:
 
 - **Tier** and **score** (e.g. "Tier A · 78 points")
 - A plain-English reason summarising the scored answers
-- An amber **blocker flag** if any strike options were selected (see [Scoring Guide](scoring-guide.md#blocker-flags))
+- An amber **blocker flag** if any strike options were selected (see [Scoring Guide](../user/scoring-guide.md#blocker-flags))
 - Whether this matched an existing client or created a new one
 - ServiceM8 sync status ("sent to inbox" or "queued for retry")
 

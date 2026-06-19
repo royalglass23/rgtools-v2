@@ -30,8 +30,8 @@ Internal operations toolkit for Royal Glass — covering lead intake and scoring
 ## User docs
 
 - [Getting started](docs/user/getting-started.md) — login, dashboard, roles
-- [Lead intake form](docs/user/lead-intake.md) — field-by-field guide
-- [Leads dashboard](docs/user/leads.md) — list, filters, detail view, ServiceM8 fetch
+- [Lead intake form](docs/how-to/lead-intake.md) — field-by-field guide
+- [Leads dashboard](docs/how-to/leads.md) — list, filters, detail view, ServiceM8 fetch
 - [Scoring guide](docs/user/scoring-guide.md) — categories, tiers A–D, strike flags
 - [Quote Tracker how-to](docs/how-to/quotes.md) — create tracked quotes, share links, read engagement, troubleshooting
 - [Quote tracking privacy note](docs/dev/quote-tracking.md) — what is collected, retention, access (internal engineering note)

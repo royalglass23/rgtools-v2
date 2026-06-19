@@ -5,6 +5,7 @@ import type { TablePrefs } from '../table-prefs-shared'
 import { LeadsTableControls } from '../LeadsTableControls'
 
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }))
 
@@ -23,11 +24,14 @@ vi.mock('../table-prefs-actions', () => ({
 }))
 
 const filters: LeadsListFilters = {
+  q: '',
   tier: 'all',
   sm8: 'all',
   date: 'all',
   page: 1,
   size: 10,
+  sortColumn: 'createdAt',
+  sortDir: 'desc',
 }
 
 const prefs: TablePrefs = {
@@ -50,6 +54,7 @@ const rows = [{
   tier: 'A',
   seedScore: 92,
   servicem8JobUuid: null,
+  servicem8JobNumber: null,
   syncStatus: 'pending_sync',
   completeness: 80,
   rcStatus: 'Required',

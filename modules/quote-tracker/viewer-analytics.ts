@@ -33,13 +33,28 @@ export type DeviceSession = {
   lastSeenAt: Date
 }
 
+function fingerprintKey(event: AnalyticsEvent): string | null {
+  if (event.ip && event.deviceType) return `${event.ip}::${event.deviceType}`
+  return null
+}
+
 export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] {
   const ordered = [...events].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
   const sessions = new Map<string, DeviceSession>()
   const perPageMs = new Map<string, Map<number, number>>()
+  const sessionKeys = new Map<string, string>()
+  const fingerprintKeys = new Map<string, string>()
 
   for (const event of ordered) {
-    const existing = sessions.get(event.sessionId)
+    const fingerprint = fingerprintKey(event)
+    const key = sessionKeys.get(event.sessionId)
+      ?? (fingerprint ? fingerprintKeys.get(fingerprint) : undefined)
+      ?? event.sessionId
+
+    sessionKeys.set(event.sessionId, key)
+    if (fingerprint) fingerprintKeys.set(fingerprint, key)
+
+    const existing = sessions.get(key)
     const session = existing ?? {
       sessionId: event.sessionId,
       ip: event.ip,
@@ -63,23 +78,23 @@ export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] 
     session.geoCountry ??= event.geoCountry
     session.deviceType ??= event.deviceType
     session.opens += event.eventType === 'open' ? 1 : 0
-    session.totalTimeMs += event.durationMs ?? 0
+    session.totalTimeMs += event.eventType === 'close' ? event.durationMs ?? 0 : 0
     session.maxScrollDepth = Math.max(session.maxScrollDepth, event.scrollDepth ?? 0)
     session.hasCta = session.hasCta || event.eventType === 'cta'
     session.firstSeenAt = session.firstSeenAt < event.createdAt ? session.firstSeenAt : event.createdAt
     session.lastSeenAt = session.lastSeenAt > event.createdAt ? session.lastSeenAt : event.createdAt
 
     if (event.eventType === 'page_view' && event.pageNumber != null) {
-      const pages = perPageMs.get(event.sessionId) ?? new Map<number, number>()
+      const pages = perPageMs.get(key) ?? new Map<number, number>()
       pages.set(event.pageNumber, (pages.get(event.pageNumber) ?? 0) + (event.durationMs ?? 0))
-      perPageMs.set(event.sessionId, pages)
+      perPageMs.set(key, pages)
     }
 
-    sessions.set(event.sessionId, session)
+    sessions.set(key, session)
   }
 
-  for (const [sessionId, pages] of perPageMs) {
-    const session = sessions.get(sessionId)
+  for (const [key, pages] of perPageMs) {
+    const session = sessions.get(key)
     if (!session) continue
     session.perPage = Array.from(pages.entries())
       .map(([pageNumber, activeMs]) => ({ pageNumber, activeMs }))

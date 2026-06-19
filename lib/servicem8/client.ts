@@ -20,6 +20,11 @@ export type ServiceM8FetchRequest = (
   init?: RequestInit,
 ) => Promise<ServiceM8JsonResponse>
 
+export type LeadServiceM8History = {
+  notes: Array<{ date: string | null; text: string }>
+  emails: Array<{ date: string | null; subject: string | null; body: string }>
+}
+
 export function getServiceM8ApiKey(): string {
   const apiKey = process.env.SERVICEM8_API_KEY?.trim()
   if (!apiKey) throw new Error('SERVICEM8_API_KEY is not configured')
@@ -113,6 +118,322 @@ type ServiceM8JobRecord = {
   job_address?: string | null
   company_uuid?: string | null
   edit_date?: string | null
+}
+
+type ServiceM8JobContactRecord = {
+  name?: string | null
+  first?: string | null
+  last?: string | null
+  phone?: string | null
+  mobile?: string | null
+  email?: string | null
+  type?: string | null
+  active?: number | string | null
+}
+
+type ServiceM8NoteRecord = {
+  note?: string | null
+  text?: string | null
+  body?: string | null
+  message?: string | null
+  date?: string | null
+  create_date?: string | null
+  edit_date?: string | null
+  timestamp?: string | null
+}
+
+type ServiceM8EmailRecord = {
+  subject?: string | null
+  body?: string | null
+  message?: string | null
+  message_text?: string | null
+  message_html?: string | null
+  text?: string | null
+  html?: string | null
+  date?: string | null
+  create_date?: string | null
+  edit_date?: string | null
+  sent_date?: string | null
+  timestamp?: string | null
+}
+
+const NOTE_LIMIT = 5
+const EMAIL_LIMIT = 3
+const NOTE_CHAR_LIMIT = 300
+const EMAIL_BODY_CHAR_LIMIT = 800
+const HISTORY_CHAR_LIMIT = 3000
+
+export type ServiceM8JobContact = {
+  name: string | null
+  phone: string | null
+  mobile: string | null
+  email: string | null
+}
+
+type ServiceM8CompanyContactRecord = ServiceM8JobContactRecord & {
+  company_uuid?: string | null
+}
+
+type ServiceM8CompanyRecord = {
+  name?: string | null
+  phone?: string | null
+  mobile?: string | null
+  email?: string | null
+}
+
+export async function getJobContact(
+  jobUuid: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<ServiceM8JobContact | null> {
+  const res = await request(`/jobcontact.json${odataFilter(`job_uuid eq '${jobUuid}'`)}`)
+  if (!res.ok) return null
+  const contacts = await res.json()
+  if (!Array.isArray(contacts)) return null
+  return mergeContacts(contacts as ServiceM8JobContactRecord[])
+}
+
+export async function getCompanyContact(
+  companyUuid: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<ServiceM8JobContact | null> {
+  const contactRes = await request(`/companycontact.json${odataFilter(`company_uuid eq '${companyUuid}'`)}`)
+  if (contactRes.ok) {
+    const contacts = await contactRes.json()
+    if (Array.isArray(contacts)) {
+      const contact = mergeContacts(contacts as ServiceM8CompanyContactRecord[])
+      if (contact) return contact
+    }
+  }
+
+  const companyRes = await request(`/company/${companyUuid}.json`)
+  if (!companyRes.ok) return null
+  const company = (await companyRes.json()) as ServiceM8CompanyRecord
+  const contact = toContact(company)
+  return contact.phone || contact.mobile || contact.email ? contact : null
+}
+
+export async function getJobNotesAndEmails(
+  jobUuid: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<LeadServiceM8History> {
+  const [noteRows, emailRows] = await Promise.all([
+    readServiceM8Array<ServiceM8NoteRecord>(
+      request,
+      `/note.json${odataFilter(`related_object_uuid eq '${jobUuid}'`)}`,
+    ),
+    readServiceM8Array<ServiceM8EmailRecord>(
+      request,
+      `/email.json${odataFilter(`related_object_uuid eq '${jobUuid}'`)}`,
+    ),
+  ])
+
+  return capSerializedHistory({
+    notes: newestFirst(noteRows)
+      .map((note) => ({
+        date: serviceM8Date(note),
+        text: truncate(cleanText(note.note ?? note.text ?? note.body ?? note.message ?? ''), NOTE_CHAR_LIMIT),
+      }))
+      .filter((note) => note.text.length > 0)
+      .slice(0, NOTE_LIMIT),
+    emails: newestFirst(emailRows)
+      .map((email) => ({
+        date: serviceM8Date(email),
+        subject: cleanText(email.subject ?? '') || null,
+        body: truncate(
+          stripEmailNoise(
+            email.message_text ??
+            email.body ??
+            email.message ??
+            email.text ??
+            email.message_html ??
+            email.html ??
+            '',
+          ),
+          EMAIL_BODY_CHAR_LIMIT,
+        ),
+      }))
+      .filter((email) => email.subject || email.body.length > 0)
+      .slice(0, EMAIL_LIMIT),
+  })
+}
+
+export function stripEmailNoise(raw: string): string {
+  let text = looksLikeHtml(raw) ? htmlToText(raw) : raw
+  text = text.replace(/\r\n?/g, '\n')
+
+  const lines = text.split('\n')
+  const kept: string[] = []
+  for (const line of lines) {
+    if (/^\s*>/.test(line)) continue
+    if (/^\s*On .+ wrote:\s*$/i.test(line)) break
+    if (/^\s*-{2,}\s*Original Message\s*-{2,}\s*$/i.test(line)) break
+    kept.push(line)
+  }
+
+  const signatureIndex = kept.findIndex((line) =>
+    /^\s*--\s*$/.test(line) ||
+    /^\s*(kind regards|regards|thanks|cheers)[,!.]?\s*$/i.test(line) ||
+    /^\s*sent from my\b/i.test(line),
+  )
+  const withoutSignature = signatureIndex >= 0 ? kept.slice(0, signatureIndex) : kept
+
+  return collapseWhitespace(withoutSignature.join('\n'))
+}
+
+async function readServiceM8Array<T>(
+  request: ServiceM8FetchRequest,
+  path: string,
+): Promise<T[]> {
+  try {
+    const res = await request(path)
+    if (!res.ok) return []
+    const rows = await res.json()
+    return Array.isArray(rows) ? rows as T[] : []
+  } catch {
+    return []
+  }
+}
+
+function newestFirst<T extends { date?: string | null; create_date?: string | null; edit_date?: string | null; sent_date?: string | null; timestamp?: string | null }>(
+  rows: T[],
+): T[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const aTime = sortableDate(a.row)
+      const bTime = sortableDate(b.row)
+      if (aTime != null && bTime != null && aTime !== bTime) return bTime - aTime
+      return a.index - b.index
+    })
+    .map(({ row }) => row)
+}
+
+function serviceM8Date(row: {
+  date?: string | null
+  create_date?: string | null
+  edit_date?: string | null
+  sent_date?: string | null
+  timestamp?: string | null
+}): string | null {
+  return row.sent_date ?? row.date ?? row.edit_date ?? row.create_date ?? row.timestamp ?? null
+}
+
+function sortableDate(row: Parameters<typeof serviceM8Date>[0]): number | null {
+  const value = serviceM8Date(row)
+  if (!value) return null
+  const time = Date.parse(value)
+  return Number.isNaN(time) ? null : time
+}
+
+function capSerializedHistory(history: LeadServiceM8History): LeadServiceM8History {
+  const next: LeadServiceM8History = {
+    notes: [...history.notes],
+    emails: [...history.emails],
+  }
+
+  while (JSON.stringify(next).length > HISTORY_CHAR_LIMIT && (next.notes.length || next.emails.length)) {
+    const oldestNote = next.notes.at(-1)
+    const oldestEmail = next.emails.at(-1)
+    if (!oldestNote) {
+      next.emails.pop()
+    } else if (!oldestEmail) {
+      next.notes.pop()
+    } else if (olderOrSame(oldestNote.date, oldestEmail.date)) {
+      next.notes.pop()
+    } else {
+      next.emails.pop()
+    }
+  }
+
+  return next
+}
+
+function olderOrSame(left: string | null, right: string | null): boolean {
+  const leftTime = left ? Date.parse(left) : Number.NEGATIVE_INFINITY
+  const rightTime = right ? Date.parse(right) : Number.NEGATIVE_INFINITY
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) return true
+  return leftTime <= rightTime
+}
+
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`
+}
+
+function cleanText(value: string): string {
+  return collapseWhitespace(looksLikeHtml(value) ? htmlToText(value) : value)
+}
+
+function looksLikeHtml(value: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(value)
+}
+
+function htmlToText(value: string): string {
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function contactScore(contact: ServiceM8JobContactRecord): number {
+  return Number(isEmail(contact.email)) + Number(isPhone(contact.phone)) + Number(isPhone(contact.mobile))
+}
+
+function toContact(contact: ServiceM8JobContactRecord | ServiceM8CompanyRecord): ServiceM8JobContact {
+  const name = contact.name ?? ('first' in contact || 'last' in contact
+    ? [contact.first, contact.last].filter(Boolean).join(' ')
+    : null)
+
+  return {
+    name: name?.trim() || null,
+    phone: isPhone(contact.phone) ? contact.phone.trim() : null,
+    mobile: isPhone(contact.mobile) ? contact.mobile.trim() : null,
+    email: isEmail(contact.email) ? contact.email.trim() : null,
+  }
+}
+
+function mergeContacts(contacts: ServiceM8JobContactRecord[]): ServiceM8JobContact | null {
+  const activeContacts = contacts
+    .filter((row) => String(row.active ?? '1') !== '0')
+    .sort((a, b) => contactPriority(b) - contactPriority(a))
+  if (activeContacts.length === 0) return null
+
+  const merged: ServiceM8JobContact = { name: null, phone: null, mobile: null, email: null }
+  for (const contact of activeContacts) {
+    const normalized = toContact(contact)
+    merged.name ??= normalized.name
+    merged.email ??= normalized.email
+    merged.phone ??= normalized.phone
+    merged.mobile ??= normalized.mobile
+  }
+
+  return merged.name || merged.phone || merged.mobile || merged.email ? merged : null
+}
+
+function contactPriority(contact: ServiceM8JobContactRecord): number {
+  const typeBonus = String(contact.type ?? '').toUpperCase() === 'JOB' ? 10 : 0
+  return typeBonus + contactScore(contact)
+}
+
+function isEmail(value: string | null | undefined): value is string {
+  return Boolean(value?.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()))
+}
+
+function isPhone(value: string | null | undefined): value is string {
+  const trimmed = value?.trim() ?? ''
+  return !/^https?:\/\//i.test(trimmed) && /\d{5,}/.test(trimmed.replace(/\D/g, ''))
 }
 
 /** Fetch the metadata we store on a tracked quote, resolving the client name. */

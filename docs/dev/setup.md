@@ -37,6 +37,13 @@ Copy `.env.example` to `.env.local` and fill in all values.
 | `SERVICEM8_API_KEY` | Yes | ServiceM8 API key — used by the "Fetch from ServiceM8" button to search jobs and update the Leads Quality custom field |
 | `SERVICEM8_LEAD_QUALITY_FIELD` | Yes | UUID of the ServiceM8 custom field to write the lead tier into (e.g. "Leads Quality A") — find it in ServiceM8 → Settings → Custom Fields |
 
+> **ServiceM8 MCP server:** the official OAuth MCP server (`go.servicem8.com/mcp`)
+> is wired in via [`.mcp.json`](../../.mcp.json) for ad-hoc job/client lookups in
+> Claude Code — no API key needed (OAuth). See
+> [servicem8-mcp.md](./servicem8-mcp.md) for setup and its (narrow) tool list, and
+> [servicem8-sync-architecture.md](./servicem8-sync-architecture.md) for the REST→DB sync that the
+> roadmap features are built on.
+
 Calculator submit and customer estimate email:
 
 | Variable | Required | Description |

@@ -146,10 +146,15 @@ export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadInta
 export async function submitLeadIntakeForUser(
   input: LeadIntakeInput,
   actorId: string | null,
-  { syncServiceM8 = true }: { syncServiceM8?: boolean } = {},
+  {
+    syncServiceM8 = true,
+    allowMissingContact = false,
+  }: { syncServiceM8?: boolean; allowMissingContact?: boolean } = {},
 ): Promise<LeadIntakeResult> {
   const normalized = normalizeInput(input)
-  const validationError = validateMinimum(normalized)
+  const validationError = allowMissingContact
+    ? validateMinimumWithoutContact(normalized)
+    : validateMinimum(normalized)
   if (validationError) return { error: validationError }
   if (normalized.leadId && !normalized.editReason) return { error: 'Reason for edit is required.' }
 
@@ -320,6 +325,13 @@ export async function submitLeadIntakeForUser(
     flagNote: score.flagNote,
     servicem8Sync,
   }
+}
+
+function validateMinimumWithoutContact(input: ReturnType<typeof normalizeInput>): string | null {
+  if (!input.clientName) return 'Client name is required.'
+  if (!input.projectType) return 'Project type is required.'
+  if (!input.location) return 'Location / suburb is required.'
+  return null
 }
 
 function parseFollowUpDate(value: string | undefined): string | null {

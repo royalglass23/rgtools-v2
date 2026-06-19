@@ -25,10 +25,19 @@ function ev(partial: Partial<AnalyticsEvent>): AnalyticsEvent {
 }
 
 describe('rollupDeviceSessions', () => {
-  it('groups by sessionId, not IP — two sessions on one IP stay separate', () => {
+  it('rolls repeat opens from the same IP and device into one viewer row', () => {
     const result = rollupDeviceSessions([
-      ev({ sessionId: 'a', eventType: 'open' }),
-      ev({ sessionId: 'b', eventType: 'open' }),
+      ev({ sessionId: 'a', ip: '203.0.113.7', deviceType: 'desktop', eventType: 'open' }),
+      ev({ sessionId: 'b', ip: '203.0.113.7', deviceType: 'desktop', eventType: 'open' }),
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].opens).toBe(2)
+  })
+
+  it('keeps different devices on the same IP as separate viewer rows', () => {
+    const result = rollupDeviceSessions([
+      ev({ sessionId: 'a', ip: '203.0.113.7', deviceType: 'desktop', eventType: 'open' }),
+      ev({ sessionId: 'b', ip: '203.0.113.7', deviceType: 'mobile', eventType: 'open' }),
     ])
     expect(result).toHaveLength(2)
   })
@@ -65,6 +74,15 @@ describe('rollupDeviceSessions', () => {
     ])
     expect(result[0].perPage).toEqual([{ pageNumber: 1, activeMs: 3000 }])
   })
+
+  it('uses close duration only for total time to avoid double-counting page timings', () => {
+    const result = rollupDeviceSessions([
+      ev({ sessionId: 'a', eventType: 'page_view', pageNumber: 1, durationMs: 3000 }),
+      ev({ sessionId: 'a', eventType: 'page_view', pageNumber: 2, durationMs: 7000 }),
+      ev({ sessionId: 'a', eventType: 'close', pageNumber: null, durationMs: 10000 }),
+    ])
+    expect(result[0].totalTimeMs).toBe(10000)
+  })
 })
 
 describe('rollupGatedEmails', () => {
@@ -77,8 +95,8 @@ describe('rollupGatedEmails', () => {
   it('groups sessions by email and lists their devices', () => {
     const result = rollupGatedEmails(
       [
-        ev({ sessionId: 'd1', eventType: 'open' }),
-        ev({ sessionId: 'd2', eventType: 'open' }),
+        ev({ sessionId: 'd1', eventType: 'open', deviceType: 'desktop' }),
+        ev({ sessionId: 'd2', eventType: 'open', deviceType: 'mobile' }),
         ev({ sessionId: 'd3', eventType: 'open' }),
       ],
       links,
@@ -91,7 +109,10 @@ describe('rollupGatedEmails', () => {
 
   it('flags forwarding when an email opened from more than one device', () => {
     const result = rollupGatedEmails(
-      [ev({ sessionId: 'd1', eventType: 'open' }), ev({ sessionId: 'd2', eventType: 'open' })],
+      [
+        ev({ sessionId: 'd1', eventType: 'open', deviceType: 'desktop' }),
+        ev({ sessionId: 'd2', eventType: 'open', deviceType: 'mobile' }),
+      ],
       links,
     )
     expect(result.find((r) => r.email === 'a@x.com')!.forwardingSuspected).toBe(true)

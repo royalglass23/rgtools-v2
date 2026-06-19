@@ -10,15 +10,18 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const filters = parseLeadsListFilters(await searchParams)
+  const params = await searchParams
   const session = await auth()
   const prefs = session?.user?.id
     ? await loadTablePrefs(session.user.id, 'leads')
     : DEFAULT_LEADS_PREFS
-  const { rows, total, pageCount } = await getLeadsList(filters, {
-    sortColumn: prefs.sortColumn,
-    sortDir: prefs.sortDir,
+  const filters = parseLeadsListFilters(params, {
+    defaults: {
+      sortColumn: prefs.sortColumn,
+      sortDir: prefs.sortDir,
+    },
   })
+  const { rows, total, pageCount } = await getLeadsList(filters)
 
   return (
     <div className="space-y-5">

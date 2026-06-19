@@ -34,8 +34,28 @@ describe('validatePayload', () => {
     expect(validatePayload({ token: 'uuid', event: 'page_view', session: 'uuid', pageNumber: 3 })).toBe(true)
   })
 
+  it('accepts page view timing payloads', () => {
+    expect(validatePayload({
+      token: 'uuid',
+      event: 'page_view',
+      session: 'uuid',
+      pageNumber: 3,
+      duration: 12000,
+    })).toBe(true)
+  })
+
   it('rejects invalid page numbers', () => {
     expect(validatePayload({ token: 'uuid', event: 'page_view', session: 'uuid', pageNumber: 0 })).toBe(false)
+  })
+
+  it('rejects negative duration values', () => {
+    expect(validatePayload({
+      token: 'uuid',
+      event: 'page_view',
+      session: 'uuid',
+      pageNumber: 3,
+      duration: -1,
+    })).toBe(false)
   })
 
   it('accepts download and cta payloads', () => {
