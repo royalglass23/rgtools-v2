@@ -9,6 +9,7 @@ export const LEADS_TABLE_KEY = 'leads'
 export const LEADS_COLUMN_KEYS = [
   'date',
   'client',
+  'jobNumber',
   'address',
   'project',
   'tier',

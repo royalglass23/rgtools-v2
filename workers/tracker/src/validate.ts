@@ -15,6 +15,10 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
 
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
 export function validatePayload(body: unknown): body is BeaconPayload {
   if (!body || typeof body !== 'object') return false
   const b = body as Record<string, unknown>
@@ -27,6 +31,7 @@ export function validatePayload(body: unknown): body is BeaconPayload {
   if (!baseValid) return false
   if (b.event === 'page_view' && !isPositiveInteger(b.pageNumber)) return false
   if (b.pageNumber != null && !isPositiveInteger(b.pageNumber)) return false
+  if (b.duration != null && !isNonNegativeNumber(b.duration)) return false
   if (b.activeDurationMs != null && (typeof b.activeDurationMs !== 'number' || b.activeDurationMs < 0)) return false
   if (b.ctaType != null && b.ctaType !== 'accept' && b.ctaType !== 'contact') return false
 

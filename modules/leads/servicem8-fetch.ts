@@ -13,6 +13,7 @@ type ServiceM8Job = {
   uuid?: string
   job_description?: string
   status?: string
+  generated_job_id?: string | null
 }
 
 type ServiceM8InboxMessage = {
@@ -58,8 +59,11 @@ export async function fetchLeadFromServiceM8(
     return { ok: false, reason: 'error', message: 'Lead not found' }
   }
 
-  const reference = `RGTools Lead ${leadId}`
-  const matchingJob = await findMatchingJob(request, reference, lead.createdAt)
+  // Already-linked leads (e.g. imported) have no "RGTools Lead" tag in ServiceM8 descriptions,
+  // so skip the description search and refresh directly by the known UUID.
+  const matchingJob = lead.servicem8JobUuid
+    ? await fetchJobByUuid(request, lead.servicem8JobUuid)
+    : await findMatchingJob(request, `RGTools Lead ${leadId}`, lead.createdAt)
 
   if (!matchingJob?.uuid) {
     return {
@@ -88,6 +92,7 @@ export async function fetchLeadFromServiceM8(
     .update(leads)
     .set({
       servicem8JobUuid: matchingJob.uuid,
+      servicem8JobNumber: matchingJob.generated_job_id ?? null,
       servicem8Status: jobStatus,
       syncStatus: 'synced',
       syncError: null,
@@ -116,6 +121,17 @@ export async function fetchLeadFromServiceM8(
     customFieldUpdated,
     customFieldError,
   }
+}
+
+async function fetchJobByUuid(
+  request: ServiceM8FetchRequest,
+  jobUuid: string,
+): Promise<ServiceM8Job | undefined> {
+  const response = await request(`/job/${jobUuid}.json`)
+  if (!response.ok) return undefined
+  const job = await response.json()
+  if (!job || typeof job !== 'object') return undefined
+  return job as ServiceM8Job
 }
 
 async function findMatchingJob(

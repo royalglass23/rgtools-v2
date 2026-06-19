@@ -71,6 +71,7 @@ export const leads = pgTable('leads', {
   externalRef: text('external_ref'),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),
   servicem8JobUuid: text('servicem8_job_uuid'),
+  servicem8JobNumber: text('servicem8_job_number'),
   servicem8Status: text('servicem8_status'),
   syncError: text('sync_error'),
   projectType: text('project_type'),
@@ -105,6 +106,7 @@ export const leads = pgTable('leads', {
   index('leads_tier_idx').on(t.tier),
   index('leads_sync_status_idx').on(t.syncStatus),
   index('leads_servicem8_idx').on(t.servicem8JobUuid),
+  index('leads_servicem8_job_number_idx').on(t.servicem8JobNumber),
   uniqueIndex('leads_external_ref_uq').on(t.externalRef),
 ])
 

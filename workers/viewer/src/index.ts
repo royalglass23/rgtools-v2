@@ -432,7 +432,6 @@ function viewerHtml(
     }
     var SESSION_ID = localStorage.getItem('rg_sid');
 
-    var perPageActiveMs = {};   // pageNumber -> accumulated active ms
     var trackedPage = null;     // page currently being timed
     var pageStartedAt = null;   // when the current active page segment began
 
@@ -469,17 +468,33 @@ function viewerHtml(
       } else if (!activeNow && activeStartedAt !== null) {
         activeDurationMs += Date.now() - activeStartedAt;
         activeStartedAt = null;
+        sendPageTiming(flushPageTimer());
+        return;
       }
-      syncPageTimer();
+      if (activeNow && trackedPage !== null && pageStartedAt === null) pageStartedAt = Date.now();
+    }
+
+    function flushPageTimer(restartCurrent) {
+      var segment = null;
+      if (trackedPage !== null && pageStartedAt !== null) {
+        var duration = Date.now() - pageStartedAt;
+        if (duration > 0) segment = { pageNumber: trackedPage, duration: duration };
+      }
+      pageStartedAt = null;
+      var activeNow = document.visibilityState === 'visible' && document.hasFocus();
+      if (restartCurrent && activeNow && trackedPage !== null) pageStartedAt = Date.now();
+      return segment;
+    }
+
+    function sendPageTiming(segment, immediate) {
+      if (!segment || !isEnabled('track.page_completion')) return;
+      beacon({ event: 'page_view', pageNumber: segment.pageNumber, duration: segment.duration }, immediate !== false);
     }
 
     function syncPageTimer(nextPage) {
       // Bank the in-progress active segment for the page we were on, then (re)start
       // timing the current page only while the tab is actually active.
-      if (trackedPage !== null && pageStartedAt !== null) {
-        perPageActiveMs[trackedPage] = (perPageActiveMs[trackedPage] || 0) + (Date.now() - pageStartedAt);
-      }
-      pageStartedAt = null;
+      sendPageTiming(flushPageTimer());
       if (nextPage !== undefined && nextPage !== null) trackedPage = nextPage;
       var activeNow = document.visibilityState === 'visible' && document.hasFocus();
       if (activeNow && trackedPage !== null) pageStartedAt = Date.now();
@@ -647,22 +662,16 @@ function viewerHtml(
     document.addEventListener('visibilitychange', updateActiveTime);
     window.addEventListener('focus', updateActiveTime);
     window.addEventListener('blur', updateActiveTime);
+    setInterval(function () {
+      if (!initialized || closed) return;
+      sendPageTiming(flushPageTimer(true));
+    }, 10000);
     window.addEventListener('pagehide', function () {
       if (!initialized) return;
       if (closed) return;
       closed = true;
       // Bank the final active segment for the current page, then report per-page time.
-      syncPageTimer();
-      if (trackedPage !== null && pageStartedAt !== null) {
-        perPageActiveMs[trackedPage] = (perPageActiveMs[trackedPage] || 0) + (Date.now() - pageStartedAt);
-        pageStartedAt = null;
-      }
-      if (isEnabled('track.page_completion')) {
-        for (var pageKey in perPageActiveMs) {
-          if (!Object.prototype.hasOwnProperty.call(perPageActiveMs, pageKey)) continue;
-          beacon({ event: 'page_view', pageNumber: Number(pageKey), duration: perPageActiveMs[pageKey] }, false);
-        }
-      }
+      sendPageTiming(flushPageTimer(), false);
       beacon({
         event: 'close',
         duration: Date.now() - openedAt,

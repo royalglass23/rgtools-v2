@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const orderByCalls = vi.hoisted(() => [] as unknown[][])
+const whereCalls = vi.hoisted(() => [] as unknown[])
 
 vi.mock('drizzle-orm', () => ({
   and: vi.fn((...conditions: unknown[]) => ({ type: 'and', conditions })),
@@ -11,8 +12,10 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn((column: { name?: string }) => ({ direction: 'desc', column: column.name })),
   eq: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'eq', column: column.name, value })),
   gte: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'gte', column: column.name, value })),
+  ilike: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'ilike', column: column.name, value })),
   isNotNull: vi.fn((column: { name?: string }) => ({ type: 'isNotNull', column: column.name })),
   isNull: vi.fn((column: { name?: string }) => ({ type: 'isNull', column: column.name })),
+  or: vi.fn((...conditions: unknown[]) => ({ type: 'or', conditions })),
   sql: vi.fn(() => ({ type: 'sql' })),
 }))
 
@@ -43,7 +46,9 @@ vi.mock('@/lib/db', () => ({
       if ('total' in shape) {
         return {
           from: vi.fn(() => ({
-            where: vi.fn(async () => [{ total: 0 }]),
+            innerJoin: vi.fn(() => ({
+              where: vi.fn(async () => [{ total: 0 }]),
+            })),
           })),
         }
       }
@@ -61,6 +66,19 @@ vi.mock('@/lib/db', () => ({
                 }
               }),
             })),
+            where: vi.fn((condition: unknown) => {
+              whereCalls.push(condition)
+              return {
+                orderBy: vi.fn((...orders: unknown[]) => {
+                  orderByCalls.push(orders)
+                  return {
+                    limit: vi.fn(() => ({
+                      offset: vi.fn(async () => []),
+                    })),
+                  }
+                }),
+              }
+            }),
           })),
         })),
       }
@@ -71,16 +89,20 @@ vi.mock('@/lib/db', () => ({
 import { getLeadsList, type LeadsListFilters } from '../queries'
 
 const filters: LeadsListFilters = {
+  q: '',
   tier: 'all',
   sm8: 'all',
   date: 'all',
   page: 1,
   size: 10,
+  sortColumn: 'createdAt',
+  sortDir: 'desc',
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   orderByCalls.length = 0
+  whereCalls.length = 0
 })
 
 describe('getLeadsList sorting', () => {
@@ -99,5 +121,30 @@ describe('getLeadsList sorting', () => {
     expect(orderByCalls[0]).toEqual([
       { direction: 'desc', column: 'created_at' },
     ])
+  })
+
+  it('uses URL sort values when no explicit sort override is provided', async () => {
+    await getLeadsList({ ...filters, sortColumn: 'seedScore', sortDir: 'asc' })
+
+    expect(orderByCalls[0]).toEqual([
+      { direction: 'asc', column: 'seed_score' },
+      { direction: 'desc', column: 'created_at' },
+    ])
+  })
+
+  it('searches by ServiceM8 job number', async () => {
+    await getLeadsList({ ...filters, q: 'R260210' })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'or',
+          conditions: expect.arrayContaining([
+            { type: 'ilike', column: 'servicem8_job_number', value: '%R260210%' },
+          ]),
+        }),
+      ]),
+    }))
   })
 })

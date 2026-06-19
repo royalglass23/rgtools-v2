@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import type { LeadsListFilters } from './queries'
 import { batchDeleteLeadsAction } from './actions'
@@ -18,6 +18,7 @@ type LeadRow = {
   tier: string | null
   seedScore: number | null
   servicem8JobUuid: string | null
+  servicem8JobNumber: string | null
   syncStatus: string
   completeness: number | null
   rcStatus: string | null
@@ -44,6 +45,7 @@ const COLUMN_DEFS: ColumnDef[] = [
       {lead.companyName && <span className="block text-xs text-gray-500">{lead.companyName}</span>}
     </>
   ) },
+  { key: 'jobNumber', label: 'Job Number', className: 'whitespace-nowrap text-gray-700', render: (lead) => lead.servicem8JobNumber ?? '-' },
   { key: 'address', label: 'Job Address', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.location ?? '-'}</span> },
   { key: 'project', label: 'Project', className: 'text-gray-700', render: (lead) => lead.projectType ?? '-' },
   { key: 'tier', label: 'Tier', sortKey: 'tier', render: (lead) => <TierBadge tier={lead.tier} /> },
@@ -59,6 +61,16 @@ const COLUMN_DEFS: ColumnDef[] = [
 ]
 
 const columnDefByKey = new Map(COLUMN_DEFS.map((column) => [column.key, column]))
+
+const SORT_OPTIONS: Array<[string, string]> = [
+  ['createdAt', 'Date created'],
+  ['clientName', 'Client'],
+  ['tier', 'Tier'],
+  ['seedScore', 'Score'],
+  ['completeness', 'Completeness'],
+  ['followUpDate', 'Follow-up date'],
+  ['updatedAt', 'Last update'],
+]
 
 export function LeadsTableControls({
   filters,
@@ -81,8 +93,10 @@ export function LeadsTableControls({
   /** Prefix applied to query param names so multiple tables can coexist on one URL. */
   paramPrefix?: string
 }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [tablePrefs, setTablePrefs] = useState(prefs)
+  const [tablePrefs, setTablePrefs] = useState({ ...prefs, sortColumn: filters.sortColumn, sortDir: filters.sortDir })
   const [, startTransition] = useTransition()
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const allVisibleSelected = rows.length > 0 && rows.every((lead) => selectedSet.has(lead.id))
@@ -104,6 +118,11 @@ export function LeadsTableControls({
   function sortBy(sortColumn: string) {
     const sortDir = tablePrefs.sortColumn === sortColumn && tablePrefs.sortDir === 'asc' ? 'desc' : 'asc'
     persistPrefs({ ...tablePrefs, sortColumn, sortDir })
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(`${paramPrefix}sortColumn`, sortColumn)
+    params.set(`${paramPrefix}sortDir`, sortDir)
+    params.set(`${paramPrefix}page`, '1')
+    router.push(`${basePath}?${params}`)
   }
 
   function toggleLead(leadId: string) {
@@ -120,10 +139,11 @@ export function LeadsTableControls({
 
   return (
     <>
-      <FilterBar filters={filters} basePath={basePath} paramPrefix={paramPrefix} />
+      <FilterBar filters={filters} basePath={basePath} paramPrefix={paramPrefix} isAdmin={isAdmin} selectedCount={selectedIds.length} />
 
       {isAdmin && (
         <form
+          id="batch-delete-form"
           action={batchDeleteLeadsAction}
           onSubmit={(event) => {
             if (selectedIds.length === 0) {
@@ -137,17 +157,6 @@ export function LeadsTableControls({
           }}
           className="space-y-3"
         >
-          <div className="flex items-center justify-between rounded border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
-            <button
-              type="submit"
-              disabled={selectedIds.length === 0}
-              className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Delete selected
-            </button>
-          </div>
-
           {selectedIds.map((leadId) => (
             <input key={leadId} type="hidden" name="leadId" value={leadId} />
           ))}
@@ -180,35 +189,84 @@ export function LeadsTableControls({
         />
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+      <div className="grid grid-cols-3 items-center gap-3 text-sm text-gray-600">
         <span>{total} leads</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <PageLink filters={filters} page={Math.max(1, filters.page - 1)} disabled={filters.page <= 1} basePath={basePath} paramPrefix={paramPrefix}>Previous</PageLink>
           <span>Page {filters.page} of {pageCount}</span>
           <PageLink filters={filters} page={Math.min(pageCount, filters.page + 1)} disabled={filters.page >= pageCount} basePath={basePath} paramPrefix={paramPrefix}>Next</PageLink>
+        </div>
+        <div className="flex justify-end">
+          <PageSizeSelect filters={filters} basePath={basePath} paramPrefix={paramPrefix} />
         </div>
       </div>
     </>
   )
 }
 
-function FilterBar({ filters, basePath, paramPrefix }: { filters: LeadsListFilters; basePath: string; paramPrefix: string }) {
+function FilterBar({
+  filters, basePath, paramPrefix, isAdmin, selectedCount,
+}: {
+  filters: LeadsListFilters; basePath: string; paramPrefix: string; isAdmin: boolean; selectedCount: number
+}) {
   const searchParams = useSearchParams()
   const owned = new Set(
-    ['tier', 'sm8', 'date', 'size', 'page'].map((name) => `${paramPrefix}${name}`),
+    ['q', 'tier', 'sm8', 'date', 'size', 'sortColumn', 'sortDir', 'page'].map((name) => `${paramPrefix}${name}`),
   )
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
 
   return (
-    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-4">
+    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-6">
       {carryOver.map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
+      <input type="hidden" name={`${paramPrefix}size`} value={String(filters.size)} />
+      <input type="hidden" name={`${paramPrefix}page`} value="1" />
+
+      {/* Row 1: Search | Tier | SM8 | Date | Delete selected */}
+      <label className="block sm:col-span-2">
+        <span className="text-xs font-medium text-gray-600">Search</span>
+        <div className="mt-1 flex gap-2">
+          <input
+            name={`${paramPrefix}q`}
+            defaultValue={filters.q}
+            placeholder="Client, address, phone, job number..."
+            className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+          />
+          <button
+            type="submit"
+            className="rounded bg-[#142B3A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]"
+          >
+            Search
+          </button>
+        </div>
+      </label>
       <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
       <Select name={`${paramPrefix}sm8`} label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
       <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
-      <Select name={`${paramPrefix}size`} label="Page size" value={String(filters.size)} options={[['5', '5'], ['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']]} />
-      <input type="hidden" name={`${paramPrefix}page`} value="1" />
+      {isAdmin ? (
+        <div className="flex flex-col justify-end">
+          <button
+            type="submit"
+            form="batch-delete-form"
+            disabled={selectedCount === 0}
+            className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Delete selected
+          </button>
+        </div>
+      ) : (
+        <div />
+      )}
+
+      {/* Row 2: Sort by | Direction | … | N selected */}
+      <Select name={`${paramPrefix}sortColumn`} label="Sort by" value={filters.sortColumn} options={SORT_OPTIONS} />
+      <Select name={`${paramPrefix}sortDir`} label="Direction" value={filters.sortDir} options={[['desc', 'Descending'], ['asc', 'Ascending']]} />
+      {isAdmin && (
+        <div className="flex items-end justify-end sm:col-start-6">
+          <span className="pb-2 text-sm text-gray-500">{selectedCount} selected</span>
+        </div>
+      )}
     </form>
   )
 }
@@ -322,6 +380,31 @@ function SortableHeader({ column, prefs, onSort }: { column: ColumnDef; prefs: T
   )
 }
 
+function PageSizeSelect({ filters, basePath, paramPrefix }: { filters: LeadsListFilters; basePath: string; paramPrefix: string }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  function handleChange(size: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(`${paramPrefix}size`, size)
+    params.set(`${paramPrefix}page`, '1')
+    router.push(`${basePath}?${params}`)
+  }
+
+  return (
+    <label className="flex items-center gap-2 text-sm text-gray-600">
+      <span className="whitespace-nowrap">Page size</span>
+      <select
+        value={String(filters.size)}
+        onChange={(e) => handleChange(e.target.value)}
+        className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-950"
+      >
+        {(['5', '10', '20', '50', '100'] as const).map((n) => <option key={n} value={n}>{n}</option>)}
+      </select>
+    </label>
+  )
+}
+
 function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: { filters: LeadsListFilters; page: number; disabled: boolean; basePath: string; paramPrefix: string; children: React.ReactNode }) {
   const searchParams = useSearchParams()
   const params = new URLSearchParams(searchParams.toString())
@@ -329,6 +412,9 @@ function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: 
   params.set(`${paramPrefix}sm8`, filters.sm8)
   params.set(`${paramPrefix}date`, filters.date)
   params.set(`${paramPrefix}size`, String(filters.size))
+  params.set(`${paramPrefix}q`, filters.q)
+  params.set(`${paramPrefix}sortColumn`, filters.sortColumn)
+  params.set(`${paramPrefix}sortDir`, filters.sortDir)
   params.set(`${paramPrefix}page`, String(page))
 
   if (disabled) return <span className="rounded border border-gray-200 px-3 py-1.5 text-gray-400">{children}</span>

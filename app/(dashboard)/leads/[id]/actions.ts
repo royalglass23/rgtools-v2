@@ -9,6 +9,7 @@ import { auditLog } from '@/drizzle/schema'
 import { leads } from '@/drizzle/schema-leads'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { generateSuggestion, MissingOpenAIKeyError } from '@/modules/lead-intake/ai/suggest-next-step'
+import { getJobNotesAndEmails } from '@/lib/servicem8/client'
 
 export async function deleteLeadAction(leadId: string) {
   const session = await auth()
@@ -41,7 +42,10 @@ export async function generateLeadSuggestionAction(leadId: string): Promise<{ te
   if (!lead) return { error: 'Lead not found.' }
 
   try {
-    const suggestion = await generateSuggestion(lead)
+    const history = lead.servicem8JobUuid
+      ? await getLeadHistory(lead.servicem8JobUuid)
+      : null
+    const suggestion = await generateSuggestion({ ...lead, history })
     const generatedAt = new Date()
 
     await db
@@ -61,5 +65,13 @@ export async function generateLeadSuggestionAction(leadId: string): Promise<{ te
     }
 
     return { error: error instanceof Error ? error.message : 'Could not generate a suggestion. Try again later.' }
+  }
+}
+
+async function getLeadHistory(jobUuid: string) {
+  try {
+    return await getJobNotesAndEmails(jobUuid)
+  } catch {
+    return null
   }
 }

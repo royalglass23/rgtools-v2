@@ -47,25 +47,21 @@ export default async function LeadDetailPage({
 
       <Section title="Client">
         <dl className="grid gap-4 sm:grid-cols-4">
+          <Field label="Job Number" value={lead.servicem8JobNumber ?? '-'} />
           <Field label="Name" value={lead.clientName} />
           <Field label="Company" value={lead.companyName ?? '-'} />
-          <Field label="Phone" value={lead.phone ?? '-'} />
+          <Field label="Project Type" value={lead.projectType ?? '-'} />
+          <Field label="Job Address" value={lead.location ?? '-'} className="sm:col-span-2" />
           <Field label="Email" value={lead.email ?? '-'} />
+          <Field label="Phone" value={lead.phone ?? '-'} />
         </dl>
       </Section>
 
-      <Section title="Lead">
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Field label="Job Address" value={lead.location ?? '-'} />
-          <Field label="Driving Distance" value={lead.distanceBand} />
-          <Field label="Project Type" value={lead.projectType ?? '-'} />
-          <Field label="Source" value={lead.source} />
-          <Field label="Resource Consent" value={lead.rcStatus ?? '-'} />
-          <Field label="Building Consent" value={lead.bcStatus ?? '-'} />
-          <Field label="Building Stage" value={lead.buildingStage ?? '-'} />
+      <Section title="Notes">
+        <dl className="grid gap-4 sm:grid-cols-2">
           <Field label="Follow-up date" value={formatNullableDate(lead.followUpDate)} />
           <Field label="Last update" value={formatDateTime(lead.updatedAt)} />
-          <Field label="Anything else" value={lead.freeText ?? '-'} />
+          <Field label="Anything else" value={lead.freeText ?? '-'} className="sm:col-span-2" />
         </dl>
       </Section>
 
@@ -93,12 +89,12 @@ export default async function LeadDetailPage({
       </Section>
 
       <Section title="Score Summary">
-        <dl className="grid gap-4 sm:grid-cols-5">
+        <dl className="grid gap-4 sm:grid-cols-4">
           <Field label="Tier" value={tier} />
           <Field label="Score" value={String(lead.seedScore ?? 0)} />
           <Field label="Completeness" value={`${lead.completeness ?? 0}%`} />
           <Field label="Flag note" value={lead.strikeFlag ?? '-'} />
-          <Field label="Score reason" value={lead.scoreReason ?? '-'} />
+          <Field label="Score reason" value={lead.scoreReason ?? '-'} className="sm:col-span-4" />
         </dl>
       </Section>
 
@@ -132,9 +128,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</dt>
       <dd className="mt-1 break-words text-sm text-gray-950">{value}</dd>
     </div>
