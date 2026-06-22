@@ -21,6 +21,7 @@ export const leadOutcomeEnum = pgEnum('lead_outcome', [
 
 export const clients = pgTable('clients', {
   id: uuid('id').primaryKey().defaultRandom(),
+  servicem8CompanyUuid: text('servicem8_company_uuid'),
   name: text('name').notNull(),
   companyName: text('company_name'),
   email: text('email'),
@@ -35,6 +36,25 @@ export const clients = pgTable('clients', {
 }, (t) => [
   index('clients_phone_norm_idx').on(t.phoneNormalized),
   index('clients_email_idx').on(t.email),
+  // Canonical identity for a "linked" client. The partial UNIQUE index
+  // (WHERE servicem8_company_uuid IS NOT NULL) is added by hand in the
+  // migration — Drizzle cannot express the partial WHERE clause.
+  index('clients_servicem8_company_uuid_idx').on(t.servicem8CompanyUuid),
+])
+
+export const clientContacts = pgTable('client_contacts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  name: text('name'),
+  phone: text('phone'),
+  phoneNormalized: text('phone_normalized'),
+  email: text('email'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_contacts_client_idx').on(t.clientId),
+  index('client_contacts_phone_norm_idx').on(t.phoneNormalized),
+  index('client_contacts_email_idx').on(t.email),
 ])
 
 export const scoringConfigVersions = pgTable('scoring_config_versions', {
@@ -67,6 +87,7 @@ export const pricingConfigVersions = pgTable('pricing_config_versions', {
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
+  contactId: uuid('contact_id').references(() => clientContacts.id, { onDelete: 'set null' }),
   source: leadSourceEnum('source').notNull(),
   externalRef: text('external_ref'),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),

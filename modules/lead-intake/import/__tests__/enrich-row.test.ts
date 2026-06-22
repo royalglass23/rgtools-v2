@@ -82,6 +82,7 @@ describe('enrichImportRow', () => {
       phone: '021 456',
       email: 'a@example.test',
       projectType: 'Pool Fencing',
+      servicem8CompanyUuid: 'company-uuid-1',
     })
   })
 

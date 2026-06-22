@@ -56,16 +56,6 @@ vi.mock('@/lib/db', () => ({
       return {
         from: vi.fn(() => ({
           innerJoin: vi.fn(() => ({
-            where: vi.fn(() => ({
-              orderBy: vi.fn((...orders: unknown[]) => {
-                orderByCalls.push(orders)
-                return {
-                  limit: vi.fn(() => ({
-                    offset: vi.fn(async () => []),
-                  })),
-                }
-              }),
-            })),
             where: vi.fn((condition: unknown) => {
               whereCalls.push(condition)
               return {
