@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { isExpired, resolveExpiry } from '../expiry'
+import { isActiveLink, isExpired, resolveExpiry } from '../expiry'
 
 describe('resolveExpiry', () => {
   it('resolves the 1h preset relative to now', () => {
@@ -45,5 +45,29 @@ describe('isExpired', () => {
 
   it('treats a missing date as not expired', () => {
     expect(isExpired(null, now)).toBe(false)
+  })
+})
+
+describe('isActiveLink', () => {
+  const now = new Date('2026-06-17T12:00:00.000Z')
+
+  it('is true when the quote has no expiry and is not archived', () => {
+    expect(isActiveLink(null, null, now)).toBe(true)
+  })
+
+  it('is true when the expiry is in the future and the quote is not archived', () => {
+    expect(isActiveLink(new Date('2026-06-17T12:00:01.000Z'), null, now)).toBe(true)
+  })
+
+  it('is false when the expiry is in the past and the quote is not archived', () => {
+    expect(isActiveLink(new Date('2026-06-17T11:59:59.000Z'), null, now)).toBe(false)
+  })
+
+  it('is false when the quote is archived regardless of expiry', () => {
+    const archivedAt = new Date('2026-06-17T10:00:00.000Z')
+
+    expect(isActiveLink(null, archivedAt, now)).toBe(false)
+    expect(isActiveLink(new Date('2026-06-17T12:00:01.000Z'), archivedAt, now)).toBe(false)
+    expect(isActiveLink(new Date('2026-06-17T11:59:59.000Z'), archivedAt, now)).toBe(false)
   })
 })

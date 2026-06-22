@@ -8,6 +8,7 @@ import {
   NOTIFICATION_SETTING_DEFAULTS,
   TRACKING_SETTING_DEFAULTS,
   allSettingsKeys,
+  normalizeExpirySettings,
   parseNotificationRecipients,
   trackingSettingKeys,
   type TrackingSettingKey,
@@ -37,7 +38,17 @@ export async function saveTrackingSettings(formData: FormData): Promise<void> {
       updatedBy: session.user.id as string,
     },
   ]
-  const allValues = [...values, ...notificationValues]
+  const expirySettings = normalizeExpirySettings([
+    { key: 'expiry.default', value: formData.get('expiry.default')?.toString() ?? '' },
+  ])
+  const expiryValues = [
+    {
+      key: 'expiry.default',
+      value: expirySettings.defaultPreset,
+      updatedBy: session.user.id as string,
+    },
+  ]
+  const allValues = [...values, ...notificationValues, ...expiryValues]
 
   await db.transaction(async (tx) => {
     for (const value of allValues) {
@@ -68,6 +79,9 @@ export async function saveTrackingSettings(formData: FormData): Promise<void> {
         notifications: {
           enabled: notificationValues[0].value === 'true',
           to: notificationValues[1].value,
+        },
+        expiry: {
+          defaultPreset: expirySettings.defaultPreset,
         },
         keys: allSettingsKeys,
       },

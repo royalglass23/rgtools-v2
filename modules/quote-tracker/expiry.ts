@@ -22,3 +22,13 @@ export function isExpired(expiresAt: Date | null | undefined, now: Date = new Da
   if (!expiresAt) return false
   return expiresAt.getTime() <= now.getTime()
 }
+
+/** True when the link still resolves publicly: not archived and not past expiry. */
+export function isActiveLink(
+  expiresAt: Date | null | undefined,
+  archivedAt: Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (archivedAt) return false
+  return !isExpired(expiresAt, now)
+}

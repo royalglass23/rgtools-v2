@@ -17,6 +17,7 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
+  servicem8StaffUuid: text('servicem8_staff_uuid').unique(),
   role: roleEnum('role').notNull().default('staff'),
   isProtected: boolean('is_protected').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

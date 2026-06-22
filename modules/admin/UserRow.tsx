@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { updateUserRole, deleteUser } from './actions'
+import { updateUserRole, deleteUser, updateUserServiceM8StaffUuid } from './actions'
 
 interface UserRowModule {
   id: string
@@ -17,6 +17,7 @@ interface UserRowProps {
     username: string
     role: 'admin' | 'staff'
     isProtected: boolean
+    servicem8StaffUuid: string | null
   }
   isCurrentUser: boolean
   isProtectedActor: boolean
@@ -26,7 +27,10 @@ interface UserRowProps {
 
 export function UserRow({ user, isCurrentUser, isProtectedActor, modules, grantedModuleIds }: UserRowProps) {
   const [isPendingRole, startRoleTransition] = useTransition()
+  const [isPendingStaffUuid, startStaffUuidTransition] = useTransition()
   const [isPendingDelete, startDeleteTransition] = useTransition()
+  const [staffUuid, setStaffUuid] = useState(user.servicem8StaffUuid ?? '')
+  const [staffUuidError, setStaffUuidError] = useState<string | null>(null)
   const [roleError, setRoleError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [showAccessEditor, setShowAccessEditor] = useState(false)
@@ -58,6 +62,18 @@ export function UserRow({ user, isCurrentUser, isProtectedActor, modules, grante
       const result = await deleteUser(user.id)
       if ('error' in result) {
         setDeleteError(result.error)
+      } else {
+        window.location.reload()
+      }
+    })
+  }
+
+  function handleStaffUuidSave() {
+    setStaffUuidError(null)
+    startStaffUuidTransition(async () => {
+      const result = await updateUserServiceM8StaffUuid(user.id, staffUuid)
+      if ('error' in result) {
+        setStaffUuidError(result.error)
       } else {
         window.location.reload()
       }
@@ -106,6 +122,25 @@ export function UserRow({ user, isCurrentUser, isProtectedActor, modules, grante
           </div>
         </td>
         <td className="py-3 px-4">
+          <div className="flex max-w-72 items-center gap-2">
+            <input
+              type="text"
+              value={staffUuid}
+              disabled={!canManage || isPendingStaffUuid}
+              onChange={(e) => setStaffUuid(e.target.value)}
+              onBlur={handleStaffUuidSave}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleStaffUuidSave()
+              }}
+              title={disabledReason ?? undefined}
+              placeholder="ServiceM8 staff UUID"
+              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            {isPendingStaffUuid && <span className="text-xs text-gray-400">Saving...</span>}
+            {staffUuidError && <span className="text-xs text-red-600">{staffUuidError}</span>}
+          </div>
+        </td>
+        <td className="py-3 px-4">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAccessEditor((v) => !v)}
@@ -131,7 +166,7 @@ export function UserRow({ user, isCurrentUser, isProtectedActor, modules, grante
       </tr>
       {showAccessEditor && (
         <tr className="bg-gray-50 border-b border-gray-100">
-          <td colSpan={4} className="py-3 px-8">
+          <td colSpan={5} className="py-3 px-8">
             <AccessEditor
               userId={user.id}
               userRole={user.role}

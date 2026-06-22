@@ -31,4 +31,34 @@ describe('createServiceM8RequestFromEnv', () => {
       }),
     )
   })
+
+  it('retries throttled env-backed requests without changing headers or base URL', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        json: async () => ({ error: 'Too Many Requests' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ uuid: 'job-uuid-1' }],
+      } as Response)
+    const sleeps: number[] = []
+
+    const request = createServiceM8RequestFromEnv({
+      retry: {
+        sleep: async (ms) => {
+          sleeps.push(ms)
+        },
+        random: () => 0,
+      },
+    })
+    const response = await request('/job.json')
+
+    await expect(response.json()).resolves.toEqual([{ uuid: 'job-uuid-1' }])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.servicem8.com/api_1.0/job.json')
+    expect(sleeps).toEqual([0])
+  })
 })

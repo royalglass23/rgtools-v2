@@ -3,6 +3,7 @@ import {
   getJobContact,
   getJobQuoteMeta,
   resolveJobUuid,
+  ServiceM8RateLimitError,
   type ServiceM8FetchRequest,
 } from '@/lib/servicem8/client'
 import type { LeadImportRow } from './types'
@@ -100,15 +101,19 @@ export async function enrichImportRow(
         : null,
     }
   } catch (error) {
+    const enrichmentMessage = error instanceof ServiceM8RateLimitError
+      ? "ServiceM8 was busy / rate-limited and couldn't enrich this row. Re-run Upload and review to retry."
+      : error instanceof Error
+        ? `ServiceM8 lookup failed: ${error.message}`
+        : 'ServiceM8 lookup failed.'
+
     return withContactFlag({
       ...row,
       input: { ...row.input, projectType: 'Other' },
       enriched: false,
       notEnriched: true,
       servicem8JobNumber: row.jobNumber || null,
-      enrichmentMessage: error instanceof Error
-        ? `ServiceM8 lookup failed: ${error.message}`
-        : 'ServiceM8 lookup failed.',
+      enrichmentMessage,
     })
   }
 }

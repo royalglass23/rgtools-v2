@@ -20,6 +20,79 @@ export type ServiceM8FetchRequest = (
   init?: RequestInit,
 ) => Promise<ServiceM8JsonResponse>
 
+type ServiceM8RetryOptions = {
+  sleep?: (ms: number) => Promise<void>
+  random?: () => number
+  maxAttempts?: number
+  baseMs?: number
+  capMs?: number
+}
+
+const DEFAULT_RETRY_ATTEMPTS = 5
+const DEFAULT_RETRY_BASE_MS = 1000
+const DEFAULT_RETRY_CAP_MS = 16000
+
+export class ServiceM8RateLimitError extends Error {
+  constructor(
+    message: string,
+    readonly details: { path: string; status?: number; attempts: number; cause?: unknown },
+  ) {
+    super(message)
+    this.name = 'ServiceM8RateLimitError'
+  }
+}
+
+export function withServiceM8Retry(
+  request: ServiceM8FetchRequest,
+  opts: ServiceM8RetryOptions = {},
+): ServiceM8FetchRequest {
+  const sleepFn = opts.sleep ?? sleep
+  const random = opts.random ?? Math.random
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_RETRY_ATTEMPTS
+  const baseMs = opts.baseMs ?? DEFAULT_RETRY_BASE_MS
+  const capMs = opts.capMs ?? DEFAULT_RETRY_CAP_MS
+
+  return async (path, init) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await request(path, init)
+        if (!isRetryableStatus(response.status)) return response
+        if (attempt >= maxAttempts) {
+          console.warn(`ServiceM8 request exhausted retries: status=${response.status} path=${path} attempts=${attempt}`)
+          throw new ServiceM8RateLimitError(
+            `ServiceM8 request failed after ${attempt} attempts with HTTP ${response.status}`,
+            { path, status: response.status, attempts: attempt },
+          )
+        }
+
+        console.warn(`ServiceM8 request retrying: status=${response.status} path=${path} attempt=${attempt}`)
+      } catch (error) {
+        if (error instanceof ServiceM8RateLimitError) throw error
+        if (attempt >= maxAttempts) {
+          console.warn(`ServiceM8 request exhausted retries: network path=${path} attempts=${attempt}`)
+          throw new ServiceM8RateLimitError(
+            `ServiceM8 request failed after ${attempt} attempts due to a network error`,
+            { path, attempts: attempt, cause: error },
+          )
+        }
+
+        console.warn(`ServiceM8 request retrying: network path=${path} attempt=${attempt}`)
+      }
+
+      const delayCap = Math.min(capMs, baseMs * 2 ** (attempt - 1))
+      await sleepFn(Math.floor(random() * delayCap))
+    }
+  }
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export type LeadServiceM8History = {
   notes: Array<{ date: string | null; text: string }>
   emails: Array<{ date: string | null; subject: string | null; body: string }>
@@ -35,10 +108,10 @@ export function getServiceM8ApiKey(): string {
  * JSON request helper bound to the ServiceM8 api_1.0 base path. Uses the
  * `api_1.0` base explicitly to avoid the legacy-endpoint redirect loop.
  */
-export function createServiceM8RequestFromEnv(): ServiceM8FetchRequest {
+export function createServiceM8RequestFromEnv(opts: { retry?: ServiceM8RetryOptions } = {}): ServiceM8FetchRequest {
   const apiKey = getServiceM8ApiKey()
 
-  return async (path, init) => {
+  const request: ServiceM8FetchRequest = async (path, init) => {
     const headers = new Headers(init?.headers)
     headers.set('X-API-Key', apiKey)
     headers.set('Accept', 'application/json')
@@ -55,6 +128,8 @@ export function createServiceM8RequestFromEnv(): ServiceM8FetchRequest {
       json: () => response.json(),
     }
   }
+
+  return withServiceM8Retry(request, opts.retry)
 }
 
 function odataFilter(expr: string): string {
@@ -289,7 +364,8 @@ async function readServiceM8Array<T>(
     if (!res.ok) return []
     const rows = await res.json()
     return Array.isArray(rows) ? rows as T[] : []
-  } catch {
+  } catch (error) {
+    if (error instanceof ServiceM8RateLimitError) throw error
     return []
   }
 }
@@ -476,13 +552,15 @@ export async function getJobQuoteMeta(
   }
 }
 
-type ServiceM8AttachmentRecord = {
+export type ServiceM8AttachmentRecord = {
   uuid?: string
   attachment_name?: string | null
   attachment_source?: string | null
   file_type?: string | null
   active?: number | string | null
   edit_date?: string | null
+  related_object_uuid?: string | null
+  object_uuid?: string | null
 }
 
 export type QuoteAttachmentRecord = {
@@ -494,6 +572,18 @@ export type QuoteAttachmentRecord = {
 
 export type QuoteAttachment = QuoteAttachmentRecord & {
   bytes: ArrayBuffer
+}
+
+/** Fetch one attachment record by UUID. Used by webhooks so payload fields are not trusted. */
+export async function getAttachmentRecord(
+  attachmentUuid: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<ServiceM8AttachmentRecord | null> {
+  const res = await request(`/attachment/${attachmentUuid}.json`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`ServiceM8 attachment fetch failed with HTTP ${res.status}`)
+  const record = await res.json()
+  return record && typeof record === 'object' ? record as ServiceM8AttachmentRecord : null
 }
 
 /**

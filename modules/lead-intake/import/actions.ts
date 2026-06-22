@@ -106,7 +106,7 @@ export async function commitLeadImport(rows: LeadImportRow[]): Promise<CommitLea
 }
 
 async function attachDedupeStatus(rows: LeadImportRow[]): Promise<LeadImportRow[]> {
-  const refs = Array.from(new Set(rows.map((row) => row.jobNumber).filter(Boolean)))
+  const refs = Array.from(new Set(rows.map((row) => importRef(row)).filter(Boolean)))
   if (refs.length === 0) return rows
 
   const existingRows = await db
@@ -114,7 +114,18 @@ async function attachDedupeStatus(rows: LeadImportRow[]): Promise<LeadImportRow[
     .from(leads)
     .where(inArray(leads.externalRef, refs))
   const existingRefs = new Set(existingRows.map((row) => row.externalRef).filter(Boolean))
-  return rows.map((row) => ({ ...row, existing: existingRefs.has(row.jobNumber) }))
+  const seenRefs = new Set<string>()
+
+  return rows.map((row) => {
+    const ref = importRef(row)
+    const existing = Boolean(ref && (existingRefs.has(ref) || seenRefs.has(ref)))
+    if (ref) seenRefs.add(ref)
+    return { ...row, existing }
+  })
+}
+
+function importRef(row: LeadImportRow): string {
+  return row.jobNumber || row.input.externalRef?.trim() || ''
 }
 
 function validateImportMinimum(input: ReturnType<typeof normalizeInput>): string | null {

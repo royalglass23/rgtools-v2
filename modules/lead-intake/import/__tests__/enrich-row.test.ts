@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from 'vitest'
-import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
+import { ServiceM8RateLimitError, type ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { deriveProjectType, enrichImportRow } from '../enrich-row'
 import type { LeadImportRow } from '../types'
 
@@ -91,10 +91,10 @@ describe('enrichImportRow', () => {
     expect(enriched.autoSkip).toBe(true)
   })
 
-  it('keeps the row and defaults project type when lookup fails', async () => {
+  it('keeps the row and defaults project type when ServiceM8 returns no matching job', async () => {
     const request = vi.fn<ServiceM8FetchRequest>(async () => ({
-      ok: false,
-      status: 500,
+      ok: true,
+      status: 200,
       json: async () => [],
     }))
 
@@ -109,6 +109,25 @@ describe('enrichImportRow', () => {
       enrichmentMessage: 'Job Number R260227 was not found in ServiceM8.',
     })
     expect(enriched.input.projectType).toBe('Other')
+  })
+
+  it('reports exhausted ServiceM8 throttling as retryable instead of not found', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => {
+      throw new ServiceM8RateLimitError(
+        'ServiceM8 request failed after 5 attempts with HTTP 429',
+        { path: '/job.json', status: 429, attempts: 5 },
+      )
+    })
+
+    const enriched = await enrichImportRow(row(), request)
+
+    expect(enriched).toMatchObject({
+      enriched: false,
+      notEnriched: true,
+      servicem8JobNumber: 'R260227',
+      enrichmentMessage: "ServiceM8 was busy / rate-limited and couldn't enrich this row. Re-run Upload and review to retry.",
+    })
+    expect(enriched.enrichmentMessage).not.toContain('was not found')
   })
 
   it('flags needsContact when ServiceM8 has no phone or email', async () => {
