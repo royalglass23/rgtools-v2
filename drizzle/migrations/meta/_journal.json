@@ -141,6 +141,13 @@
       "when": 1781830985569,
       "tag": "0019_glorious_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1782090488030,
+      "tag": "0020_abandoned_black_cat",
+      "breakpoints": true
     }
   ]
 }

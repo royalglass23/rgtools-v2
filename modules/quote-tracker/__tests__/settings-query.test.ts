@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  EXPIRY_SETTING_DEFAULTS,
   NOTIFICATION_SETTING_DEFAULTS,
   TRACKING_SETTING_DEFAULTS,
+  normalizeExpirySettings,
   normalizeNotificationSettings,
   normalizeTrackingSettings,
   trackingSettingKeys,
@@ -41,5 +43,16 @@ describe('quote notification settings', () => {
 
     expect(settings.enabled).toBe(false)
     expect(settings.to).toEqual(['support@royalglass.co.nz', 'sales@royalglass.co.nz'])
+  })
+})
+
+describe('quote expiry settings', () => {
+  it('returns expiry defaults when no rows exist', () => {
+    expect(normalizeExpirySettings([])).toEqual(EXPIRY_SETTING_DEFAULTS)
+  })
+
+  it('passes through valid presets and falls back to 30d for invalid values', () => {
+    expect(normalizeExpirySettings([{ key: 'expiry.default', value: '7d' }]).defaultPreset).toBe('7d')
+    expect(normalizeExpirySettings([{ key: 'expiry.default', value: 'forever' }]).defaultPreset).toBe('30d')
   })
 })

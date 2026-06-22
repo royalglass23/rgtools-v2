@@ -25,7 +25,7 @@ type QuoteRow = {
 }
 
 /** Param names this table owns; used for carry-over of other tables' params on shared URLs. */
-const OWNED_PARAMS = ['search', 'status', 'sort', 'size', 'page'] as const
+const OWNED_PARAMS = ['search', 'status', 'linkStatus', 'sort', 'size', 'page'] as const
 
 export function QuoteTableControls({
   filters,
@@ -141,10 +141,15 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
   const owned = new Set(OWNED_PARAMS.map((name) => `${paramPrefix}${name}`))
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
   const resetParams = new URLSearchParams(carryOver)
+  resetParams.set(`${paramPrefix}status`, 'all')
+  resetParams.set(`${paramPrefix}linkStatus`, 'active')
+  resetParams.set(`${paramPrefix}sort`, 'last_opened')
+  resetParams.set(`${paramPrefix}size`, '5')
+  resetParams.set(`${paramPrefix}page`, '1')
   const resetHref = resetParams.toString() ? `${basePath}?${resetParams}` : basePath
 
   return (
-    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(180px,1fr)_160px_190px_120px_auto]">
+    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(180px,1fr)_150px_150px_190px_120px_auto]">
       {carryOver.map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
@@ -162,6 +167,12 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
         label="Status"
         value={filters.status}
         options={[['all', 'All'], ['hot', 'Hot'], ['warm', 'Warm'], ['cold', 'Cold'], ['dead', 'Dead']]}
+      />
+      <Select
+        name={`${paramPrefix}linkStatus`}
+        label="Link status"
+        value={filters.linkStatus}
+        options={[['active', 'Active'], ['expired', 'Expired'], ['all', 'All']]}
       />
       <Select
         name={`${paramPrefix}sort`}
@@ -218,7 +229,8 @@ function Select({
       <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
       <select
         name={name}
-        defaultValue={value}
+        value={value}
+        onChange={(event) => event.currentTarget.form?.requestSubmit()}
         className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
       >
         {options.map(([optionValue, optionLabel]) => (
@@ -251,6 +263,7 @@ function PageLink({
   if (filters.search) params.set(`${paramPrefix}search`, filters.search)
   else params.delete(`${paramPrefix}search`)
   params.set(`${paramPrefix}status`, filters.status)
+  params.set(`${paramPrefix}linkStatus`, filters.linkStatus)
   params.set(`${paramPrefix}sort`, filters.sort)
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}page`, String(page))

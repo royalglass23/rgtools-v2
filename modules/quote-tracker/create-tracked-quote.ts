@@ -20,6 +20,7 @@ export type CreateTrackedQuoteOptions = {
   leadId?: string
   ownerUserId?: string | null
   expiry?: ExpiryPreset | { customDate: string }
+  refresh?: boolean
 }
 
 export type CreateTrackedQuoteResult =
@@ -107,7 +108,7 @@ export async function createTrackedQuote(
   }
 
   const existing = await findExistingQuote(jobUuid)
-  if (existing?.shortCode && existing.expiresAt && existing.expiresAt.getTime() > Date.now()) {
+  if (!opts.refresh && existing?.shortCode && existing.expiresAt && existing.expiresAt.getTime() > Date.now()) {
     return {
       ok: false,
       reason: 'quote_exists',
@@ -124,7 +125,7 @@ export async function createTrackedQuote(
     return { ok: false, reason: 'no_quote_pdf', message: 'Generate the quote in ServiceM8 first.' }
   }
 
-  const expiresAt = resolveExpiry(opts.expiry)
+  const expiresAt = opts.refresh && existing?.expiresAt ? existing.expiresAt : resolveExpiry(opts.expiry)
   const storageDriver = getStorageDriver()
   const storage = getStorage()
   const clientName = meta.clientName ?? 'Quote'

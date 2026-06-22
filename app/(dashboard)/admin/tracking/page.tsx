@@ -1,5 +1,6 @@
 import { requireModule } from '@/lib/guard'
 import {
+  getExpirySettings,
   getNotificationSettings,
   getTrackingSettings,
   trackSettingKeys,
@@ -67,6 +68,7 @@ export default async function TrackingAdminPage() {
 
   const settings = await getTrackingSettings()
   const notificationSettings = await getNotificationSettings()
+  const expirySettings = await getExpirySettings()
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -80,6 +82,28 @@ export default async function TrackingAdminPage() {
       <form action={saveTrackingSettings} className="space-y-8">
         <SettingsSection title="Tracking signals" keys={trackSettingKeys} settings={settings} />
         <SettingsSection title="Viewer features" keys={viewerSettingKeys} settings={settings} />
+
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold text-gray-900">Auto-minted links</h2>
+          <label className="grid gap-2 rounded border border-gray-200 bg-white p-4">
+            <span>
+              <span className="block text-sm font-medium text-gray-900">Default expiration</span>
+              <span className="mt-0.5 block font-mono text-xs text-gray-500">expiry.default</span>
+            </span>
+            <select
+              name="expiry.default"
+              defaultValue={expirySettings.defaultPreset}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+            >
+              <option value="1h">1 hour</option>
+              <option value="3h">3 hours</option>
+              <option value="12h">12 hours</option>
+              <option value="1d">1 day</option>
+              <option value="7d">7 days</option>
+              <option value="30d">30 days</option>
+            </select>
+          </label>
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-gray-900">Open notifications</h2>

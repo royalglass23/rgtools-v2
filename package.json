@@ -18,6 +18,7 @@
     "quote:preview": "tsx scripts/quote-preview.ts",
     "quote:share": "tsx scripts/quote-share.ts",
     "quote:create": "tsx scripts/create-tracked-quote-test.ts",
+    "servicem8:webhook:register": "tsx scripts/register-servicem8-attachment-webhook.ts",
     "jobcard:list": "tsx jobcard-export/jobcard-list.ts",
     "jobcard:export": "tsx jobcard-export/jobcard-export.ts"
   },

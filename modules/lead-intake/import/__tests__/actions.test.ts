@@ -144,4 +144,17 @@ describe('commitLeadImport', () => {
       { syncServiceM8: false, allowMissingContact: true },
     )
   })
+
+  it('skips duplicate job numbers within the same import batch', async () => {
+    await expect(commitLeadImport([
+      importRow(),
+      importRow({ rowId: 'row-3', rowNumber: 3 }),
+    ])).resolves.toMatchObject({
+      success: true,
+      inserted: 1,
+      skippedExisting: 1,
+    })
+
+    expect(submitLeadIntakeForUserMock).toHaveBeenCalledOnce()
+  })
 })

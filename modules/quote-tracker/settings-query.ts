@@ -1,6 +1,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { settings } from '@/drizzle/schema'
+import type { ExpiryPreset } from './expiry'
 
 export const TRACKING_SETTING_DEFAULTS = {
   'track.ip': true,
@@ -26,17 +27,26 @@ export const NOTIFICATION_SETTING_DEFAULTS = {
   to: ['support@royalglass.co.nz'],
 } as const
 
+export const EXPIRY_SETTING_DEFAULTS = {
+  defaultPreset: '30d',
+} as const satisfies { defaultPreset: ExpiryPreset }
+
 export const notificationSettingKeys = ['notifications.enabled', 'notifications.to'] as const
 export type NotificationSettingKey = typeof notificationSettingKeys[number]
 export type NotificationSettings = {
   enabled: boolean
   to: string[]
 }
+export const expirySettingKeys = ['expiry.default'] as const
+export type ExpirySettingKey = typeof expirySettingKeys[number]
+export type ExpirySettings = {
+  defaultPreset: ExpiryPreset
+}
 
 export const trackingSettingKeys = Object.keys(TRACKING_SETTING_DEFAULTS) as TrackingSettingKey[]
 export const trackSettingKeys = trackingSettingKeys.filter((key) => key.startsWith('track.'))
 export const viewerSettingKeys = trackingSettingKeys.filter((key) => key.startsWith('viewer.'))
-export const allSettingsKeys = [...trackingSettingKeys, ...notificationSettingKeys]
+export const allSettingsKeys = [...trackingSettingKeys, ...notificationSettingKeys, ...expirySettingKeys]
 
 export type TrackingSettingRow = {
   key: string
@@ -89,6 +99,17 @@ export function normalizeNotificationSettings(rows: TrackingSettingRow[]): Notif
   return normalized
 }
 
+const EXPIRY_PRESETS: ExpiryPreset[] = ['1h', '3h', '12h', '1d', '7d', '30d']
+
+export function normalizeExpirySettings(rows: TrackingSettingRow[]): ExpirySettings {
+  const row = rows.find((candidate) => candidate.key === 'expiry.default')
+  return {
+    defaultPreset: EXPIRY_PRESETS.includes(row?.value as ExpiryPreset)
+      ? row!.value as ExpiryPreset
+      : EXPIRY_SETTING_DEFAULTS.defaultPreset,
+  }
+}
+
 export async function getTrackingSettings(): Promise<TrackingSettings> {
   const rows = await db
     .select({ key: settings.key, value: settings.value })
@@ -105,6 +126,15 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
     .where(inArray(settings.key, notificationSettingKeys))
 
   return normalizeNotificationSettings(rows)
+}
+
+export async function getExpirySettings(): Promise<ExpirySettings> {
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(inArray(settings.key, expirySettingKeys))
+
+  return normalizeExpirySettings(rows)
 }
 
 export async function getTrackingSetting(key: TrackingSettingKey): Promise<boolean> {

@@ -164,6 +164,61 @@ export async function updateUserRole(
  * Hard-delete a user. Cascades grants.
  * Captures username + role BEFORE deletion for the audit row.
  */
+export async function updateUserServiceM8StaffUuid(
+  userId: string,
+  staffUuid: string,
+): Promise<{ success: true } | { error: string }> {
+  let actorId: string | null = null
+  const normalized = staffUuid.trim() || null
+
+  try {
+    const { session, actor } = await getActorOrThrow()
+    actorId = session.user.id as string
+
+    const targetRow = await db.query.users.findFirst({ where: eq(users.id, userId) })
+    if (!targetRow) return { error: 'User not found' }
+
+    const target: AccessUser = {
+      id: targetRow.id,
+      username: targetRow.username,
+      role: targetRow.role,
+      isProtected: targetRow.isProtected,
+    }
+
+    assertCanManageUser(actor, target)
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ servicem8StaffUuid: normalized, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+
+      await tx.insert(auditLog).values({
+        actorId: session.user.id as string,
+        action: 'user.servicem8_staff_uuid.updated',
+        targetId: userId,
+        detail: { username: targetRow.username, servicem8StaffUuid: normalized },
+      })
+    })
+
+    return { success: true }
+  } catch (err) {
+    const cause = (err as { cause?: unknown }).cause
+    const pgCode = (err as { code?: string }).code ?? (cause as { code?: string } | undefined)?.code
+    const msg = err instanceof Error ? err.message : String(err)
+    const causeMsg = cause instanceof Error ? cause.message : ''
+    if (pgCode === '23505' || msg.includes('duplicate key') || causeMsg.includes('duplicate key')) {
+      return { error: 'That ServiceM8 staff UUID is already assigned to another user.' }
+    }
+    if (msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.updateUserServiceM8StaffUuid', err, {
+      userId: actorId,
+      metadata: { targetUserId: userId },
+    })
+    return { error: `Failed to update ServiceM8 staff UUID. Please try again. Ref: ${errorId}` }
+  }
+}
+
 export async function deleteUser(
   userId: string,
 ): Promise<{ success: true } | { error: string }> {

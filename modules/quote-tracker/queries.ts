@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, or, sql, sum } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql, sum } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { quoteEngagement, quoteEvents, quoteRecipients, quoteViewerEmails, quotes, tagOverrides } from '@/drizzle/schema'
 import type { QuoteListFilters } from './list-filters'
@@ -228,6 +228,14 @@ function listWhere(filters: QuoteListFilters) {
 
   if (filters.status !== 'all') {
     conditions.push(eq(quotes.statusTag, filters.status))
+  }
+
+  if (filters.linkStatus === 'active') {
+    conditions.push(and(isNull(quotes.archivedAt), or(isNull(quotes.expiresAt), gt(quotes.expiresAt, sql`now()`))))
+  }
+
+  if (filters.linkStatus === 'expired') {
+    conditions.push(or(isNotNull(quotes.archivedAt), lte(quotes.expiresAt, sql`now()`)))
   }
 
   if (filters.search) {

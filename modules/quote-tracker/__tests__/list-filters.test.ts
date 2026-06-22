@@ -7,6 +7,7 @@ describe('parseQuoteListFilters', () => {
     expect(parseQuoteListFilters({})).toEqual({
       search: '',
       status: 'all',
+      linkStatus: 'active',
       sort: 'last_opened',
       page: 1,
       size: 5,
@@ -17,12 +18,14 @@ describe('parseQuoteListFilters', () => {
     expect(parseQuoteListFilters({
       search: 'Acme',
       status: 'cold',
+      linkStatus: 'expired',
       sort: 'interest_desc',
       page: '3',
       size: '50',
     })).toEqual({
       search: 'Acme',
       status: 'cold',
+      linkStatus: 'expired',
       sort: 'interest_desc',
       page: 3,
       size: 50,
@@ -41,15 +44,21 @@ describe('parseQuoteListFilters', () => {
     expect(parseQuoteListFilters({
       search: ['first', 'second'],
       status: 'sleepy',
+      linkStatus: 'broken',
       sort: 'newest',
       page: '-1',
       size: '100',
     })).toEqual({
       search: 'first',
       status: 'all',
+      linkStatus: 'active',
       sort: 'last_opened',
       page: 1,
       size: 5,
     })
+  })
+
+  it.each(['active', 'expired', 'all'] as const)('accepts %s as a link status', (linkStatus) => {
+    expect(parseQuoteListFilters({ linkStatus }).linkStatus).toBe(linkStatus)
   })
 })

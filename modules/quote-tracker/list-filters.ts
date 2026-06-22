@@ -1,6 +1,7 @@
 import type { StatusTag } from './score'
 
 export type QuoteListStatus = StatusTag | 'all'
+export type QuoteLinkStatus = 'active' | 'expired' | 'all'
 export type QuoteListSort =
   | 'last_opened'
   | 'client_asc'
@@ -14,6 +15,7 @@ export type QuoteListPageSize = 5 | 10 | 20 | 50
 export type QuoteListFilters = {
   search: string
   status: QuoteListStatus
+  linkStatus: QuoteLinkStatus
   sort: QuoteListSort
   page: number
   size: QuoteListPageSize
@@ -35,6 +37,7 @@ export function parseQuoteListFilters(
     stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
 
   const status = pick('status')
+  const linkStatus = stringValue(searchParams[`${prefix}linkStatus`])
   const sort = pick('sort')
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
   const size = Number(pick('size') ?? '5')
@@ -42,6 +45,7 @@ export function parseQuoteListFilters(
   return {
     search: (stringValue(searchParams[`${prefix}search`]) ?? '').trim(),
     status: isQuoteListStatus(status) ? status : 'all',
+    linkStatus: isQuoteLinkStatus(linkStatus) ? linkStatus : 'active',
     sort: isQuoteListSort(sort) ? sort : 'last_opened',
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: size === 5 || size === 10 || size === 20 || size === 50 ? size : 5,
@@ -54,6 +58,10 @@ function stringValue(value: string | string[] | undefined) {
 
 function isQuoteListStatus(value: string | undefined): value is QuoteListStatus {
   return value === 'all' || value === 'hot' || value === 'warm' || value === 'cold' || value === 'dead'
+}
+
+function isQuoteLinkStatus(value: string | undefined): value is QuoteLinkStatus {
+  return value === 'active' || value === 'expired' || value === 'all'
 }
 
 function isQuoteListSort(value: string | undefined): value is QuoteListSort {

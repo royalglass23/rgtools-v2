@@ -5,9 +5,76 @@ import {
   getCompanyContact,
   getJobContact,
   getJobNotesAndEmails,
+  resolveJobUuid,
+  ServiceM8RateLimitError,
   stripEmailNoise,
+  withServiceM8Retry,
   type ServiceM8FetchRequest,
 } from '../client'
+
+describe('withServiceM8Retry', () => {
+  it('retries a throttled request and returns the eventual success', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>()
+      .mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [{ uuid: 'job-uuid-1' }] })
+    const sleeps: number[] = []
+
+    const response = await withServiceM8Retry(request, {
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      },
+      random: () => 0.5,
+    })('/job.json')
+
+    await expect(response.json()).resolves.toEqual([{ uuid: 'job-uuid-1' }])
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(sleeps).toEqual([500])
+  })
+
+  it('throws a typed error after retryable responses are exhausted', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: false,
+      status: 429,
+      json: async () => ({}),
+    }))
+    const sleeps: number[] = []
+
+    await expect(withServiceM8Retry(request, {
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      },
+      random: () => 1,
+      maxAttempts: 3,
+    })('/job.json')).rejects.toBeInstanceOf(ServiceM8RateLimitError)
+
+    expect(request).toHaveBeenCalledTimes(3)
+    expect(sleeps).toEqual([1000, 2000])
+  })
+
+  it('does not retry non-retryable client errors', async () => {
+    const response = { ok: false, status: 404, json: async () => ({}) }
+    const request = vi.fn<ServiceM8FetchRequest>(async () => response)
+    const sleep = vi.fn(async () => undefined)
+
+    await expect(withServiceM8Retry(request, { sleep })('/company/missing.json')).resolves.toBe(response)
+
+    expect(request).toHaveBeenCalledOnce()
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('retries a network error and returns the eventual success', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>()
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) })
+    const sleep = vi.fn(async () => undefined)
+
+    const response = await withServiceM8Retry(request, { sleep })('/job.json')
+
+    await expect(response.json()).resolves.toEqual({ ok: true })
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(sleep).toHaveBeenCalledOnce()
+  })
+})
 
 describe('getJobContact', () => {
   it('returns the richest active contact for a ServiceM8 job', async () => {
@@ -193,6 +260,17 @@ describe('getJobNotesAndEmails', () => {
       emails: [],
     })
   })
+
+  it('propagates exhausted ServiceM8 retry errors instead of hiding them as empty history', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => {
+      throw new ServiceM8RateLimitError(
+        'ServiceM8 request failed after 5 attempts with HTTP 429',
+        { path: '/note.json', status: 429, attempts: 5 },
+      )
+    })
+
+    await expect(getJobNotesAndEmails('job-uuid-1', request)).rejects.toBeInstanceOf(ServiceM8RateLimitError)
+  })
 })
 
 describe('stripEmailNoise', () => {
@@ -213,5 +291,28 @@ describe('stripEmailNoise', () => {
     ].join('\n')
 
     expect(stripEmailNoise(body)).toBe('Hi, please book the measure.')
+  })
+})
+
+describe('resolveJobUuid', () => {
+  it('returns null for a genuine empty ServiceM8 job search result', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    }))
+
+    await expect(resolveJobUuid({ jobNumber: 'R260227' }, request)).resolves.toBeNull()
+  })
+
+  it('propagates exhausted retry errors instead of reporting a missing job', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => {
+      throw new ServiceM8RateLimitError(
+        'ServiceM8 request failed after 5 attempts with HTTP 429',
+        { path: '/job.json', status: 429, attempts: 5 },
+      )
+    })
+
+    await expect(resolveJobUuid({ jobNumber: 'R260227' }, request)).rejects.toBeInstanceOf(ServiceM8RateLimitError)
   })
 })
