@@ -29,7 +29,12 @@ export type SuggestionLead = {
   distanceBand?: string | null
   history?: {
     notes: Array<{ date: string | null; text: string }>
-    emails: Array<{ date: string | null; subject: string | null; body: string }>
+    emails: Array<{
+      date: string | null
+      subject: string | null
+      body: string
+      direction?: 'inbound' | 'outbound' | null
+    }>
   } | null
 }
 
@@ -100,7 +105,9 @@ function renderHistorySection(history: SuggestionLead['history']): string | null
     '=== CONVERSATION HISTORY (from ServiceM8) ===',
     'Use this ServiceM8 history as the primary source for what the customer has already asked, been told, or committed to.',
     'Treat the newest ServiceM8 notes/emails as the current state, overriding older emails and generic priority rules when they conflict.',
+    'Emails marked (Customer) are the customer’s own words — weight their stated needs, objections, timeline, and urgency most heavily. Emails marked (Royal Glass) are our own outbound messages, so do not treat them as customer intent.',
     'If the newest history says the customer or site is not ready, recommend a timed follow-up or wait-for-customer step instead of a generic quote chase.',
+    'Reference specifics from this history (the site, what they asked for, what was quoted or promised) in your output so the advice is concrete, not generic.',
   ]
 
   if (history.notes.length > 0) {
@@ -114,7 +121,9 @@ function renderHistorySection(history: SuggestionLead['history']): string | null
     if (history.notes.length > 0) lines.push('')
     lines.push('Emails (most recent first):')
     for (const email of history.emails) {
-      lines.push(`- [${email.date ?? 'No date'}] Subject: ${email.subject ?? 'No subject'}`)
+      const who =
+        email.direction === 'inbound' ? '(Customer) ' : email.direction === 'outbound' ? '(Royal Glass) ' : ''
+      lines.push(`- [${email.date ?? 'No date'}] ${who}Subject: ${email.subject ?? 'No subject'}`)
       if (email.body) lines.push(`  ${email.body}`)
     }
   }
@@ -126,11 +135,11 @@ const SYSTEM_PROMPT = `You are an expert glazing sales consultant advising Royal
 
 Study the lead profile and respond in EXACTLY this format, in this order, with no preamble or extra commentary:
 
-NEXT ACTION: <one specific step to take today or by the follow-up date, naming call or email>
+NEXT ACTION: <the specific step(s) to take, naming call, email, or a dated wait/follow-up; if a sequence, say it plainly e.g. "Email today to re-engage, then call to close" or "Hold — light check-in when BC comes through">
 SALES ANGLE: <one sentence on how to position Royal Glass for this lead's specific situation>
 RISK WATCH: <the single biggest threat to winning this lead>
 
-Then include ONE channel section that matches your NEXT ACTION.
+Then include the channel section(s) that match your NEXT ACTION — usually ONE. Only include BOTH an EMAIL DRAFT and a PHONE AGENDA when the best play is genuinely a sequence (e.g. email now to re-engage, then a call to close), and put them in the order you would do them. Do NOT pad with both by default — each section must add a distinct step. If the NEXT ACTION is a wait/follow-up with no message to send yet, include neither and instead add a one-line FOLLOW-UP TRIGGER: <what event or date should prompt the next contact>.
 
 If the next action is a CALL, add:
 PHONE AGENDA:
@@ -147,7 +156,8 @@ Subject: <subject line>
 <ready-to-send body addressed to the contact by name, referencing their specific project, warm and concise (4-6 short sentences). End with a clear call to action and sign off as "The Royal Glass Team".>
 
 Accuracy rules (critical — staff may use this verbatim):
-• Use ONLY facts present in the lead profile. Do NOT invent prices, dollar figures, lead times, delivery dates, product specs, or guarantees.
+• Use ONLY facts present in the lead profile or the conversation history. Do NOT invent prices, dollar figures, lead times, delivery dates, product specs, or guarantees.
+• Do NOT state the customer's consent status — Resource Consent (RC), Building Consent (BC), or building stage — as fact unless it is explicitly given in the lead fields or the conversation history. Never tell a customer their consent is "approved", "granted", or "in progress" on your own assumption. If you need to reference it and it is not confirmed in the data, use a placeholder, e.g. [confirm BC status]. The same applies to any claim about the customer's decision, who won the job, their timeline, or project stage — assert it only if the data or history says so, otherwise use a placeholder or omit it.
 • When a specific number or detail would strengthen the message but is not in the data, insert a bracketed placeholder for staff to fill, e.g. [confirm lead time], [insert quote figure], [your name].
 • Never promise anything Royal Glass has not committed to in the data.
 
@@ -162,6 +172,11 @@ Priority rules:
 • A strike flag or low completeness = gather missing info before quoting
 • Building Consent "Required" or "In progress" = project may be 3–12 months out; set a long-range nurture cadence rather than pushing to quote now
 • High price sensitivity or competing quotes = lead with value, quality, and track record, not price
+
+Do NOT chase a deal that is not ready (this OVERRIDES the tier rules above):
+• If the latest notes/emails show the customer has not confirmed, is still comparing quotes, or the job is gated on consent/BC that is not yet granted, the NEXT ACTION is a LIGHT, dated follow-up — a brief check-in tied to the trigger (e.g. "when BC comes through", "early [month]") — NOT a hard close.
+• Do NOT propose booking a measure, a site visit, or a "let's schedule" close until the customer has actually confirmed intent in the history.
+• Match the customer's stated pace: if they said they will come back to you, the step is to wait and set the trigger, optionally with a soft value-add touch — never pressure.
 
 Use New Zealand English spelling and a natural, professional Kiwi business tone.`
 

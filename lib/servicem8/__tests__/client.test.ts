@@ -219,22 +219,32 @@ describe('getJobNotesAndEmails', () => {
         { date: '2026-06-13T09:00:00Z', text: 'note 3' },
         { date: '2026-06-12T09:00:00Z', text: 'note 4' },
         { date: '2026-06-11T09:00:00Z', text: 'note 5' },
+        { date: '2026-06-10T09:00:00Z', text: 'older note' },
       ],
       emails: [
         {
           date: '2026-06-12T09:00:00Z',
           subject: 'Site measure',
           body: 'Hello Royal Glass Please measure.',
+          direction: null,
         },
         {
           date: '2026-06-11T09:00:00Z',
           subject: 'Quote timing',
           body: 'Can you quote this week?',
+          direction: null,
         },
         {
           date: '2026-06-10T09:00:00Z',
           subject: 'Photos',
           body: 'Photos attached.',
+          direction: null,
+        },
+        {
+          date: '2026-06-09T09:00:00Z',
+          subject: 'Oldest email',
+          body: 'drop me',
+          direction: null,
         },
       ],
     })
@@ -244,6 +254,60 @@ describe('getJobNotesAndEmails', () => {
     expect(request.mock.calls[1]?.[0]).toContain('/email.json?%24filter=')
     expect(decodeURIComponent(request.mock.calls[0]?.[0] ?? '')).toContain("related_object_uuid eq 'job-uuid-1'")
     expect(decodeURIComponent(request.mock.calls[1]?.[0] ?? '')).toContain("related_object_uuid eq 'job-uuid-1'")
+  })
+
+  it('drops link-only, @mention, and bare-number notes so real signal fills the slots', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path.startsWith('/note.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { edit_date: '2026-06-15T09:00:00Z', note: 'https://drive.google.com/drive/folders/abc123' },
+            { edit_date: '2026-06-14T09:00:00Z', note: '@Roxy' },
+            { edit_date: '2026-06-13T09:00:00Z', note: '69870+gst' },
+            { edit_date: '2026-06-12T09:00:00Z', note: 'consented plans almost done, job around August' },
+            { edit_date: '2026-06-11T09:00:00Z', note: '167 Princes Street East: https://1drv.ms/f/xyz' },
+          ],
+        }
+      }
+      return { ok: true, status: 200, json: async () => [] }
+    })
+
+    const history = await getJobNotesAndEmails('job-uuid-1', request)
+    expect(history.notes).toEqual([
+      { date: '2026-06-12T09:00:00Z', text: 'consented plans almost done, job around August' },
+      { date: '2026-06-11T09:00:00Z', text: '167 Princes Street East:' },
+    ])
+  })
+
+  it('prioritises inbound (customer) emails over outbound boilerplate within the cap', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path.startsWith('/email.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { timestamp: '2026-06-18T09:00:00Z', direction: 'outbound', subject: 'Quote sent', message_text: 'Thanks for the opportunity.' },
+            { timestamp: '2026-06-17T09:00:00Z', direction: 'outbound', subject: 'Reminder', message_text: 'Following up on our quote.' },
+            { timestamp: '2026-06-16T09:00:00Z', direction: 'outbound', subject: 'Another reminder', message_text: 'Just checking in.' },
+            { timestamp: '2026-06-15T09:00:00Z', direction: 'outbound', subject: 'Yet another', message_text: 'Still keen?' },
+            { timestamp: '2026-06-10T09:00:00Z', direction: 'inbound', subject: 'Re: Quote', message_text: 'Can you do frameless instead?' },
+          ],
+        }
+      }
+      return { ok: true, status: 200, json: async () => [] }
+    })
+
+    const history = await getJobNotesAndEmails('job-uuid-1', request)
+    // The customer's inbound email is retained despite being the oldest, and order stays newest-first.
+    expect(history.emails.map((e) => e.direction)).toEqual(['outbound', 'outbound', 'outbound', 'inbound'])
+    expect(history.emails.at(-1)).toEqual({
+      date: '2026-06-10T09:00:00Z',
+      subject: 'Re: Quote',
+      body: 'Can you do frameless instead?',
+      direction: 'inbound',
+    })
   })
 
   it('returns empty history when ServiceM8 reads fail or return non-arrays', async () => {

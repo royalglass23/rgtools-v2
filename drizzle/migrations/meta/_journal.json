@@ -148,6 +148,13 @@
       "when": 1782090488030,
       "tag": "0020_abandoned_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1782097448409,
+      "tag": "0021_overrated_spot",
+      "breakpoints": true
     }
   ]
 }

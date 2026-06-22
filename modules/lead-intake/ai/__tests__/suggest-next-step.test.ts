@@ -134,6 +134,23 @@ describe('buildSuggestionPrompt', () => {
     expect(prompt).toContain('  Can Royal Glass quote the ensuite this week?')
   })
 
+  it('labels email direction so the model distinguishes customer voice from our outbound', () => {
+    const prompt = buildSuggestionPrompt({
+      ...lead,
+      history: {
+        notes: [],
+        emails: [
+          { date: '2026-06-17', subject: 'Re: Quote', body: 'Can you do frameless instead?', direction: 'inbound' },
+          { date: '2026-06-16', subject: 'Quote sent', body: 'Thanks for the opportunity.', direction: 'outbound' },
+        ],
+      },
+    })
+
+    expect(prompt).toContain('- [2026-06-17] (Customer) Subject: Re: Quote')
+    expect(prompt).toContain('- [2026-06-16] (Royal Glass) Subject: Quote sent')
+    expect(prompt).toContain('Emails marked (Customer) are the customer’s own words')
+  })
+
   it('omits ServiceM8 conversation history when empty or missing', () => {
     expect(buildSuggestionPrompt(lead)).not.toContain('CONVERSATION HISTORY')
     expect(buildSuggestionPrompt({ ...lead, history: { notes: [], emails: [] } }))

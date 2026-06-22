@@ -93,9 +93,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+export type ServiceM8EmailDirection = 'inbound' | 'outbound' | null
+
 export type LeadServiceM8History = {
   notes: Array<{ date: string | null; text: string }>
-  emails: Array<{ date: string | null; subject: string | null; body: string }>
+  emails: Array<{
+    date: string | null
+    subject: string | null
+    body: string
+    /** 'inbound' = the customer's own words; 'outbound' = sent by Royal Glass. */
+    direction: ServiceM8EmailDirection
+  }>
 }
 
 export function getServiceM8ApiKey(): string {
@@ -225,6 +233,7 @@ type ServiceM8EmailRecord = {
   message_html?: string | null
   text?: string | null
   html?: string | null
+  direction?: string | null
   date?: string | null
   create_date?: string | null
   edit_date?: string | null
@@ -232,11 +241,16 @@ type ServiceM8EmailRecord = {
   timestamp?: string | null
 }
 
-const NOTE_LIMIT = 5
-const EMAIL_LIMIT = 3
+// Notes are the richest signal (staff CRM history), so keep more of them; emails
+// skew to outbound boilerplate, so a small cap is fine once inbound is prioritised.
+const NOTE_LIMIT = 8
+const EMAIL_LIMIT = 4
 const NOTE_CHAR_LIMIT = 300
 const EMAIL_BODY_CHAR_LIMIT = 800
-const HISTORY_CHAR_LIMIT = 3000
+const HISTORY_CHAR_LIMIT = 4000
+
+const URL_RE = /\bhttps?:\/\/\S+/gi
+const MENTION_RE = /@\w+/g
 
 export type ServiceM8JobContact = {
   name: string | null
@@ -302,34 +316,84 @@ export async function getJobNotesAndEmails(
     ),
   ])
 
-  return capSerializedHistory({
-    notes: newestFirst(noteRows)
-      .map((note) => ({
-        date: serviceM8Date(note),
-        text: truncate(cleanText(note.note ?? note.text ?? note.body ?? note.message ?? ''), NOTE_CHAR_LIMIT),
-      }))
-      .filter((note) => note.text.length > 0)
-      .slice(0, NOTE_LIMIT),
-    emails: newestFirst(emailRows)
-      .map((email) => ({
-        date: serviceM8Date(email),
-        subject: cleanText(email.subject ?? '') || null,
-        body: truncate(
-          stripEmailNoise(
-            email.message_text ??
-            email.body ??
-            email.message ??
-            email.text ??
-            email.message_html ??
-            email.html ??
-            '',
-          ),
-          EMAIL_BODY_CHAR_LIMIT,
+  const notes = newestFirst(noteRows)
+    .map((note) => ({
+      date: serviceM8Date(note),
+      text: cleanNoteText(note.note ?? note.text ?? note.body ?? note.message ?? ''),
+    }))
+    .filter((note) => !isLowSignalNote(note.text))
+    .map((note) => ({ date: note.date, text: truncate(note.text, NOTE_CHAR_LIMIT) }))
+    .slice(0, NOTE_LIMIT)
+
+  const mappedEmails = newestFirst(emailRows)
+    .map((email) => ({
+      date: serviceM8Date(email),
+      subject: cleanText(email.subject ?? '') || null,
+      body: truncate(
+        stripEmailNoise(
+          email.message_text ??
+          email.body ??
+          email.message ??
+          email.text ??
+          email.message_html ??
+          email.html ??
+          '',
         ),
-      }))
-      .filter((email) => email.subject || email.body.length > 0)
-      .slice(0, EMAIL_LIMIT),
+        EMAIL_BODY_CHAR_LIMIT,
+      ),
+      direction: normaliseEmailDirection(email.direction),
+    }))
+    .filter((email) => email.subject || email.body.length > 0)
+
+  return capSerializedHistory({
+    notes,
+    emails: selectEmailsInboundFirst(mappedEmails, EMAIL_LIMIT),
   })
+}
+
+/**
+ * Staff notes carry the real CRM signal, but they are dominated by routing noise:
+ * bare file-share links, `@mention` pings, and lone price/number jottings. Strip the
+ * URLs so the slot is spent on the actual text, not a Drive link.
+ */
+function cleanNoteText(raw: string): string {
+  const base = looksLikeHtml(raw) ? htmlToText(raw) : raw
+  return collapseWhitespace(base.replace(URL_RE, ' '))
+}
+
+/**
+ * A note is low-signal (drop it) when, after removing URLs, nothing meaningful is
+ * left: empty, a pure `@mention`, or a lone number / price ping ("2490", "69870+gst").
+ */
+function isLowSignalNote(cleaned: string): boolean {
+  if (cleaned.length === 0) return true
+  const mentionless = cleaned.replace(MENTION_RE, ' ').trim()
+  if (mentionless.length === 0) return true
+  return /^[\d\s.,+\-]*(?:gst)?[\d\s.,+\-]*$/i.test(mentionless)
+}
+
+function normaliseEmailDirection(value?: string | null): ServiceM8EmailDirection {
+  return value === 'inbound' || value === 'outbound' ? value : null
+}
+
+/**
+ * Emails skew heavily to outbound Royal Glass boilerplate ("Thanks for the
+ * opportunity…"), which crowds the customer's own words out of a small newest-first
+ * window. Reserve the slots for inbound (customer) emails first, then backfill with
+ * the newest remaining, while preserving newest-first order for display.
+ */
+function selectEmailsInboundFirst<T extends { direction: ServiceM8EmailDirection }>(
+  emails: T[],
+  limit: number,
+): T[] {
+  if (emails.length <= limit) return emails
+  const inboundIdx: number[] = []
+  const otherIdx: number[] = []
+  emails.forEach((email, index) => {
+    (email.direction === 'inbound' ? inboundIdx : otherIdx).push(index)
+  })
+  const chosen = new Set([...inboundIdx, ...otherIdx].slice(0, limit))
+  return emails.filter((_, index) => chosen.has(index))
 }
 
 export function stripEmailNoise(raw: string): string {

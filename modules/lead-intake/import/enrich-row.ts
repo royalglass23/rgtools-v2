@@ -80,6 +80,7 @@ export async function enrichImportRow(
         ...row.input,
         clientName: row.input.clientName || meta.clientName || contact?.name || '',
         companyName: row.input.companyName || meta.clientName || '',
+        servicem8CompanyUuid: meta.companyUuid ?? row.input.servicem8CompanyUuid,
         phone,
         email,
         location: row.input.location || meta.jobAddress || '',

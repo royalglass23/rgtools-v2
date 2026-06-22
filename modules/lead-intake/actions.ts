@@ -1,10 +1,11 @@
 'use server'
 
-import { eq, or } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
+import { resolveClient } from '@/modules/clients/client-resolver'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
@@ -27,6 +28,8 @@ export type LeadIntakeInput = {
   companyName?: string
   phone?: string
   email?: string
+  /** ServiceM8 company UUID when known (import enrichment) — makes the client "linked". */
+  servicem8CompanyUuid?: string
   clientProfileKey: string
   projectType: string
   location: string
@@ -168,6 +171,7 @@ export async function submitLeadIntakeForUser(
   const now = new Date()
   let leadId = ''
   let clientId = ''
+  let contactId: string | null = null
   let matchedExistingClient = Boolean(normalized.leadId)
 
   await db.transaction(async (tx) => {
@@ -216,41 +220,23 @@ export async function submitLeadIntakeForUser(
         })
         .where(eq(leads.id, leadId))
     } else {
-      const matchedClient = await findMatchingClient(tx, normalized.phoneNormalized, normalized.email ?? '')
-
-      if (matchedClient) {
-        clientId = matchedClient.id
-        matchedExistingClient = true
-        await tx
-          .update(clients)
-          .set({
-            name: normalized.clientName,
-            companyName: normalized.companyName || matchedClient.companyName,
-            phone: normalized.phone || matchedClient.phone,
-            phoneNormalized: normalized.phoneNormalized || matchedClient.phoneNormalized,
-            email: normalized.email || matchedClient.email,
-            updatedAt: now,
-          })
-          .where(eq(clients.id, matchedClient.id))
-      } else {
-        const [createdClient] = await tx
-          .insert(clients)
-          .values({
-            name: normalized.clientName,
-            companyName: normalized.companyName || null,
-            phone: normalized.phone || null,
-            phoneNormalized: normalized.phoneNormalized || null,
-            email: normalized.email || null,
-          })
-          .returning({ id: clients.id })
-
-        clientId = createdClient.id
-      }
+      const resolved = await resolveClient(tx, {
+        servicem8CompanyUuid: normalized.servicem8CompanyUuid,
+        clientName: normalized.clientName,
+        companyName: normalized.companyName,
+        phone: normalized.phone,
+        phoneNormalized: normalized.phoneNormalized,
+        email: normalized.email,
+      })
+      clientId = resolved.clientId
+      contactId = resolved.contactId
+      matchedExistingClient = resolved.matchedExistingClient
 
       const [createdLead] = await tx
         .insert(leads)
         .values({
           clientId,
+          contactId,
           source: normalized.source,
           syncStatus: 'pending_sync',
           projectType: normalized.projectType,
@@ -342,23 +328,3 @@ function parseFollowUpDate(value: string | undefined): string | null {
   return date.toISOString().slice(0, 10)
 }
 
-async function findMatchingClient(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  phoneNormalized: string | null,
-  email: string,
-) {
-  const matchConditions = [
-    phoneNormalized ? eq(clients.phoneNormalized, phoneNormalized) : null,
-    email ? eq(clients.email, email) : null,
-  ].filter((condition): condition is NonNullable<typeof condition> => condition !== null)
-
-  if (matchConditions.length === 0) return null
-
-  const [client] = await tx
-    .select()
-    .from(clients)
-    .where(matchConditions.length === 1 ? matchConditions[0] : or(...matchConditions))
-    .limit(1)
-
-  return client ?? null
-}
