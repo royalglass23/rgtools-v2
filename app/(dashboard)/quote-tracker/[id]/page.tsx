@@ -80,10 +80,11 @@ export default async function QuoteDetailPage({
         <div>
           <Link href="/quote-tracker" className="text-sm text-gray-500 hover:text-gray-900">Back to quote tracker</Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold text-gray-950">{detail.quote.clientName}</h1>
+            <h1 className="text-2xl font-semibold text-gray-950">
+              {detail.quote.workOrderId ? `${detail.quote.workOrderId} - ` : ''}{detail.quote.clientName}
+            </h1>
             <StatusBadge tag={effectiveTag} />
           </div>
-          {detail.quote.companyName && <p className="mt-1 text-sm text-gray-500">{detail.quote.companyName}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {quoteUrl && <CopyLinkButton value={quoteUrl} label="Copy quote link" />}
@@ -101,15 +102,29 @@ export default async function QuoteDetailPage({
             Email gate settings saved.
           </div>
         )}
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Field label="Job" value={detail.quote.jobDescription ?? '-'} />
-          <Field label="Job Address" value={detail.quote.jobAddress ?? '-'} />
+        <dl className="grid gap-4 lg:grid-cols-5">
+          <div className="lg:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Job Address</dt>
+            <dd className="mt-1 break-words text-sm text-gray-950">{detail.quote.jobAddress ?? '-'}</dd>
+          </div>
+          <div className="lg:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Job Description</dt>
+            <dd className="mt-1 break-words text-sm text-gray-950">{detail.quote.jobDescription ?? '-'}</dd>
+          </div>
           <Field label="Value" value={formatCurrency(detail.quote.quoteValue)} />
+          <div className="lg:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Link</dt>
+            <dd className="mt-1 break-words text-sm">
+              {expired || !quoteUrl ? (
+                <span className="text-gray-950">{expired ? 'Link expired' : '-'}</span>
+              ) : (
+                <a href={quoteUrl} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">{quoteUrl}</a>
+              )}
+            </dd>
+          </div>
           <Field label="Expires" value={formatDateTime(detail.quote.expiresAt)} />
           <Field label="Short code" value={expired ? '-' : (detail.quote.shortCode ?? '-')} />
-          <Field label="Link" value={expired ? 'Link expired' : (quoteUrl || '-')} />
           <Field label="Email gate" value={detail.quote.emailGateEnabled ? 'Enabled' : 'Disabled'} />
-          <Field label="Shared with" value={formatRecipients(detail.recipients)} />
         </dl>
         <EmailGateSettingsForm
           action={saveEmailGate}
