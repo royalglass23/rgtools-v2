@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
-TRACKER_URL = "https://rg-tracker.royalglass.workers.dev/track"
+TRACKER_URL = "https://track.royalglass.co.nz/track"
 
 # R2 bucket binding - PDF storage
 [[r2_buckets]]
