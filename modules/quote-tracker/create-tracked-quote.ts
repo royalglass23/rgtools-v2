@@ -164,6 +164,7 @@ export async function createTrackedQuote(
           expiresAt,
           emailGateEnabled: false,
           ownerUserId: opts.ownerUserId ?? null,
+          workOrderId: meta.jobNumber ?? null,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -181,6 +182,7 @@ export async function createTrackedQuote(
             expiresAt,
             emailGateEnabled: false,
             ownerUserId: opts.ownerUserId ?? null,
+            workOrderId: meta.jobNumber ?? null,
             updatedAt: new Date(),
           },
         })

@@ -8,7 +8,9 @@ compatibility_flags = ["nodejs_compat"]
 #   wrangler secret put DATABASE_URL
 # Then paste your Neon DATABASE_URL when prompted.
 
-# Uncomment and update after linking your Cloudflare account:
-# [[routes]]
-# pattern = "tracker.rgtools.co.nz/*"
-# zone_name = "rgtools.co.nz"
+# Custom domain - royalglass.co.nz zone is Active on Cloudflare.
+# Same-root subdomain (vs *.workers.dev) so engagement beacons aren't
+# blocked by ad-blockers/firewalls. Cloudflare auto-creates DNS + TLS on deploy.
+[[routes]]
+pattern = "track.royalglass.co.nz"
+custom_domain = true

@@ -1,5 +1,12 @@
 # DNS Migration: Bluehost → Cloudflare (royalglass.co.nz)
 
+> **Status: COMPLETE (2026-06-24).** Nameservers are `jason`/`walk.ns.cloudflare.com`.
+> Email (QQ) and the Bluehost site are intact. `quotes.royalglass.co.nz` (rg-viewer)
+> and `track.royalglass.co.nz` (rg-tracker) are live as Worker custom domains.
+> The steps below are kept as the record of how it was done / rollback reference.
+> A narrative account of the actual run (issues hit + fixes + outcome) is in
+> [`dns-migration-cloudflare-record.md`](./dns-migration-cloudflare-record.md).
+
 Goal: move DNS management to Cloudflare so the `rg-viewer` Worker can serve
 `quotes.royalglass.co.nz`, **without disrupting the website or email**.
 
@@ -63,16 +70,31 @@ nslookup -type=a  royalglass.co.nz     # should still be 108.179.214.94
 ```
 Plus: load https://royalglass.co.nz and send a test email both directions.
 
-## After it's stable — the Worker (quotes.royalglass.co.nz)
+## The Workers (done — quotes + track on custom domains)
 
-Uncomment in `workers/viewer/wrangler.toml`:
+Both workers bind their hostname via a Custom Domain route. Cloudflare
+auto-creates the proxied DNS record **and** the edge TLS cert when the route
+binds on `wrangler deploy` (no manual DNS record needed).
 
+`workers/viewer/wrangler.toml`:
 ```toml
 [[routes]]
-pattern = "quotes.royalglass.co.nz/*"
-zone_name = "royalglass.co.nz"
+pattern = "quotes.royalglass.co.nz"
+custom_domain = true
 ```
 
-Then `wrangler deploy`. Cloudflare creates the proxied `quotes` record
-automatically when the route binds. Confirm with:
-`curl -I https://quotes.royalglass.co.nz` (expect a cf-ray header).
+`workers/tracker/wrangler.toml`:
+```toml
+[[routes]]
+pattern = "track.royalglass.co.nz"
+custom_domain = true
+```
+
+Deploy order: tracker first (so the host exists), then viewer (its
+`TRACKER_URL` var points at `https://track.royalglass.co.nz/track`).
+Run `pnpm wrangler deploy` from inside each worker folder. Confirm with:
+`curl -I https://quotes.royalglass.co.nz` (expect a `cf-ray` header).
+
+> The app's `VIEWER_BASE_URL` env var (Vercel) must be
+> `https://quotes.royalglass.co.nz` so generated quote links use the custom
+> domain rather than the old `rg-viewer.royalglass.workers.dev`.
