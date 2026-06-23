@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { errorMessage } from '@/lib/error-message'
+import { setJobLeadsQuality } from '@/lib/servicem8/client'
 import { createServiceM8ClientFromEnv } from './client'
 import { buildServiceM8InboxEmail, type ServiceM8LeadSyncRecord } from './payload'
 
@@ -18,6 +19,45 @@ export type ServiceM8BatchSyncOutcome = {
 export async function syncLeadToServiceM8(leadId: string): Promise<ServiceM8LeadSyncOutcome> {
   try {
     const record = await loadLeadSyncRecord(leadId)
+    if (record.servicem8JobUuid) {
+      const reference = `linked:${record.servicem8JobUuid}`
+      const now = new Date()
+
+      // Already-linked leads skip the inbox email, but we still push the current
+      // tier to the job's Leads Quality field. Best-effort: a failed write must
+      // not fail the sync — the lead is already linked and synced.
+      if (record.tier) {
+        try {
+          await setJobLeadsQuality(record.servicem8JobUuid, record.tier)
+        } catch {
+          // swallow — Leads Quality is a nice-to-have; the sync still succeeds
+        }
+      }
+
+      await db
+        .update(leads)
+        .set({
+          servicem8JobUuid: record.servicem8JobUuid,
+          syncStatus: 'synced',
+          syncError: null,
+          updatedAt: now,
+        })
+        .where(eq(leads.id, leadId))
+
+      await db.insert(auditLog).values({
+        actorId: null,
+        action: 'lead.servicem8_sync',
+        targetId: leadId,
+        detail: {
+          reference,
+          skipped: true,
+          reason: 'already_linked',
+        },
+      })
+
+      return { ok: true, leadId, reference }
+    }
+
     const client = createServiceM8ClientFromEnv()
     const noteSignature = buildServiceM8InboxEmail(record, []).noteSignature
     const lastSignature = await loadLastSyncedNoteSignature(leadId)

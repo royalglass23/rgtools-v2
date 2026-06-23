@@ -1,12 +1,14 @@
 // @vitest-environment node
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createServiceM8WriteRequestFromEnv,
   getCompanyContact,
   getJobContact,
   getJobNotesAndEmails,
   resolveJobUuid,
   ServiceM8RateLimitError,
+  setJobLeadsQuality,
   stripEmailNoise,
   withServiceM8Retry,
   type ServiceM8FetchRequest,
@@ -378,5 +380,70 @@ describe('resolveJobUuid', () => {
     })
 
     await expect(resolveJobUuid({ jobNumber: 'R260227' }, request)).rejects.toBeInstanceOf(ServiceM8RateLimitError)
+  })
+})
+
+describe('setJobLeadsQuality', () => {
+  const original = process.env.SERVICEM8_LEAD_QUALITY_FIELD
+
+  afterEach(() => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = original
+  })
+
+  it('posts the bare tier letter to the configured custom field for the job', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'customfield_leads_quality_'
+    const calls: Array<{ path: string; init?: RequestInit }> = []
+    const request: ServiceM8FetchRequest = async (path, init) => {
+      calls.push({ path, init })
+      return { ok: true, status: 200, json: async () => ({ errorCode: 0 }) }
+    }
+
+    await setJobLeadsQuality('job-uuid-1', 'A', request)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].path).toBe('/job/job-uuid-1.json')
+    expect(calls[0].init?.method).toBe('POST')
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ customfield_leads_quality_: 'A' })
+  })
+
+  it('throws when the Leads Quality field is not configured', async () => {
+    delete process.env.SERVICEM8_LEAD_QUALITY_FIELD
+    const request: ServiceM8FetchRequest = async () => ({ ok: true, status: 200, json: async () => ({}) })
+
+    await expect(setJobLeadsQuality('job-uuid-1', 'A', request)).rejects.toThrow(/SERVICEM8_LEAD_QUALITY_FIELD/)
+  })
+
+  it('throws when ServiceM8 rejects the write', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'customfield_leads_quality_'
+    const request: ServiceM8FetchRequest = async () => ({ ok: false, status: 403, json: async () => ({}) })
+
+    await expect(setJobLeadsQuality('job-uuid-1', 'A', request)).rejects.toThrow(/403/)
+  })
+})
+
+describe('createServiceM8WriteRequestFromEnv', () => {
+  const original = process.env.SERVICEM8_API_KEY_FULL
+
+  afterEach(() => {
+    process.env.SERVICEM8_API_KEY_FULL = original
+    vi.unstubAllGlobals()
+  })
+
+  it('authenticates writes with the full-access API key', async () => {
+    process.env.SERVICEM8_API_KEY_FULL = 'smk-full-access'
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const request = createServiceM8WriteRequestFromEnv()
+    await request('/job/job-uuid-1.json', { method: 'POST', body: '{}' })
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+    expect(headers.get('X-API-Key')).toBe('smk-full-access')
+  })
+
+  it('throws when the full-access key is not configured', () => {
+    delete process.env.SERVICEM8_API_KEY_FULL
+    expect(() => createServiceM8WriteRequestFromEnv()).toThrow(/SERVICEM8_API_KEY_FULL/)
   })
 })

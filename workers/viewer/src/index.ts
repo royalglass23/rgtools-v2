@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless'
+import { renderPrivacyNotice } from './privacy-notice'
 
 export interface Env {
   DATABASE_URL: string
@@ -359,6 +360,25 @@ function viewerHtml(
       #toolbar .toolbarCenter { grid-area: center; }
       #featureButtons { grid-area: features; }
     }
+    #privacyModal {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.7);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #privacyModal[hidden] { display: none; }
+    #privacyModalBox {
+      position: relative; width: min(820px, 96vw); height: 88vh;
+      background: #1a1b1d; border-radius: 6px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    #privacyModalClose {
+      position: absolute; top: 10px; right: 14px; z-index: 1;
+      background: transparent; border: none; color: #c7c7c7;
+      font-size: 1.5rem; cursor: pointer; line-height: 1;
+    }
+    #privacyFrame { flex: 1; border: none; width: 100%; }
+    .gate-notice { font-size: 0.75rem; color: #888; margin-top: 0.5rem; }
+    .gate-notice a { color: #7ab4d8; }
   </style>
 </head>
 <body>
@@ -367,6 +387,7 @@ function viewerHtml(
     <input id="gateName" type="text" autocomplete="name" placeholder="Name (optional)">
     <input id="gateEmail" type="email" autocomplete="email" placeholder="your@email.com">
     <button id="gateSubmit" type="button">View Quote</button>
+    <p class="gate-notice">Your email confirms access and lets Royal Glass know their quote was viewed. <a href="/privacy">Privacy &amp; Cookies</a></p>
     <p id="gateError"></p>
   </div>
   <div id="viewerWrap">
@@ -388,10 +409,16 @@ function viewerHtml(
     <div id="viewer"></div>
     <div id="actionBar"></div>
     <footer>
-      <a href="#" id="cookiesLink">Cookies &amp; Preferences</a>
+      <a href="#" id="cookiesLink">Cookies &amp; Tracking</a>
       <span aria-hidden="true">&nbsp;&middot;&nbsp;</span>
       <a href="#" id="privacyLink">Privacy Policy</a>
     </footer>
+  </div>
+  <div id="privacyModal" hidden>
+    <div id="privacyModalBox">
+      <button id="privacyModalClose" aria-label="Close">&times;</button>
+      <iframe id="privacyFrame" src="" title="Privacy &amp; Cookies Notice"></iframe>
+    </div>
   </div>
   <script type="module">
     import * as pdfjsLib from '${PDFJS_LIB_URL}';
@@ -681,12 +708,19 @@ function viewerHtml(
 
     document.getElementById('cookiesLink').addEventListener('click', function (event) {
       event.preventDefault();
-      alert('Coming soon');
+      document.getElementById('privacyFrame').src = '/privacy#cookies';
+      document.getElementById('privacyModal').removeAttribute('hidden');
     });
 
     document.getElementById('privacyLink').addEventListener('click', function (event) {
       event.preventDefault();
-      alert('Coming soon');
+      document.getElementById('privacyFrame').src = '/privacy';
+      document.getElementById('privacyModal').removeAttribute('hidden');
+    });
+
+    document.getElementById('privacyModalClose').addEventListener('click', function () {
+      document.getElementById('privacyModal').setAttribute('hidden', '');
+      document.getElementById('privacyFrame').src = '';
     });
 
     if (EMAIL_GATE_ENABLED) {
@@ -740,6 +774,10 @@ const worker = {
     }
 
     const url = new URL(request.url)
+    if (url.pathname === '/privacy') {
+      return htmlResponse(renderPrivacyNotice())
+    }
+
     const pdfMatch = url.pathname.match(/^\/q\/([A-Za-z0-9]{4,16})\/pdf$/)
     const gateMatch = url.pathname.match(/^\/q\/([A-Za-z0-9]{4,16})\/gate$/)
     const viewerMatch = url.pathname.match(/^\/q\/([A-Za-z0-9]{4,16})$/)

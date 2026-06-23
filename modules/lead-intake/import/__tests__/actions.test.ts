@@ -6,6 +6,7 @@ import type { LeadImportRow } from '../types'
 const existingRefs = vi.hoisted(() => ({ values: [] as string[] }))
 const updatedLeads = vi.hoisted(() => [] as unknown[])
 const submitLeadIntakeForUserMock = vi.hoisted(() => vi.fn())
+const setJobLeadsQualityMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(async () => ({ user: { id: 'admin-id', role: 'admin' } })),
@@ -49,6 +50,10 @@ vi.mock('@/modules/lead-intake/actions', () => ({
   submitLeadIntakeForUser: submitLeadIntakeForUserMock,
 }))
 
+vi.mock('@/lib/servicem8/client', () => ({
+  setJobLeadsQuality: setJobLeadsQualityMock,
+}))
+
 import { commitLeadImport } from '../actions'
 
 function importRow(overrides: Partial<LeadImportRow> = {}): LeadImportRow {
@@ -87,6 +92,8 @@ describe('commitLeadImport', () => {
   beforeEach(() => {
     existingRefs.values = []
     updatedLeads.length = 0
+    setJobLeadsQualityMock.mockReset()
+    setJobLeadsQualityMock.mockResolvedValue(undefined)
     submitLeadIntakeForUserMock.mockReset()
     submitLeadIntakeForUserMock.mockResolvedValue({
       success: true,
@@ -122,6 +129,21 @@ describe('commitLeadImport', () => {
       success: true,
       inserted: 0,
       skippedExisting: 1,
+    })
+  })
+
+  it('writes the lead tier to the linked job Leads Quality field on import', async () => {
+    await commitLeadImport([importRow()])
+
+    expect(setJobLeadsQualityMock).toHaveBeenCalledWith('job-uuid-1', 'A')
+  })
+
+  it('still imports the lead when the Leads Quality write fails', async () => {
+    setJobLeadsQualityMock.mockRejectedValue(new Error('ServiceM8 Leads Quality write failed with HTTP 403'))
+
+    await expect(commitLeadImport([importRow()])).resolves.toMatchObject({
+      success: true,
+      inserted: 1,
     })
   })
 

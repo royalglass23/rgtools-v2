@@ -16,10 +16,8 @@ bucket_name = "rg-quotes"
 #   wrangler secret put DATABASE_URL
 # (paste the Neon DATABASE_URL from .env.local when prompted)
 
-# Custom domain - enable next week once royalglass.co.nz is on Cloudflare
-# (nameservers moved to Cloudflare at the 1st Domains registrar). Until then
-# the zone isn't in this account, so deploying this route would fail.
+# Custom domain - royalglass.co.nz zone is Active on Cloudflare.
 # Cloudflare auto-creates the DNS record + edge TLS cert on deploy.
-# [[routes]]
-# pattern = "quotes.royalglass.co.nz"
-# custom_domain = true
+[[routes]]
+pattern = "quotes.royalglass.co.nz"
+custom_domain = true

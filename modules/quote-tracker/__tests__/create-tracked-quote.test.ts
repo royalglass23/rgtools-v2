@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const getJobQuoteMeta = vi.fn()
   const getQuoteAttachmentPdf = vi.fn()
   const generateShortCode = vi.fn()
+  const resolveClient = vi.fn()
 
   const db = {
     select: vi.fn(() => ({
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => {
         })),
       }
     }),
+    transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback({ tx: true })),
   }
 
   return {
@@ -50,6 +52,7 @@ const mocks = vi.hoisted(() => {
     insertReturningRows,
     insertValues,
     put,
+    resolveClient,
     selectRows,
   }
 })
@@ -69,6 +72,9 @@ vi.mock('@/lib/servicem8/client', () => ({
 vi.mock('@/lib/short-code', () => ({
   generateShortCode: (length: number) => mocks.generateShortCode(length),
 }))
+vi.mock('@/modules/clients/client-resolver', () => ({
+  resolveClient: (tx: unknown, input: unknown) => mocks.resolveClient(tx, input),
+}))
 
 import { createTrackedQuote } from '../create-tracked-quote'
 
@@ -80,6 +86,7 @@ describe('createTrackedQuote', () => {
     mocks.createServiceM8RequestFromEnv.mockReturnValue({ request: true })
     mocks.getJobQuoteMeta.mockResolvedValue({
       clientName: 'Acme Ltd',
+      companyUuid: 'company-1',
       jobDescription: 'Replace shopfront',
       jobAddress: '12 Glass St',
       totalIncGst: 1234.5,
@@ -87,6 +94,7 @@ describe('createTrackedQuote', () => {
     mocks.getQuoteAttachmentPdf.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]) })
     mocks.generateShortCode.mockReturnValue('NEWCODE1')
     mocks.insertReturningRows.mockReturnValue([{ id: 'quote-1', shortCode: 'EXISTING1' }])
+    mocks.resolveClient.mockResolvedValue({ clientId: 'client-1', contactId: null, matchedExistingClient: true, linked: true })
     mocks.auditValues.mockResolvedValue(undefined)
   })
 
@@ -129,6 +137,8 @@ describe('createTrackedQuote', () => {
         servicem8Uuid: 'job-1',
         shortCode: 'EXISTING1',
         clientName: 'Acme Ltd',
+        clientId: 'client-1',
+        servicem8CompanyUuid: 'company-1',
         jobAddress: '12 Glass St',
         quoteValue: '1234.50',
         pdfStorageKey: 'quotes/EXISTING1.pdf',
@@ -139,6 +149,8 @@ describe('createTrackedQuote', () => {
       target: expect.anything(),
       set: expect.objectContaining({
         shortCode: 'EXISTING1',
+        clientId: 'client-1',
+        servicem8CompanyUuid: 'company-1',
         quoteValue: '1234.50',
         pdfStorageKey: 'quotes/EXISTING1.pdf',
         expiresAt,
@@ -151,6 +163,29 @@ describe('createTrackedQuote', () => {
         shortCode: 'EXISTING1',
         link: 'https://quotes.example/q/EXISTING1',
         expiresAt,
+      }),
+    )
+  })
+
+  it('upserts a quote-only ServiceM8 company as a client before writing the tracked quote', async () => {
+    mocks.selectRows.mockReturnValueOnce([]).mockReturnValueOnce([])
+
+    await createTrackedQuote({ jobUuid: 'job-1' })
+
+    expect(mocks.resolveClient).toHaveBeenCalledWith(
+      { tx: true },
+      {
+        servicem8CompanyUuid: 'company-1',
+        clientName: 'Acme Ltd',
+        companyName: 'Acme Ltd',
+      },
+    )
+    expect(mocks.insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        servicem8Uuid: 'job-1',
+        clientId: 'client-1',
+        servicem8CompanyUuid: 'company-1',
+        clientName: 'Acme Ltd',
       }),
     )
   })

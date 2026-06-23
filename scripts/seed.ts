@@ -35,13 +35,15 @@ async function seed() {
   const modulesToSeed = [
     { slug: 'lead-intake', name: 'Lead Intake', adminOnly: false, sortOrder: 0, isActive: true },
     { slug: 'leads', name: 'Leads', adminOnly: false, sortOrder: 1, isActive: true },
-    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 2, isActive: true },
+    { slug: 'clients', name: 'Clients', adminOnly: false, sortOrder: 2, isActive: true },
+    { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 3, isActive: true },
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99, isActive: true },
     { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100, isActive: true },
     { slug: 'admin/calculator-pricing', name: 'Cost Calculator Price', adminOnly: true, sortOrder: 101, isActive: true },
     { slug: 'admin/dashboard-settings', name: 'Dashboard Settings', adminOnly: true, sortOrder: 102, isActive: true },
     { slug: 'admin/tracking', name: 'Tracking Settings', adminOnly: true, sortOrder: 103, isActive: true },
     { slug: 'admin/lead-import', name: 'Lead Import', adminOnly: true, sortOrder: 104, isActive: true },
+    { slug: 'admin/client-merge-review', name: 'Client Merge Review', adminOnly: true, sortOrder: 105, isActive: true },
   ]
 
   for (const moduleSeed of modulesToSeed) {
@@ -58,27 +60,28 @@ async function seed() {
     }
   }
 
-  const [leadsModule] = await db
-    .select({ id: modules.id })
+  const staffDefaultModules = await db
+    .select({ id: modules.id, slug: modules.slug })
     .from(modules)
-    .where(eq(modules.slug, 'leads'))
-    .limit(1)
+    .where(eq(modules.adminOnly, false))
 
-  if (leadsModule) {
+  if (staffDefaultModules.length > 0) {
     const staffUsers = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.role, 'staff'))
 
     for (const staffUser of staffUsers) {
-      await db
-        .insert(userModuleAccess)
-        .values({
-          userId: staffUser.id,
-          moduleId: leadsModule.id,
-          grantedBy: null,
-        })
-        .onConflictDoNothing()
+      for (const moduleRow of staffDefaultModules) {
+        await db
+          .insert(userModuleAccess)
+          .values({
+            userId: staffUser.id,
+            moduleId: moduleRow.id,
+            grantedBy: null,
+          })
+          .onConflictDoNothing()
+      }
     }
   }
 

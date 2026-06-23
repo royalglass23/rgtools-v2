@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
 import { leads } from '@/drizzle/schema-leads'
-import { createServiceM8RequestFromEnv } from '@/lib/servicem8/client'
+import { createServiceM8RequestFromEnv, resolveJobUuid } from '@/lib/servicem8/client'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 
 // Re-exported for existing importers/tests that reference these from this module.
@@ -27,10 +27,25 @@ export type LeadServiceM8FetchResult =
   | {
       ok: true
       jobUuid: string
+      jobNumber: string | null
       jobStatus: string | null
       leadsQuality: string
       customFieldUpdated: boolean
       customFieldError?: string
+    }
+  | {
+      ok: false
+      reason: 'not_found' | 'error'
+      message: string
+    }
+
+export type LeadServiceM8ManualLinkResult =
+  | {
+      ok: true
+      jobUuid: string
+      jobNumber: string
+      jobStatus: string | null
+      message: string
     }
   | {
       ok: false
@@ -75,6 +90,7 @@ export async function fetchLeadFromServiceM8(
 
   const wasAlreadyLinked = Boolean(lead.servicem8JobUuid)
   const leadsQuality = `Leads Quality ${lead.tier ?? 'D'}`
+  const jobNumber = matchingJob.generated_job_id ?? null
   const jobStatus = matchingJob.status ?? null
   let customFieldUpdated = false
   let customFieldError: string | undefined
@@ -92,7 +108,7 @@ export async function fetchLeadFromServiceM8(
     .update(leads)
     .set({
       servicem8JobUuid: matchingJob.uuid,
-      servicem8JobNumber: matchingJob.generated_job_id ?? null,
+      servicem8JobNumber: jobNumber,
       servicem8Status: jobStatus,
       syncStatus: 'synced',
       syncError: null,
@@ -116,10 +132,99 @@ export async function fetchLeadFromServiceM8(
   return {
     ok: true,
     jobUuid: matchingJob.uuid,
+    jobNumber,
     jobStatus,
     leadsQuality,
     customFieldUpdated,
     customFieldError,
+  }
+}
+
+export async function linkLeadToServiceM8JobByNumber(
+  leadId: string,
+  jobNumber: string,
+  actorId: string | null,
+  options: { request?: ServiceM8FetchRequest } = {},
+): Promise<LeadServiceM8ManualLinkResult> {
+  const request = options.request ?? createServiceM8RequestFromEnv()
+  const normalizedJobNumber = jobNumber.trim().toUpperCase()
+  const normalizedLeadIdentifier = leadId.trim().toUpperCase()
+
+  if (!normalizedJobNumber) {
+    return { ok: false, reason: 'error', message: 'Enter a ServiceM8 job number' }
+  }
+
+  const [leadById] = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(eq(leads.id, leadId))
+    .limit(1)
+
+  const [leadByJobNumber] = leadById ? [] : await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(or(
+      eq(leads.servicem8JobNumber, normalizedLeadIdentifier),
+      eq(leads.externalRef, normalizedLeadIdentifier),
+    ))
+    .limit(1)
+
+  const lead = leadById ?? leadByJobNumber
+
+  if (!lead) {
+    return { ok: false, reason: 'error', message: 'Lead not found' }
+  }
+
+  const jobUuid = await resolveJobUuid({ jobNumber: normalizedJobNumber }, request)
+  if (!jobUuid) {
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: `No ServiceM8 job found with number ${normalizedJobNumber}`,
+    }
+  }
+
+  const job = await fetchJobByUuid(request, jobUuid)
+  if (!job?.uuid) {
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: `No ServiceM8 job found with number ${normalizedJobNumber}`,
+    }
+  }
+
+  const resolvedJobNumber = job.generated_job_id ?? normalizedJobNumber
+  const jobStatus = job.status ?? null
+
+  await db
+    .update(leads)
+    .set({
+      servicem8JobUuid: job.uuid,
+      servicem8JobNumber: resolvedJobNumber,
+      servicem8Status: jobStatus,
+      syncStatus: 'synced',
+      syncError: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(leads.id, lead.id))
+
+  await db.insert(auditLog).values({
+    actorId: actorId ?? null,
+    action: 'lead.servicem8_manual_link',
+    targetId: lead.id,
+    detail: {
+      jobUuid: job.uuid,
+      jobNumber: resolvedJobNumber,
+      jobStatus,
+    },
+  })
+
+  return {
+    ok: true,
+    jobUuid: job.uuid,
+    jobNumber: resolvedJobNumber,
+    jobStatus,
+    message: `Linked to job ${resolvedJobNumber}${jobStatus ? ` (${jobStatus})` : ''}`,
   }
 }
 

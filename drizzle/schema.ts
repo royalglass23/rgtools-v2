@@ -9,7 +9,7 @@ export const pipelineStageEnum = pgEnum('pipeline_stage', [
 ])
 export const outcomeEnum = pgEnum('outcome', ['won', 'lost'])
 export const statusTagEnum = pgEnum('status_tag', ['hot', 'warm', 'cold', 'dead'])
-export const clientTypeEnum = pgEnum('client_type', ['builder', 'homeowner', 'architect'])
+export const clientTypeEnum = pgEnum('client_type', ['homeowner', 'builder', 'developer', 'investor', 'repeat_exclusive'])
 export const aiComplexityEnum = pgEnum('ai_complexity', ['low', 'medium', 'high'])
 export const eventTypeEnum = pgEnum('event_type', ['open', 'scroll', 'close', 'page_view', 'download', 'cta'])
 
@@ -34,6 +34,8 @@ export const sessions = pgTable('sessions', {
 export const quotes = pgTable('quotes', {
   id: uuid('id').primaryKey().defaultRandom(),
   servicem8Uuid: text('servicem8_uuid').unique().notNull(),
+  servicem8CompanyUuid: text('servicem8_company_uuid'),
+  clientId: uuid('client_id'),
   token: uuid('token').unique().notNull().defaultRandom(),
   clientName: text('client_name').notNull(),
   companyName: text('company_name'),

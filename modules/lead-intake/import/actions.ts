@@ -3,6 +3,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { setJobLeadsQuality } from '@/lib/servicem8/client'
 import { leads } from '@/drizzle/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { normalizeInput, validateMinimum, validateScoredOptions } from '@/modules/lead-intake/intake-utils'
@@ -96,6 +97,16 @@ export async function commitLeadImport(rows: LeadImportRow[]): Promise<CommitLea
         syncError: null,
       })
       .where(eq(leads.id, result.leadId))
+
+    // Push the score to the linked job's Leads Quality field. Best-effort: a
+    // failed write must not fail the import — the lead is already saved + linked.
+    if (row.servicem8JobUuid && result.tier) {
+      try {
+        await setJobLeadsQuality(row.servicem8JobUuid, result.tier)
+      } catch {
+        // swallow — Leads Quality is a nice-to-have, the import still succeeds
+      }
+    }
 
     summary.inserted += 1
     if (row.notEnriched) summary.notEnriched += 1

@@ -20,10 +20,14 @@ const dbMock = vi.hoisted(() => ({
 }))
 
 const sendLeadToServiceM8InboxMock = vi.hoisted(() => vi.fn())
+const setJobLeadsQualityMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/db', () => ({ db: dbMock }))
 vi.mock('../client', () => ({
   createServiceM8ClientFromEnv: vi.fn(() => ({ sendLeadToInbox: sendLeadToServiceM8InboxMock })),
+}))
+vi.mock('@/lib/servicem8/client', () => ({
+  setJobLeadsQuality: setJobLeadsQualityMock,
 }))
 
 import { syncLeadToServiceM8, retryServiceM8LeadSyncBatch } from '../sync'
@@ -69,6 +73,8 @@ beforeEach(() => {
   selectLimit.mockResolvedValue([leadRow])
   updateWhere.mockResolvedValue([])
   insertValues.mockResolvedValue([])
+  setJobLeadsQualityMock.mockReset()
+  setJobLeadsQualityMock.mockResolvedValue(undefined)
 })
 
 describe('syncLeadToServiceM8', () => {
@@ -98,6 +104,68 @@ describe('syncLeadToServiceM8', () => {
       action: 'lead.servicem8_sync',
       targetId: 'lead-1',
     }))
+  })
+
+  it('skips the ServiceM8 inbox email and marks the lead synced when already linked', async () => {
+    selectLimit
+      .mockResolvedValueOnce([{ ...leadRow, servicem8JobUuid: 'job-uuid-1' }])
+      .mockResolvedValueOnce(categoryRows)
+
+    const result = await syncLeadToServiceM8('lead-1')
+
+    expect(result).toEqual({ ok: true, leadId: 'lead-1', reference: 'linked:job-uuid-1' })
+    expect(sendLeadToServiceM8InboxMock).not.toHaveBeenCalled()
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      servicem8JobUuid: 'job-uuid-1',
+      syncStatus: 'synced',
+      syncError: null,
+    }))
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'lead.servicem8_sync',
+      targetId: 'lead-1',
+      detail: expect.objectContaining({
+        reference: 'linked:job-uuid-1',
+        skipped: true,
+        reason: 'already_linked',
+      }),
+    }))
+  })
+
+  it('writes the tier to the linked job Leads Quality field when the lead is already linked', async () => {
+    selectLimit
+      .mockResolvedValueOnce([{ ...leadRow, servicem8JobUuid: 'job-uuid-1' }])
+      .mockResolvedValueOnce(categoryRows)
+
+    await syncLeadToServiceM8('lead-1')
+
+    expect(setJobLeadsQualityMock).toHaveBeenCalledWith('job-uuid-1', 'B')
+    expect(sendLeadToServiceM8InboxMock).not.toHaveBeenCalled()
+  })
+
+  it('does not write Leads Quality when the lead is not linked to a job', async () => {
+    selectLimit
+      .mockResolvedValueOnce([leadRow])
+      .mockResolvedValueOnce(categoryRows)
+      .mockResolvedValueOnce([])
+    sendLeadToServiceM8InboxMock.mockResolvedValue({
+      reference: 'inbox:lead-1',
+      noteSignature: 'B|70|86|Tier B (70): good fit|',
+    })
+
+    await syncLeadToServiceM8('lead-1')
+
+    expect(setJobLeadsQualityMock).not.toHaveBeenCalled()
+  })
+
+  it('still marks the linked lead synced when the Leads Quality write fails', async () => {
+    selectLimit
+      .mockResolvedValueOnce([{ ...leadRow, servicem8JobUuid: 'job-uuid-1' }])
+      .mockResolvedValueOnce(categoryRows)
+    setJobLeadsQualityMock.mockRejectedValue(new Error('ServiceM8 Leads Quality write failed with HTTP 403'))
+
+    const result = await syncLeadToServiceM8('lead-1')
+
+    expect(result).toEqual({ ok: true, leadId: 'lead-1', reference: 'linked:job-uuid-1' })
   })
 
   it('marks sync_failed and stores the error when ServiceM8 rejects the sync', async () => {
