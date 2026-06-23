@@ -4,6 +4,8 @@
 > Email (QQ) and the Bluehost site are intact. `quotes.royalglass.co.nz` (rg-viewer)
 > and `track.royalglass.co.nz` (rg-tracker) are live as Worker custom domains.
 > The steps below are kept as the record of how it was done / rollback reference.
+> A narrative account of the actual run (issues hit + fixes + outcome) is in
+> [`dns-migration-cloudflare-record.md`](./dns-migration-cloudflare-record.md).
 
 Goal: move DNS management to Cloudflare so the `rg-viewer` Worker can serve
 `quotes.royalglass.co.nz`, **without disrupting the website or email**.
