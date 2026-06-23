@@ -1,3 +1,5 @@
+import { purgePersonalData } from './retention'
+
 export interface Env {
   DATABASE_URL: string
   QUOTES_BUCKET: R2Bucket
@@ -32,6 +34,8 @@ const worker = {
       UPDATE quote_events SET ip = NULL
       WHERE ip IS NOT NULL AND created_at < NOW() - INTERVAL '90 days'
     `
+
+    await purgePersonalData(sql)
 
     console.log(JSON.stringify({
       expired: expired.length,

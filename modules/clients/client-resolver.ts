@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, isNotNull, or, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { quotes } from '@/drizzle/schema'
 import { clients, clientContacts, leads } from '@/drizzle/schema-leads'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -146,7 +147,6 @@ async function findProvisionalMatch(tx: Tx, phoneNormalized: string | null, emai
 /**
  * Absorb `loserIds` into `survivorId`: re-point every project and contact onto
  * the survivor, then delete the losers. Transactional — the caller owns the tx.
- * NOTE: quotes are re-pointed here once `quotes.client_id` lands (MT-48).
  */
 export async function mergeClients(tx: Tx, survivorId: string, loserIds: string[]): Promise<void> {
   const losers = loserIds.filter((id) => id && id !== survivorId)
@@ -157,5 +157,6 @@ export async function mergeClients(tx: Tx, survivorId: string, loserIds: string[
   // otherwise drop their contacts.
   await tx.update(clientContacts).set({ clientId: survivorId, updatedAt: now }).where(inArray(clientContacts.clientId, losers))
   await tx.update(leads).set({ clientId: survivorId, updatedAt: now }).where(inArray(leads.clientId, losers))
+  await tx.update(quotes).set({ clientId: survivorId, updatedAt: now }).where(inArray(quotes.clientId, losers))
   await tx.delete(clients).where(inArray(clients.id, losers))
 }

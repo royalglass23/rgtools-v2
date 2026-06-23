@@ -22,13 +22,21 @@ const unlinkedLeadRow = vi.hoisted(() => ({
 const activeLeadRow = vi.hoisted(() => ({ current: linkedLeadRow as typeof linkedLeadRow | typeof unlinkedLeadRow }))
 
 const capturedSetValues = vi.hoisted(() => [] as unknown[])
+const capturedInsertValues = vi.hoisted(() => [] as unknown[])
+const resolveJobUuidMock = vi.hoisted(() => vi.fn())
+const selectLimit = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/servicem8/client', () => ({
+  createServiceM8RequestFromEnv: vi.fn(),
+  resolveJobUuid: resolveJobUuidMock,
+}))
 
 vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => ({
-          limit: vi.fn(async () => [activeLeadRow.current]),
+          limit: selectLimit,
         })),
       })),
     })),
@@ -39,18 +47,25 @@ vi.mock('@/lib/db', () => ({
       }),
     })),
     insert: vi.fn(() => ({
-      values: vi.fn(async () => undefined),
+      values: vi.fn(async (values: unknown) => {
+        capturedInsertValues.push(values)
+        return undefined
+      }),
     })),
   },
 }))
 
-import { fetchLeadFromServiceM8, type ServiceM8FetchRequest } from '../servicem8-fetch'
+import { fetchLeadFromServiceM8, linkLeadToServiceM8JobByNumber, type ServiceM8FetchRequest } from '../servicem8-fetch'
 
 describe('fetchLeadFromServiceM8', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     capturedSetValues.length = 0
+    capturedInsertValues.length = 0
+    resolveJobUuidMock.mockReset()
+    selectLimit.mockReset()
     activeLeadRow.current = linkedLeadRow
+    selectLimit.mockImplementation(async () => [activeLeadRow.current])
   })
 
   it('fetches directly by UUID when the lead is already linked', async () => {
@@ -119,5 +134,113 @@ describe('fetchLeadFromServiceM8', () => {
     await fetchLeadFromServiceM8('lead-1', 'actor-1', { request })
 
     expect(capturedSetValues[0]).toMatchObject({ servicem8JobNumber: 'R260210' })
+  })
+})
+
+describe('linkLeadToServiceM8JobByNumber', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    capturedSetValues.length = 0
+    capturedInsertValues.length = 0
+    resolveJobUuidMock.mockReset()
+    selectLimit.mockReset()
+    activeLeadRow.current = unlinkedLeadRow
+    selectLimit.mockImplementation(async () => [activeLeadRow.current])
+  })
+
+  it('links a lead to the ServiceM8 job resolved from its human job number', async () => {
+    resolveJobUuidMock.mockResolvedValue('job-uuid-2')
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path === '/job/job-uuid-2.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uuid: 'job-uuid-2',
+            status: 'Quote',
+            generated_job_id: 'R260210',
+          }),
+        }
+      }
+      throw new Error(`Unexpected request path: ${path}`)
+    })
+
+    const result = await linkLeadToServiceM8JobByNumber('lead-2', ' r260210 ', 'actor-1', { request })
+
+    expect(result).toEqual({
+      ok: true,
+      jobUuid: 'job-uuid-2',
+      jobNumber: 'R260210',
+      jobStatus: 'Quote',
+      message: 'Linked to job R260210 (Quote)',
+    })
+    expect(resolveJobUuidMock).toHaveBeenCalledWith({ jobNumber: 'R260210' }, request)
+    expect(capturedSetValues[0]).toMatchObject({
+      servicem8JobUuid: 'job-uuid-2',
+      servicem8JobNumber: 'R260210',
+      servicem8Status: 'Quote',
+      syncStatus: 'synced',
+      syncError: null,
+    })
+    expect(capturedInsertValues[0]).toMatchObject({
+      actorId: 'actor-1',
+      action: 'lead.servicem8_manual_link',
+      targetId: 'lead-2',
+      detail: {
+        jobUuid: 'job-uuid-2',
+        jobNumber: 'R260210',
+        jobStatus: 'Quote',
+      },
+    })
+  })
+
+  it('returns not_found and persists nothing when the job number does not resolve', async () => {
+    resolveJobUuidMock.mockResolvedValue(null)
+    const request = vi.fn<ServiceM8FetchRequest>()
+
+    const result = await linkLeadToServiceM8JobByNumber('lead-2', 'R999999', 'actor-1', { request })
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'not_found',
+      message: 'No ServiceM8 job found with number R999999',
+    })
+    expect(capturedSetValues).toHaveLength(0)
+    expect(capturedInsertValues).toHaveLength(0)
+  })
+
+  it('can resolve an imported pending lead by its stored ServiceM8 job number', async () => {
+    selectLimit
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([unlinkedLeadRow])
+    resolveJobUuidMock.mockResolvedValue('job-uuid-2')
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path === '/job/job-uuid-2.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uuid: 'job-uuid-2',
+            status: 'Quote',
+            generated_job_id: 'Q253011',
+          }),
+        }
+      }
+      throw new Error(`Unexpected request path: ${path}`)
+    })
+
+    const result = await linkLeadToServiceM8JobByNumber('Q253011', 'Q253011', 'actor-1', { request })
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobUuid: 'job-uuid-2',
+      jobNumber: 'Q253011',
+      jobStatus: 'Quote',
+    })
+    expect(capturedSetValues[0]).toMatchObject({
+      servicem8JobUuid: 'job-uuid-2',
+      servicem8JobNumber: 'Q253011',
+      syncStatus: 'synced',
+    })
   })
 })

@@ -11,6 +11,7 @@ import {
 } from '@/lib/servicem8/client'
 import { generateShortCode } from '@/lib/short-code'
 import { getStorage, getStorageDriver } from '@/lib/storage'
+import { resolveClient } from '@/modules/clients/client-resolver'
 
 import { resolveExpiry, type ExpiryPreset } from './expiry'
 
@@ -130,6 +131,15 @@ export async function createTrackedQuote(
   const storage = getStorage()
   const clientName = meta.clientName ?? 'Quote'
   const quoteValue = meta.totalIncGst.toFixed(2)
+  const linkedClient = meta.companyUuid
+    ? await db.transaction((tx) =>
+      resolveClient(tx, {
+        servicem8CompanyUuid: meta.companyUuid,
+        clientName,
+        companyName: meta.clientName,
+      }),
+    )
+    : null
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const shortCode = existing?.shortCode ?? await generateUnusedShortCode()
@@ -142,6 +152,8 @@ export async function createTrackedQuote(
         .insert(quotes)
         .values({
           servicem8Uuid: jobUuid,
+          clientId: linkedClient?.clientId ?? null,
+          servicem8CompanyUuid: meta.companyUuid ?? null,
           shortCode,
           clientName,
           companyName: meta.clientName,
@@ -158,6 +170,8 @@ export async function createTrackedQuote(
           target: quotes.servicem8Uuid,
           set: {
             shortCode,
+            clientId: linkedClient?.clientId ?? null,
+            servicem8CompanyUuid: meta.companyUuid ?? null,
             clientName,
             companyName: meta.clientName,
             jobDescription: meta.jobDescription,

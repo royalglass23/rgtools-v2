@@ -25,6 +25,7 @@ describe('buildDashboardNavigation', () => {
       moduleRow('m4', 'admin/calculator-pricing', 'Cost Calculator Price', 102, true),
       moduleRow('m5', 'admin', 'Administration', 99, true),
       moduleRow('m6', 'admin/tracking', 'Tracking Settings', 103, true),
+      moduleRow('m7', 'admin/client-merge-review', 'Client Merge Review', 105, true),
     ], { isAdmin: true })
 
     expect(nav.primaryModules.map((mod) => mod.slug)).toEqual([])
@@ -53,6 +54,12 @@ describe('buildDashboardNavigation', () => {
         name: 'Tracking Settings',
         href: '/admin/tracking',
       },
+      {
+        id: 'm7',
+        slug: 'admin/client-merge-review',
+        name: 'Client Merge Review',
+        href: '/admin/client-merge-review',
+      },
     ])
   })
 
@@ -65,6 +72,18 @@ describe('buildDashboardNavigation', () => {
     expect(nav.leadIntakeItems).toEqual([
       { id: 'lead-intake-form', slug: 'lead-intake', name: 'Form', href: '/lead-intake' },
       { id: 'lead-intake-list', slug: 'leads', name: 'List', href: '/leads' },
+    ])
+  })
+
+  it('keeps the clients module as a top-level navigation item', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('clients', 'clients', 'Clients', 2),
+      moduleRow('quotes', 'quote-tracker', 'Quote Tracker', 3),
+    ])
+
+    expect(nav.primaryModules.map((mod) => ({ slug: mod.slug, name: mod.name }))).toEqual([
+      { slug: 'clients', name: 'Clients' },
+      { slug: 'quote-tracker', name: 'Quote Tracker' },
     ])
   })
 

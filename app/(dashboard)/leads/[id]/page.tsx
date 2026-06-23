@@ -111,6 +111,7 @@ export default async function LeadDetailPage({
         <ServiceM8FetchButton
           leadId={lead.id}
           initialJobUuid={lead.servicem8JobUuid}
+          initialJobNumber={lead.servicem8JobNumber}
           initialJobStatus={lead.servicem8Status}
           initialLeadsQuality={lead.tier ? `Leads Quality ${lead.tier}` : 'Not set'}
         />

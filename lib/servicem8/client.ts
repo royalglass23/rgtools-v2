@@ -113,13 +113,18 @@ export function getServiceM8ApiKey(): string {
 }
 
 /**
- * JSON request helper bound to the ServiceM8 api_1.0 base path. Uses the
- * `api_1.0` base explicitly to avoid the legacy-endpoint redirect loop.
+ * Full-access (write-capable) ServiceM8 key. Kept separate from the read-only
+ * `SERVICEM8_API_KEY` so reads run with least privilege and only the handful of
+ * write calls (e.g. Leads Quality custom field) reach for the powerful key.
  */
-export function createServiceM8RequestFromEnv(opts: { retry?: ServiceM8RetryOptions } = {}): ServiceM8FetchRequest {
-  const apiKey = getServiceM8ApiKey()
+export function getServiceM8FullApiKey(): string {
+  const apiKey = process.env.SERVICEM8_API_KEY_FULL?.trim()
+  if (!apiKey) throw new Error('SERVICEM8_API_KEY_FULL is not configured')
+  return apiKey
+}
 
-  const request: ServiceM8FetchRequest = async (path, init) => {
+function buildServiceM8Request(apiKey: string): ServiceM8FetchRequest {
+  return async (path, init) => {
     const headers = new Headers(init?.headers)
     headers.set('X-API-Key', apiKey)
     headers.set('Accept', 'application/json')
@@ -136,8 +141,46 @@ export function createServiceM8RequestFromEnv(opts: { retry?: ServiceM8RetryOpti
       json: () => response.json(),
     }
   }
+}
 
-  return withServiceM8Retry(request, opts.retry)
+/**
+ * JSON request helper bound to the ServiceM8 api_1.0 base path. Uses the
+ * `api_1.0` base explicitly to avoid the legacy-endpoint redirect loop.
+ * Read-only key — use {@link createServiceM8WriteRequestFromEnv} for writes.
+ */
+export function createServiceM8RequestFromEnv(opts: { retry?: ServiceM8RetryOptions } = {}): ServiceM8FetchRequest {
+  return withServiceM8Retry(buildServiceM8Request(getServiceM8ApiKey()), opts.retry)
+}
+
+/**
+ * Write-capable request helper, authenticated with the full-access key. Job
+ * writes (e.g. custom fields) need `manage_jobs`, which the read-only key lacks.
+ */
+export function createServiceM8WriteRequestFromEnv(opts: { retry?: ServiceM8RetryOptions } = {}): ServiceM8FetchRequest {
+  return withServiceM8Retry(buildServiceM8Request(getServiceM8FullApiKey()), opts.retry)
+}
+
+/**
+ * Write a lead's tier (bare letter, e.g. "A") into the job's Leads Quality
+ * custom field. The dropdown options are bare A–E, so the value must be the
+ * letter only — never "Leads Quality A". Requires a write-capable request.
+ */
+export async function setJobLeadsQuality(
+  jobUuid: string,
+  tier: string,
+  request: ServiceM8FetchRequest = createServiceM8WriteRequestFromEnv(),
+): Promise<void> {
+  const field = process.env.SERVICEM8_LEAD_QUALITY_FIELD?.trim()
+  if (!field) throw new Error('SERVICEM8_LEAD_QUALITY_FIELD is not configured')
+
+  const response = await request(`/job/${jobUuid}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ [field]: tier }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`ServiceM8 Leads Quality write failed with HTTP ${response.status}`)
+  }
 }
 
 function odataFilter(expr: string): string {
