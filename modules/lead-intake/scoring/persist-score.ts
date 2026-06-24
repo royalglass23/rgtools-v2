@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import {
   clients,
   leadCategoryScores,
@@ -76,17 +76,19 @@ export async function persistLeadScore(
         })
     }
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: actorId ?? null,
+      entityType: 'lead',
       action: 'lead.score',
       targetId: leadId,
-      detail: {
+      before: null,
+      after: {
         score: scoreResult.score,
         tier: scoreResult.tier,
         configVersionId: activeConfig.id,
         completeness,
       },
-    })
+    }, tx)
   })
 
   return {

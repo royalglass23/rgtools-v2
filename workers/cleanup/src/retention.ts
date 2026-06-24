@@ -18,3 +18,12 @@ export async function purgePersonalData(sql: SqlFn): Promise<void> {
     )
   `
 }
+
+export async function archiveAuditRows(sql: SqlFn): Promise<void> {
+  await sql`
+    UPDATE audit_log
+    SET archived_at = NOW(), ip_address = NULL
+    WHERE archived_at IS NULL
+      AND created_at < NOW() - INTERVAL '12 months'
+  `
+}

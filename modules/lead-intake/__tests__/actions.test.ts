@@ -354,7 +354,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
 
     const editAudit = auditRows.find((row) => row.action === 'lead.edited')
     expect(editAudit?.detail).toMatchObject({
-      reason: 'Customer corrected the project address.',
+      reason: { from: null, to: 'Customer corrected the project address.' },
     })
   }, 30000)
 

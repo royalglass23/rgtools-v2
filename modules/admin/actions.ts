@@ -5,10 +5,11 @@ import { and, eq } from 'drizzle-orm'
 import { type Session } from 'next-auth'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { users, modules, userModuleAccess, auditLog } from '@/drizzle/schema'
+import { users, modules, userModuleAccess } from '@/drizzle/schema'
 import { assertCanManageUser } from '@/lib/access'
 import type { AccessUser } from '@/lib/access'
-import { AUDIT_ACTIONS, buildAuditDetail } from '@/lib/audit'
+import { AUDIT_ACTIONS } from '@/lib/audit'
+import { logAudit } from '@/lib/audit-db'
 import { logError } from '@/lib/logger'
 
 // ── Helper: resolve the calling actor as an AccessUser ────────────────────────
@@ -77,12 +78,14 @@ export async function createUser(data: {
         .values({ username: username.trim(), passwordHash, role })
         .returning()
 
-      await tx.insert(auditLog).values({
+      await logAudit({
         actorId: session.user.id as string,
+        entityType: 'user',
         action: AUDIT_ACTIONS.USER_CREATE,
         targetId: newUser.id,
-        detail: buildAuditDetail(AUDIT_ACTIONS.USER_CREATE, { username: username.trim(), role }),
-      })
+        before: null,
+        after: { username: username.trim(), role },
+      }, tx)
     })
 
     return { success: true }
@@ -134,16 +137,20 @@ export async function updateUserRole(
     await db.transaction(async (tx) => {
       await tx.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId))
 
-      await tx.insert(auditLog).values({
+      await logAudit({
         actorId: session.user.id as string,
+        entityType: 'user',
         action: AUDIT_ACTIONS.USER_ROLE_CHANGE,
         targetId: userId,
-        detail: buildAuditDetail(AUDIT_ACTIONS.USER_ROLE_CHANGE, {
+        before: {
           username: targetRow.username,
-          fromRole: targetRow.role,
-          toRole: role,
-        }),
-      })
+          role: targetRow.role,
+        },
+        after: {
+          username: targetRow.username,
+          role,
+        },
+      }, tx)
     })
 
     return { success: true }
@@ -193,12 +200,14 @@ export async function updateUserServiceM8StaffUuid(
         .set({ servicem8StaffUuid: normalized, updatedAt: new Date() })
         .where(eq(users.id, userId))
 
-      await tx.insert(auditLog).values({
+      await logAudit({
         actorId: session.user.id as string,
+        entityType: 'user',
         action: 'user.servicem8_staff_uuid.updated',
         targetId: userId,
-        detail: { username: targetRow.username, servicem8StaffUuid: normalized },
-      })
+        before: { username: targetRow.username, servicem8StaffUuid: targetRow.servicem8StaffUuid },
+        after: { username: targetRow.username, servicem8StaffUuid: normalized },
+      }, tx)
     })
 
     return { success: true }
@@ -245,12 +254,14 @@ export async function deleteUser(
     await db.transaction(async (tx) => {
       await tx.delete(users).where(eq(users.id, userId))
 
-      await tx.insert(auditLog).values({
+      await logAudit({
         actorId: session.user.id as string,
+        entityType: 'user',
         action: AUDIT_ACTIONS.USER_DELETE,
         targetId: userId,
-        detail: buildAuditDetail(AUDIT_ACTIONS.USER_DELETE, { username, role }),
-      })
+        before: { username, role },
+        after: null,
+      }, tx)
     })
 
     return { success: true }
@@ -308,15 +319,14 @@ export async function setModuleAccess(
           .values({ userId, moduleId, grantedBy: session.user.id as string })
           .onConflictDoNothing()
 
-        await tx.insert(auditLog).values({
+        await logAudit({
           actorId: session.user.id as string,
+          entityType: 'access',
           action: AUDIT_ACTIONS.ACCESS_GRANT,
           targetId: userId,
-          detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_GRANT, {
-            username: targetRow.username,
-            moduleSlug: moduleRow.slug,
-          }),
-        })
+          before: null,
+          after: { username: targetRow.username, moduleSlug: moduleRow.slug },
+        }, tx)
       })
     } else {
       const existingGrant = await db.query.userModuleAccess.findFirst({
@@ -330,15 +340,14 @@ export async function setModuleAccess(
           .delete(userModuleAccess)
           .where(and(eq(userModuleAccess.userId, userId), eq(userModuleAccess.moduleId, moduleId)))
 
-        await tx.insert(auditLog).values({
+        await logAudit({
           actorId: session.user.id as string,
+          entityType: 'access',
           action: AUDIT_ACTIONS.ACCESS_REVOKE,
           targetId: userId,
-          detail: buildAuditDetail(AUDIT_ACTIONS.ACCESS_REVOKE, {
-            username: targetRow.username,
-            moduleSlug: moduleRow.slug,
-          }),
-        })
+          before: { username: targetRow.username, moduleSlug: moduleRow.slug },
+          after: null,
+        }, tx)
       })
     }
 

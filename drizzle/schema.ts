@@ -162,13 +162,18 @@ export const userModuleAccess = pgTable('user_module_access', {
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  entityType: text('entity_type'),
   action: text('action').notNull(),
   targetId: uuid('target_id'),
   detail: jsonb('detail'),
+  ipAddress: text('ip_address'),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('audit_log_created_at_idx').on(table.createdAt),
   index('audit_log_actor_id_idx').on(table.actorId),
+  index('audit_log_entity_type_idx').on(table.entityType),
+  index('audit_log_archived_at_idx').on(table.archivedAt),
 ])
 
 export const errorLog = pgTable('error_log', {

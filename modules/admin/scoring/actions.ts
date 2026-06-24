@@ -4,7 +4,7 @@ import { desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { leadCategoryScores, scoringConfigVersions } from '@/drizzle/schema-leads'
 import type { ScoringConfig } from '@/modules/lead-intake/scoring/score-lead'
 import {
@@ -97,18 +97,22 @@ export async function saveScoringConfigVersion(formData: FormData): Promise<Save
         id: scoringConfigVersions.id,
       })
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
-      action: 'scoring_config.activated',
+      entityType: 'scoring',
+      action: 'scoring.activated',
       targetId: createdVersion.id,
-      detail: {
-        previousVersionId: activeConfig.id,
-        previousVersionLabel: activeConfig.versionLabel,
+      before: {
+        versionId: activeConfig.id,
+        versionLabel: activeConfig.versionLabel,
+      },
+      after: {
+        versionId: createdVersion.id,
         versionLabel,
         note: activationNote,
         warnings,
       },
-    })
+    }, tx)
   })
 
   revalidatePath('/admin/lead-scoring')
@@ -169,18 +173,22 @@ export async function activateScoringConfigVersion(formData: FormData): Promise<
       .set({ isActive: true })
       .where(eq(scoringConfigVersions.id, targetVersion.id))
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
-      action: 'scoring_config.activated',
+      entityType: 'scoring',
+      action: 'scoring.activated',
       targetId: targetVersion.id,
-      detail: {
-        previousVersionId: activeConfig?.id ?? null,
-        previousVersionLabel: activeConfig?.versionLabel ?? null,
+      before: {
+        versionId: activeConfig?.id ?? null,
+        versionLabel: activeConfig?.versionLabel ?? null,
+      },
+      after: {
+        versionId: targetVersion.id,
         versionLabel: targetVersion.versionLabel,
         note: activationNote,
         rollback: true,
       },
-    })
+    }, tx)
   })
 
   revalidatePath('/admin/lead-scoring')
@@ -227,15 +235,14 @@ export async function deleteScoringConfigVersion(formData: FormData): Promise<Sa
       .set({ archivedAt: new Date() })
       .where(eq(scoringConfigVersions.id, targetVersion.id))
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
-      action: 'scoring_config.deleted',
+      entityType: 'scoring',
+      action: 'scoring.archived',
       targetId: targetVersion.id,
-      detail: {
-        versionLabel: targetVersion.versionLabel,
-        note: deleteNote,
-      },
-    })
+      before: { versionLabel: targetVersion.versionLabel, note: deleteNote },
+      after: null,
+    }, tx)
   })
 
   revalidatePath('/admin/lead-scoring')

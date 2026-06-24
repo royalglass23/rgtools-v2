@@ -100,6 +100,9 @@ export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] 
       .map(([pageNumber, activeMs]) => ({ pageNumber, activeMs }))
       .sort((a, b) => a.pageNumber - b.pageNumber)
     session.pagesSeen = session.perPage.length
+    if (session.totalTimeMs === 0) {
+      session.totalTimeMs = session.perPage.reduce((sum, page) => sum + page.activeMs, 0)
+    }
   }
 
   return Array.from(sessions.values()).sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime())

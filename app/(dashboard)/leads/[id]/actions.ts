@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { leads } from '@/drizzle/schema-leads'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { generateSuggestion, MissingOpenAIKeyError } from '@/modules/lead-intake/ai/suggest-next-step'
@@ -22,11 +22,13 @@ export async function deleteLeadAction(leadId: string) {
     .set({ archivedAt: new Date(), updatedAt: new Date() })
     .where(eq(leads.id, leadId))
 
-  await db.insert(auditLog).values({
+  await logAudit({
     actorId: session.user.id,
+    entityType: 'lead',
     action: 'lead.deleted',
     targetId: leadId,
-    detail: { softDelete: true },
+    before: { softDelete: false },
+    after: { softDelete: true },
   })
 
   redirect('/leads')

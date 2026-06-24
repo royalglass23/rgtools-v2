@@ -1,6 +1,6 @@
 import { eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { leads } from '@/drizzle/schema-leads'
 import { createServiceM8RequestFromEnv, resolveJobUuid } from '@/lib/servicem8/client'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
@@ -116,11 +116,13 @@ export async function fetchLeadFromServiceM8(
     })
     .where(eq(leads.id, leadId))
 
-  await db.insert(auditLog).values({
+  await logAudit({
     actorId: actorId ?? null,
+    entityType: 'lead',
     action: 'lead.servicem8_fetch',
     targetId: leadId,
-    detail: {
+    before: null,
+    after: {
       jobUuid: matchingJob.uuid,
       jobStatus,
       leadsQuality,
@@ -208,11 +210,13 @@ export async function linkLeadToServiceM8JobByNumber(
     })
     .where(eq(leads.id, lead.id))
 
-  await db.insert(auditLog).values({
+  await logAudit({
     actorId: actorId ?? null,
+    entityType: 'lead',
     action: 'lead.servicem8_manual_link',
     targetId: lead.id,
-    detail: {
+    before: null,
+    after: {
       jobUuid: job.uuid,
       jobNumber: resolvedJobNumber,
       jobStatus,

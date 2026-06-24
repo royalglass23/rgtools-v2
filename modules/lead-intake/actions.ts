@@ -3,7 +3,7 @@
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
@@ -279,17 +279,26 @@ export async function submitLeadIntakeForUser(
         })
     }
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId,
+      entityType: 'lead',
       action: normalized.leadId ? 'lead.edited' : 'lead.create',
       targetId: leadId,
-      detail: {
+      before: normalized.leadId
+        ? {
+            clientId,
+            source: null,
+            matchedExistingClient,
+            reason: null,
+          }
+        : null,
+      after: {
         clientId,
         source: normalized.source,
         matchedExistingClient,
         ...(normalized.leadId ? { reason: normalized.editReason } : {}),
       },
-    })
+    }, tx)
   })
 
   const score = await persistLeadScore(leadId, actorId)
@@ -327,4 +336,3 @@ function parseFollowUpDate(value: string | undefined): string | null {
   if (Number.isNaN(date.getTime())) return null
   return date.toISOString().slice(0, 10)
 }
-

@@ -49,20 +49,20 @@ describe('batchDeleteLeadsAction', () => {
       archivedAt: expect.any(Date),
       updatedAt: expect.any(Date),
     }))
-    expect(mockInsertValues).toHaveBeenCalledWith([
-      {
-        actorId: 'admin-id',
-        action: 'lead.deleted',
-        targetId: 'lead-1',
-        detail: { softDelete: true, batch: true },
-      },
-      {
-        actorId: 'admin-id',
-        action: 'lead.deleted',
-        targetId: 'lead-2',
-        detail: { softDelete: true, batch: true },
-      },
-    ])
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'admin-id',
+      entityType: 'lead',
+      action: 'lead.deleted',
+      targetId: 'lead-1',
+      detail: expect.objectContaining({ softDelete: { from: false, to: true } }),
+    }))
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'admin-id',
+      entityType: 'lead',
+      action: 'lead.deleted',
+      targetId: 'lead-2',
+      detail: expect.objectContaining({ softDelete: { from: false, to: true } }),
+    }))
     expect(mockRevalidatePath).toHaveBeenCalledWith('/leads')
   })
 
