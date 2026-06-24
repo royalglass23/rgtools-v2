@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { clients } from '@/drizzle/schema-leads'
 import { mergeClients } from './client-resolver'
 
@@ -31,12 +31,13 @@ export async function confirmClientMergeReviewGroup(formData: FormData): Promise
     if (rows.length === 0) throw new Error('Survivor client not found')
 
     await mergeClients(tx, survivorId, loserIds)
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
       action: 'client.review_merge.confirmed',
       targetId: survivorId,
-      detail: { survivorId, loserIds },
-    })
+      before: { loserIds },
+      after: { survivorId },
+    }, tx)
   })
 
   revalidatePath('/admin/client-merge-review')

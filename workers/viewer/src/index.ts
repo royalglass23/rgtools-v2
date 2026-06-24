@@ -445,7 +445,7 @@ function viewerHtml(
     var maxScrollDepth = 0;
     var viewedPages = {};
     var openedAt = Date.now();
-    var activeStartedAt = document.visibilityState === 'visible' && document.hasFocus() ? Date.now() : null;
+    var activeStartedAt = document.visibilityState === 'visible' ? Date.now() : null;
     var activeDurationMs = 0;
     var closed = false;
     var initialized = false;

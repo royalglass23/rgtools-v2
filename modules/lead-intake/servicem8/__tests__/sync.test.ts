@@ -124,9 +124,9 @@ describe('syncLeadToServiceM8', () => {
       action: 'lead.servicem8_sync',
       targetId: 'lead-1',
       detail: expect.objectContaining({
-        reference: 'linked:job-uuid-1',
-        skipped: true,
-        reason: 'already_linked',
+        reference: { to: 'linked:job-uuid-1' },
+        skipped: { to: true },
+        reason: { to: 'already_linked' },
       }),
     }))
   })

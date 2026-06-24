@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { clients, leadCategoryScores, leads } from '@/drizzle/schema-leads'
 import { errorMessage } from '@/lib/error-message'
 import { setJobLeadsQuality } from '@/lib/servicem8/client'
@@ -44,11 +45,13 @@ export async function syncLeadToServiceM8(leadId: string): Promise<ServiceM8Lead
         })
         .where(eq(leads.id, leadId))
 
-      await db.insert(auditLog).values({
+      await logAudit({
         actorId: null,
+        entityType: 'lead',
         action: 'lead.servicem8_sync',
         targetId: leadId,
-        detail: {
+        before: null,
+        after: {
           reference,
           skipped: true,
           reason: 'already_linked',
@@ -75,11 +78,13 @@ export async function syncLeadToServiceM8(leadId: string): Promise<ServiceM8Lead
       })
       .where(eq(leads.id, leadId))
 
-    await db.insert(auditLog).values({
+    await logAudit({
       actorId: null,
+      entityType: 'lead',
       action: 'lead.servicem8_sync',
       targetId: leadId,
-      detail: {
+      before: null,
+      after: {
         reference: syncResult.reference,
         sentToInbox: shouldCreateNote,
         noteSignature: syncResult.noteSignature,
@@ -99,11 +104,13 @@ export async function syncLeadToServiceM8(leadId: string): Promise<ServiceM8Lead
       })
       .where(eq(leads.id, leadId))
 
-    await db.insert(auditLog).values({
+    await logAudit({
       actorId: null,
+      entityType: 'lead',
       action: 'lead.servicem8_sync_failed',
       targetId: leadId,
-      detail: { error: message },
+      before: null,
+      after: { error: message },
     })
 
     return { ok: false, leadId, error: message }
@@ -210,6 +217,8 @@ async function loadLastSyncedNoteSignature(leadId: string): Promise<string | nul
   const detail = row?.detail
   if (!detail || typeof detail !== 'object' || !('noteSignature' in detail)) return null
 
-  const signature = detail.noteSignature
+  const signature = 'noteSignature' in detail && typeof detail.noteSignature === 'object' && detail.noteSignature !== null && 'to' in detail.noteSignature
+    ? (detail.noteSignature as { to?: unknown }).to
+    : detail.noteSignature
   return typeof signature === 'string' ? signature : null
 }

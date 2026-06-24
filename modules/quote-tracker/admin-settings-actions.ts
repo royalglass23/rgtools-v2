@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog, settings } from '@/drizzle/schema'
+import { settings } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import {
   NOTIFICATION_SETTING_DEFAULTS,
   TRACKING_SETTING_DEFAULTS,
@@ -65,10 +66,12 @@ export async function saveTrackingSettings(formData: FormData): Promise<void> {
         })
     }
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
-      action: 'quote_tracking_settings.updated',
-      detail: {
+      entityType: 'quote',
+      action: 'quote.settings_updated',
+      before: null,
+      after: {
         tracking: values.reduce<Record<TrackingSettingKey, boolean>>(
         (detail, value) => {
           detail[value.key] = value.value === 'true'
@@ -85,7 +88,7 @@ export async function saveTrackingSettings(formData: FormData): Promise<void> {
         },
         keys: allSettingsKeys,
       },
-    })
+    }, tx)
   })
 
   revalidatePath('/admin/tracking')

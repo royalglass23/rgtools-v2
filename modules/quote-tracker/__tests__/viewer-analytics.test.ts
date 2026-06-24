@@ -83,6 +83,15 @@ describe('rollupDeviceSessions', () => {
     ])
     expect(result[0].totalTimeMs).toBe(10000)
   })
+
+  it('falls back to per-page active time when close duration is missing', () => {
+    const result = rollupDeviceSessions([
+      ev({ sessionId: 'a', eventType: 'page_view', pageNumber: 1, durationMs: 26000 }),
+      ev({ sessionId: 'a', eventType: 'page_view', pageNumber: 2, durationMs: 3000 }),
+      ev({ sessionId: 'a', eventType: 'close', pageNumber: null, durationMs: 0 }),
+    ])
+    expect(result[0].totalTimeMs).toBe(29000)
+  })
 })
 
 describe('rollupGatedEmails', () => {

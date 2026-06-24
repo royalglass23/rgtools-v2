@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { purgePersonalData } from '../retention'
+import { archiveAuditRows, purgePersonalData } from '../retention'
 
 type SqlFn = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
 
@@ -37,5 +37,17 @@ describe('purgePersonalData', () => {
     await purgePersonalData(fn)
     const touchesAggregates = calls.some(s => s.includes('quote_engagement'))
     expect(touchesAggregates).toBe(false)
+  })
+})
+
+describe('archiveAuditRows', () => {
+  it('soft-archives unarchived audit rows older than 12 months', async () => {
+    const { fn, calls } = makeSql()
+    await archiveAuditRows(fn)
+
+    const archiveCall = calls.find(s => /UPDATE/i.test(s) && s.includes('audit_log'))
+    expect(archiveCall).toContain('archived_at = NOW()')
+    expect(archiveCall).toContain("created_at < NOW() - INTERVAL '12 months'")
+    expect(archiveCall).toContain('archived_at IS NULL')
   })
 })

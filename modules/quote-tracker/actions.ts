@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 
 import { createTrackedQuote } from './create-tracked-quote'
+import { getExpirySettings } from './settings-query'
 
 export type TrackQuoteActionResult =
   | { ok: true; link: string; clientName: string; jobAddress: string | null; expiresAt: Date }
@@ -21,7 +22,12 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
     return { ok: false, message: 'Enter a ServiceM8 job ID.' }
   }
 
-  const result = await createTrackedQuote({ jobNumber: trimmed, ownerUserId: session.user.id })
+  const { defaultPreset } = await getExpirySettings()
+  const result = await createTrackedQuote({
+    jobNumber: trimmed,
+    ownerUserId: session.user.id,
+    expiry: defaultPreset,
+  })
 
   if (!result.ok) {
     if (result.reason === 'quote_exists') {

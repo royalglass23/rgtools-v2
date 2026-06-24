@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 
-import { auditLog, quotes } from '@/drizzle/schema'
+import { quotes } from '@/drizzle/schema'
 import { leads } from '@/drizzle/schema-leads'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit-db'
 import {
   createServiceM8RequestFromEnv,
   getJobQuoteMeta,
@@ -191,10 +192,13 @@ export async function createTrackedQuote(
       const quoteId = row.id
       const finalShortCode = row.shortCode ?? shortCode
 
-      await db.insert(auditLog).values({
+      await logAudit({
+        actorId: opts.ownerUserId ?? null,
+        entityType: 'quote',
         action: 'quote.tracked_created',
         targetId: quoteId,
-        detail: { jobUuid, shortCode: finalShortCode, storageDriver },
+        before: null,
+        after: { jobUuid, shortCode: finalShortCode, storageDriver },
       })
 
       return {

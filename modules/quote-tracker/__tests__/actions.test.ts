@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const auth = vi.fn()
 const createTrackedQuote = vi.fn()
 const revalidatePath = vi.fn()
+const getExpirySettings = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
 vi.mock('../create-tracked-quote', () => ({
   createTrackedQuote: (opts: unknown) => createTrackedQuote(opts),
+}))
+vi.mock('../settings-query', () => ({
+  getExpirySettings: () => getExpirySettings(),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
 
@@ -17,7 +21,9 @@ describe('createTrackedQuoteAction', () => {
     auth.mockReset()
     createTrackedQuote.mockReset()
     revalidatePath.mockReset()
+    getExpirySettings.mockReset()
     auth.mockResolvedValue({ user: { id: 'user-1' } })
+    getExpirySettings.mockResolvedValue({ defaultPreset: '30d' })
   })
 
   it('rejects an unauthenticated caller', async () => {
@@ -52,7 +58,11 @@ describe('createTrackedQuoteAction', () => {
 
     const result = await createTrackedQuoteAction('  R260210 ')
 
-    expect(createTrackedQuote).toHaveBeenCalledWith({ jobNumber: 'R260210', ownerUserId: 'user-1' })
+    expect(createTrackedQuote).toHaveBeenCalledWith({
+      jobNumber: 'R260210',
+      ownerUserId: 'user-1',
+      expiry: '30d',
+    })
     expect(result).toEqual({
       ok: true,
       link: 'https://quotes-worker.example/q/AB12CD34',

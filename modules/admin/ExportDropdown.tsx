@@ -11,8 +11,18 @@ const RANGES = [
 
 type Range = typeof RANGES[number]['value']
 
-export function ExportDropdown({ kind }: { kind: 'system' | 'audit' }) {
+export function ExportDropdown({
+  kind,
+  query = {},
+}: {
+  kind: 'system' | 'audit'
+  query?: Record<string, string | undefined>
+}) {
   const [range, setRange] = useState<Range>('week')
+  const params = new URLSearchParams({ kind, range })
+  for (const [key, value] of Object.entries(query)) {
+    if (value) params.set(key, value)
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -26,7 +36,7 @@ export function ExportDropdown({ kind }: { kind: 'system' | 'audit' }) {
         ))}
       </select>
       <a
-        href={`/api/admin/logs/export?kind=${kind}&range=${range}`}
+        href={`/api/admin/logs/export?${params.toString()}`}
         className="text-xs border border-gray-200 rounded px-3 py-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
       >
         Export

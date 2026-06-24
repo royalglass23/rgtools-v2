@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog, settings } from '@/drizzle/schema'
+import { settings } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import {
   DASHBOARD_TABLES_SETTING_KEY,
   sanitizeDashboardConfig,
@@ -45,11 +46,13 @@ export async function saveDashboardTables(formData: FormData): Promise<SaveDashb
         set: { value, updatedBy: session.user.id as string, updatedAt: new Date() },
       })
 
-    await tx.insert(auditLog).values({
+    await logAudit({
       actorId: session.user.id as string,
-      action: 'dashboard_tables.updated',
-      detail: { tables },
-    })
+      entityType: 'pricing',
+      action: 'pricing.dashboard_tables_updated',
+      before: null,
+      after: { tables },
+    }, tx)
   })
 
   revalidatePath('/')

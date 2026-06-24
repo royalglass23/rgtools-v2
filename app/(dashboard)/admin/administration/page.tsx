@@ -2,7 +2,8 @@ import { requireModule } from '@/lib/guard'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { users, modules, userModuleAccess, auditLog, errorLog } from '@/drizzle/schema'
-import { count, desc } from 'drizzle-orm'
+import { and, count, desc, eq, gte, isNull, like, lte, or } from 'drizzle-orm'
+import { deriveAuditEntityType, formatAuditDetail } from '@/lib/audit'
 import Link from 'next/link'
 import { CreateUserForm } from '@/modules/admin/CreateUserForm'
 import { TestErrorButton } from '@/modules/admin/TestErrorButton'
@@ -10,6 +11,7 @@ import { UserRow } from '@/modules/admin/UserRow'
 import { ExportDropdown } from '@/modules/admin/ExportDropdown'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+const AUDIT_ENTITY_TYPES = ['user', 'access', 'lead', 'quote', 'scoring', 'pricing'] as const
 
 function parsePage(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value
@@ -21,6 +23,41 @@ function parsePageSize(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value
   const parsed = Number(raw ?? '10')
   return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : 10
+}
+
+function parseString(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw?.trim() || ''
+}
+
+function parseDateParam(value: string | string[] | undefined) {
+  const raw = parseString(value)
+  if (!raw) return null
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function endOfDay(date: Date) {
+  const result = new Date(date)
+  result.setHours(23, 59, 59, 999)
+  return result
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function auditFieldValue(detail: Record<string, unknown> | null, field: string) {
+  const value = detail?.[field]
+  if (isRecord(value) && ('to' in value || 'from' in value)) {
+    return value.to ?? value.from ?? null
+  }
+  return value ?? null
+}
+
+function auditDetailWithoutTarget(detail: Record<string, unknown> | null) {
+  if (!detail) return null
+  return Object.fromEntries(Object.entries(detail).filter(([key]) => key !== 'username'))
 }
 
 function buildHref(
@@ -36,6 +73,25 @@ function buildHref(
     query.set(key, val)
   }
   return `/admin/administration?${query.toString()}`
+}
+
+function HiddenSearchInputs({
+  params,
+  exclude,
+}: {
+  params: Record<string, string | string[] | undefined>
+  exclude: string[]
+}) {
+  return (
+    <>
+      {Object.entries(params).map(([key, value]) => {
+        if (exclude.includes(key)) return null
+        const val = Array.isArray(value) ? value[0] : value
+        if (!val) return null
+        return <input key={key} type="hidden" name={key} value={val} />
+      })}
+    </>
+  )
 }
 
 function Pagination({
@@ -56,29 +112,17 @@ function Pagination({
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Per page:</span>
-        {PAGE_SIZE_OPTIONS.map((size) => (
-          <Link
-            key={size}
-            href={buildHref(searchParams, { [pageParam]: '1', [sizeParam]: String(size) })}
-            className={`text-xs border rounded px-2 py-1 ${pageSize === size ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-          >
-            {size}
-          </Link>
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-gray-500 text-xs">
-          Page {currentPage} of {totalPages}
-        </span>
+    <div className="relative flex flex-wrap items-center justify-center gap-3 border-t border-gray-100 px-4 py-3 text-sm">
+      <div className="flex items-center justify-center gap-2">
         <Link
           href={buildHref(searchParams, { [pageParam]: String(Math.max(1, currentPage - 1)) })}
           className={`border border-gray-200 rounded px-3 py-1 ${currentPage <= 1 ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50'}`}
         >
           Previous
         </Link>
+        <span className="text-gray-500 text-xs">
+          Page {currentPage} of {totalPages}
+        </span>
         <Link
           href={buildHref(searchParams, { [pageParam]: String(Math.min(totalPages, currentPage + 1)) })}
           className={`border border-gray-200 rounded px-3 py-1 ${currentPage >= totalPages ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50'}`}
@@ -86,6 +130,27 @@ function Pagination({
           Next
         </Link>
       </div>
+      <form action="/admin/administration" className="flex items-center gap-2 md:absolute md:right-4">
+        <HiddenSearchInputs params={searchParams} exclude={[pageParam, sizeParam]} />
+        <input type="hidden" name={pageParam} value="1" />
+        <label className="text-xs text-gray-400" htmlFor={`${sizeParam}-select`}>Per page</label>
+        <select
+          id={`${sizeParam}-select`}
+          name={sizeParam}
+          defaultValue={String(pageSize)}
+          className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>{size}</option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          Apply
+        </button>
+      </form>
     </div>
   )
 }
@@ -104,14 +169,36 @@ export default async function AdminPage({
   const auditPage = parsePage(params.auditPage)
   const errorSize = parsePageSize(params.errorSize)
   const auditSize = parsePageSize(params.auditSize)
+  const auditActorId = parseString(params.auditActorId)
+  const auditEntityType = parseString(params.auditEntityType)
+  const auditAction = parseString(params.auditAction)
+  const auditDateFrom = parseDateParam(params.auditDateFrom)
+  const auditDateTo = parseDateParam(params.auditDateTo)
+  const auditShowArchived = parseString(params.auditShowArchived) === '1'
+  const auditFilters = [
+    auditActorId ? eq(auditLog.actorId, auditActorId) : undefined,
+    auditEntityType
+      ? or(eq(auditLog.entityType, auditEntityType), like(auditLog.action, `${auditEntityType}.%`))
+      : undefined,
+    auditAction ? like(auditLog.action, `%${auditAction}%`) : undefined,
+    auditDateFrom ? gte(auditLog.createdAt, auditDateFrom) : undefined,
+    auditDateTo ? lte(auditLog.createdAt, endOfDay(auditDateTo)) : undefined,
+    auditShowArchived ? undefined : isNull(auditLog.archivedAt),
+  ].filter(Boolean)
 
   // Fetch all data server-side
   const [allUsers, allModules, allGrants, auditRows, auditCountRows] = await Promise.all([
     db.select().from(users).orderBy(users.createdAt),
     db.select().from(modules).orderBy(modules.sortOrder),
     db.select().from(userModuleAccess),
-    db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(auditSize).offset((auditPage - 1) * auditSize),
-    db.select({ value: count() }).from(auditLog),
+    db
+      .select()
+      .from(auditLog)
+      .where(and(...auditFilters))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(auditSize)
+      .offset((auditPage - 1) * auditSize),
+    db.select({ value: count() }).from(auditLog).where(and(...auditFilters)),
   ])
   const auditTotalRows = auditCountRows[0]?.value ?? 0
 
@@ -146,9 +233,17 @@ export default async function AdminPage({
   for (const u of allUsers) {
     usernameById.set(u.id, u.username)
   }
+  const auditExportQuery = {
+    actorId: auditActorId || undefined,
+    entityType: auditEntityType || undefined,
+    action: auditAction || undefined,
+    dateFrom: parseString(params.auditDateFrom) || undefined,
+    dateTo: parseString(params.auditDateTo) || undefined,
+    showArchived: auditShowArchived ? '1' : undefined,
+  }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10">
+    <div className="mx-auto flex max-w-6xl flex-col gap-10">
       <h1 className="text-2xl font-semibold text-gray-900">Admin Panel</h1>
 
       {/* ── User List ─────────────────────────────────────────────────────── */}
@@ -212,20 +307,13 @@ export default async function AdminPage({
         </div>
       </section>
 
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Diagnostics</h2>
-        <div className="bg-white border border-gray-200 rounded shadow-sm p-5">
-          <TestErrorButton />
-        </div>
-      </section>
-
       {/* ── Audit Log ─────────────────────────────────────────────────────── */}
-      <section>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-800">
-            System Errors
-            <span className="ml-2 text-sm font-normal text-gray-400">({errorTotalRows} total)</span>
-          </h2>
+      <details className="order-[60]">
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">
+          System Errors
+          <span className="ml-2 text-sm font-normal text-gray-400">({errorTotalRows} total)</span>
+        </summary>
+        <div className="mb-3 flex justify-end">
           <ExportDropdown kind="system" />
         </div>
 
@@ -310,18 +398,77 @@ export default async function AdminPage({
             searchParams={params}
           />
         </div>
-      </section>
+      </details>
 
-      <section>
+      <section className="order-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-800">
             Audit Log
             <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
           </h2>
-          <ExportDropdown kind="audit" />
+          <ExportDropdown kind="audit" query={auditExportQuery} />
         </div>
 
         <div className="bg-white border border-gray-200 rounded shadow-sm overflow-x-auto">
+          <form className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-6" action="/admin/administration">
+            <input type="hidden" name="auditPage" value="1" />
+            <select
+              name="auditActorId"
+              defaultValue={auditActorId}
+              className="rounded border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700"
+            >
+              <option value="">All actors</option>
+              {allUsers.map((user) => (
+                <option key={user.id} value={user.id}>{user.username}</option>
+              ))}
+            </select>
+            <select
+              name="auditEntityType"
+              defaultValue={auditEntityType}
+              className="rounded border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700"
+            >
+              <option value="">All entities</option>
+              {AUDIT_ENTITY_TYPES.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <input
+              name="auditAction"
+              defaultValue={auditAction}
+              placeholder="Action contains"
+              className="rounded border border-gray-200 px-2 py-2 text-sm text-gray-700"
+            />
+            <input
+              name="auditDateFrom"
+              type="date"
+              defaultValue={parseString(params.auditDateFrom)}
+              className="rounded border border-gray-200 px-2 py-2 text-sm text-gray-700"
+            />
+            <input
+              name="auditDateTo"
+              type="date"
+              defaultValue={parseString(params.auditDateTo)}
+              className="rounded border border-gray-200 px-2 py-2 text-sm text-gray-700"
+            />
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  name="auditShowArchived"
+                  value="1"
+                  defaultChecked={auditShowArchived}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                Archived
+              </label>
+              <button
+                type="submit"
+                className="rounded border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Filter
+              </button>
+            </div>
+          </form>
           {auditRows.length === 0 ? (
             <p className="py-6 px-4 text-sm text-gray-500">No audit entries yet.</p>
           ) : (
@@ -338,7 +485,13 @@ export default async function AdminPage({
                     Action
                   </th>
                   <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Entity
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                     Target
+                  </th>
+                  <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    IP
                   </th>
                   <th className="py-2 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                     Detail
@@ -355,15 +508,10 @@ export default async function AdminPage({
                     : 'deleted user'
 
                   // Target: detail.username or targetId
-                  const targetName = detail?.username ?? row.targetId ?? '—'
+                  const targetName = auditFieldValue(detail, 'username') ?? row.targetId ?? '-'
 
                   // Detail fields: omit 'username' (already shown in Target), render rest as key: value
-                  const detailFields = detail
-                    ? Object.entries(detail)
-                        .filter(([k]) => k !== 'username')
-                        .map(([k, v]) => `${k}: ${String(v)}`)
-                        .join(' · ')
-                    : ''
+                  const detailFields = formatAuditDetail(auditDetailWithoutTarget(detail))
 
                   const ts = new Date(row.createdAt)
                   const formatted = ts.toLocaleDateString('en-AU', {
@@ -390,11 +538,22 @@ export default async function AdminPage({
                           {row.action}
                         </span>
                       </td>
+                      <td className="py-2 px-4 text-gray-600 whitespace-nowrap">
+                        {row.entityType ?? deriveAuditEntityType(row.action) ?? 'unknown'}
+                        {row.archivedAt && (
+                          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">
+                            archived
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-4 text-gray-700 whitespace-nowrap">
                         {String(targetName)}
                       </td>
+                      <td className="py-2 px-4 font-mono text-xs text-gray-500 whitespace-nowrap">
+                        {row.ipAddress ?? '-'}
+                      </td>
                       <td className="py-2 px-4 text-gray-500 text-xs">
-                        {detailFields || '—'}
+                        {detailFields || '-'}
                       </td>
                     </tr>
                   )
@@ -412,6 +571,13 @@ export default async function AdminPage({
           />
         </div>
       </section>
+
+      <details className="order-50">
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Diagnostics</summary>
+        <div className="rounded border border-gray-200 bg-white p-5 shadow-sm">
+          <TestErrorButton />
+        </div>
+      </details>
     </div>
   )
 }

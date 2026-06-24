@@ -89,7 +89,7 @@ vi.mock('@/lib/auth', () => ({ auth: mockAuth }))
 
 // ── Import actions under test (after mocks are registered) ────────────────────
 
-import { users, modules, userModuleAccess, auditLog } from '@/drizzle/schema'
+import { users, userModuleAccess, auditLog } from '@/drizzle/schema'
 import {
   createUser,
   updateUserRole,
@@ -184,7 +184,11 @@ describe('createUser', () => {
     const auditValuesArg = mockInsertValues.mock.calls[auditCallIndex]?.[0]
     expect(auditValuesArg).toMatchObject({
       action: 'user.create',
-      detail: expect.objectContaining({ username: 'newuser', role: 'staff' }),
+      entityType: 'user',
+      detail: expect.objectContaining({
+        username: { to: 'newuser' },
+        role: { to: 'staff' },
+      }),
     })
   })
 
@@ -243,7 +247,8 @@ describe('updateUserRole', () => {
     const auditValuesArg = mockInsertValues.mock.calls[auditCallIndex]?.[0]
     expect(auditValuesArg).toMatchObject({
       action: 'user.role_change',
-      detail: expect.objectContaining({ fromRole: 'staff', toRole: 'admin' }),
+      entityType: 'user',
+      detail: expect.objectContaining({ role: { from: 'staff', to: 'admin' } }),
     })
   })
 
@@ -328,7 +333,8 @@ describe('deleteUser', () => {
     const auditValuesArg = mockInsertValues.mock.calls[auditCallIndex]?.[0]
     expect(auditValuesArg).toMatchObject({
       action: 'user.delete',
-      detail: expect.objectContaining({ username: 'bobstaff' }),
+      entityType: 'user',
+      detail: expect.objectContaining({ username: { from: 'bobstaff' } }),
     })
   })
 

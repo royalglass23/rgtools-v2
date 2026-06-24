@@ -187,9 +187,9 @@ describe('linkLeadToServiceM8JobByNumber', () => {
       action: 'lead.servicem8_manual_link',
       targetId: 'lead-2',
       detail: {
-        jobUuid: 'job-uuid-2',
-        jobNumber: 'R260210',
-        jobStatus: 'Quote',
+        jobUuid: { to: 'job-uuid-2' },
+        jobNumber: { to: 'R260210' },
+        jobStatus: { to: 'Quote' },
       },
     })
   })

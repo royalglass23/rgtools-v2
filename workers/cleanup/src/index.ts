@@ -1,4 +1,4 @@
-import { purgePersonalData } from './retention'
+import { archiveAuditRows, purgePersonalData } from './retention'
 
 export interface Env {
   DATABASE_URL: string
@@ -36,6 +36,7 @@ const worker = {
     `
 
     await purgePersonalData(sql)
+    await archiveAuditRows(sql)
 
     console.log(JSON.stringify({
       expired: expired.length,

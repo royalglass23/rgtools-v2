@@ -4,7 +4,7 @@ import { inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { auditLog } from '@/drizzle/schema'
+import { logAudit } from '@/lib/audit-db'
 import { leads } from '@/drizzle/schema-leads'
 
 export async function batchDeleteLeadsAction(formData: FormData) {
@@ -28,14 +28,16 @@ export async function batchDeleteLeadsAction(formData: FormData) {
       .set({ archivedAt: now, updatedAt: now })
       .where(inArray(leads.id, leadIds))
 
-    await tx.insert(auditLog).values(
-      leadIds.map((leadId) => ({
+    await Promise.all(leadIds.map((leadId) =>
+      logAudit({
         actorId: session.user.id as string,
+        entityType: 'lead',
         action: 'lead.deleted',
         targetId: leadId,
-        detail: { softDelete: true, batch: true },
-      })),
-    )
+        before: { softDelete: false, batch: true },
+        after: { softDelete: true, batch: true },
+      }, tx),
+    ))
   })
 
   revalidatePath('/leads')
