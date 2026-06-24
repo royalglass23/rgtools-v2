@@ -176,6 +176,13 @@
       "when": 1782262881657,
       "tag": "0024_zippy_puma",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1782344975034,
+      "tag": "0025_rich_the_hood",
+      "breakpoints": true
     }
   ]
 }

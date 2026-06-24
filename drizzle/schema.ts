@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum, uuid, text, timestamp, boolean,
-  integer, bigint, numeric, jsonb, primaryKey, index,
+  integer, bigint, numeric, jsonb, primaryKey, index, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 export const roleEnum = pgEnum('role', ['admin', 'staff'])
@@ -93,6 +93,7 @@ export const quoteEvents = pgTable('quote_events', {
   geoIsp: text('geo_isp'),
   pageNumber: integer('page_number'),
   ipHash: text('ip_hash').notNull(),
+  userAgentHash: text('user_agent_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
@@ -120,6 +121,16 @@ export const quoteEngagement = pgTable('quote_engagement', {
   lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+export const quoteNotifiedViewers = pgTable('quote_notified_viewers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  ipHash: text('ip_hash').notNull(),
+  userAgentHash: text('user_agent_hash').notNull(),
+  notifiedAt: timestamp('notified_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('quote_notified_viewers_unique_idx').on(table.quoteId, table.ipHash, table.userAgentHash),
+])
 
 export const tagOverrides = pgTable('tag_overrides', {
   id: uuid('id').primaryKey().defaultRandom(),
