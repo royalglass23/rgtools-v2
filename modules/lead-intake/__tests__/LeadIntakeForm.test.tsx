@@ -4,6 +4,13 @@ import type { ActiveScoringOptionLists } from '@/modules/lead-intake/scoring/con
 
 const submitLeadIntakeMock = vi.hoisted(() => vi.fn())
 const computeLeadDistanceMock = vi.hoisted(() => vi.fn())
+const routerPushMock = vi.hoisted(() => vi.fn())
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: routerPushMock,
+  }),
+}))
 
 vi.mock('../actions', () => ({
   submitLeadIntake: submitLeadIntakeMock,
@@ -121,7 +128,7 @@ describe('LeadIntakeForm', () => {
     })
   })
 
-  it('resets driving distance after saving a new lead', async () => {
+  it('goes to the lead detail page after saving and scoring a new lead', async () => {
     render(<LeadIntakeForm optionLists={optionLists} />)
 
     fireEvent.change(screen.getByLabelText(/Client Name\/Business Name/), {
@@ -142,11 +149,7 @@ describe('LeadIntakeForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save and score/ }))
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Client Name\/Business Name/)).toHaveValue('')
-      expect(screen.getByLabelText('Job Address')).toHaveValue('')
+      expect(routerPushMock).toHaveBeenCalledWith('/leads/lead-1?intakeSaved=added')
     })
-
-    expect(screen.queryByText('Within 30 km')).not.toBeInTheDocument()
-    expect(screen.getByText('Auto-computed from Job Address')).toBeInTheDocument()
   })
 })

@@ -9,15 +9,19 @@ import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
 
 export default async function LeadDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { id } = await params
+  const notices = await searchParams
   const [lead, session] = await Promise.all([getLeadDetail(id), auth()])
   if (!lead) notFound()
 
   const tier = lead.tier ?? 'D'
   const boundDeleteAction = deleteLeadAction.bind(null, lead.id)
+  const intakeSaved = notices.intakeSaved === 'updated' ? 'updated' : notices.intakeSaved === 'added' ? 'added' : null
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -44,6 +48,12 @@ export default async function LeadDetailPage({
           )}
         </div>
       </div>
+
+      {intakeSaved && (
+        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          Lead {intakeSaved} and scored successfully.
+        </div>
+      )}
 
       <Section title="Client">
         <dl className="grid gap-4 sm:grid-cols-4">
