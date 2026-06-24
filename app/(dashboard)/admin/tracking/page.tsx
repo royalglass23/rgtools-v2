@@ -25,6 +25,13 @@ const labels: Record<TrackingSettingKey, string> = {
   'viewer.contact_us': 'Contact Us button',
 }
 
+type TrackingAdminPageProps = {
+  searchParams?: Promise<{
+    saved?: string
+    error?: string
+  }>
+}
+
 function SettingToggle({ settingKey, enabled }: { settingKey: TrackingSettingKey; enabled: boolean }) {
   return (
     <label className="flex items-center justify-between gap-4 rounded border border-gray-200 bg-white px-4 py-3">
@@ -54,7 +61,7 @@ function SettingsSection({
   return (
     <section className="space-y-3">
       <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-      <div className="grid gap-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {keys.map((key) => (
           <SettingToggle key={key} settingKey={key} enabled={settings[key]} />
         ))}
@@ -63,9 +70,10 @@ function SettingsSection({
   )
 }
 
-export default async function TrackingAdminPage() {
+export default async function TrackingAdminPage({ searchParams }: TrackingAdminPageProps) {
   await requireModule('admin')
 
+  const params = await searchParams
   const settings = await getTrackingSettings()
   const notificationSettings = await getNotificationSettings()
   const expirySettings = await getExpirySettings()
@@ -78,6 +86,18 @@ export default async function TrackingAdminPage() {
           Control quote viewer tracking signals and the customer-facing viewer actions.
         </p>
       </div>
+
+      {params?.saved === '1' ? (
+        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          Tracking settings saved.
+        </div>
+      ) : null}
+
+      {params?.error ? (
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Tracking settings could not be saved. Ref: {params.error}
+        </div>
+      ) : null}
 
       <form action={saveTrackingSettings} className="space-y-8">
         <SettingsSection title="Tracking signals" keys={trackSettingKeys} settings={settings} />
@@ -107,7 +127,7 @@ export default async function TrackingAdminPage() {
 
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-gray-900">Open notifications</h2>
-          <div className="grid gap-3 rounded border border-gray-200 bg-white p-4">
+          <div className="grid gap-3 rounded border border-gray-200 bg-white p-4 md:grid-cols-2">
             <label className="flex items-center justify-between gap-4">
               <span>
                 <span className="block text-sm font-medium text-gray-900">Email notifications</span>

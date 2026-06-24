@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import type { ActiveScoringOptionLists, FormOption } from '@/modules/lead-intake/scoring/config-options'
 import { submitLeadIntake, computeLeadDistance, type LeadIntakeInput, type LeadIntakeResult } from './actions'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
@@ -54,6 +55,7 @@ export function LeadIntakeForm({
   optionLists: ActiveScoringOptionLists
   initialInput?: LeadIntakeInput
 }) {
+  const router = useRouter()
   const [input, setInput] = useState<LeadIntakeInput>(initialInput ?? initialState)
   const [result, setResult] = useState<LeadIntakeResult | null>(null)
   const [distanceBand, setDistanceBand] = useState<string | null>(initialInput?.distanceBand ?? null)
@@ -71,13 +73,8 @@ export function LeadIntakeForm({
       const nextResult = await submitLeadIntake(input)
       setResult(nextResult)
       if ('success' in nextResult) {
-        if (input.leadId) {
-          setDistanceBand(nextResult.distanceBand)
-        } else {
-          setInput(initialState)
-          setDistanceBand(null)
-          setIsComputingDistance(false)
-        }
+        const status = input.leadId ? 'updated' : 'added'
+        router.push(`/leads/${nextResult.leadId}?intakeSaved=${status}`)
       }
     })
   }

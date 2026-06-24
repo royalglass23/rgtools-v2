@@ -68,7 +68,7 @@ export function ScorePanel({ input, config, lastUpdated, followUpDate }: Props) 
         </div>
       )}
       {!result.flagNote && <div className="mb-4" />}
-      <div className="space-y-2">
+      <div className="grid gap-2 lg:grid-cols-2 lg:gap-x-6">
         {regularCategories.map(([key, category]) => {
           const row = result.categoryRows.find((r) => r.category === Number(key))
           return <ScoreRow key={key} label={category.label} points={row?.points ?? 0} max={category.max} />
@@ -104,16 +104,16 @@ export function ScorePanel({ input, config, lastUpdated, followUpDate }: Props) 
             </div>
           </div>
         )}
-      </div>
 
-      <div className="mt-4 grid gap-1 border-t border-gray-100 pt-3 text-xs text-gray-500 sm:grid-cols-2">
-        <div>
-          <span className="font-medium text-gray-600">Last update:</span>{' '}
-          <span>{formatMetaDate(lastUpdated)}</span>
-        </div>
-        <div>
-          <span className="font-medium text-gray-600">Follow-up:</span>{' '}
-          <span>{formatMetaDate(followUpDate)}</span>
+        <div className="grid gap-1 border-t border-gray-100 pt-2 text-xs text-gray-500">
+          <div>
+            <span className="font-medium text-gray-600">Last update:</span>{' '}
+            <span>{formatMetaDate(lastUpdated)}</span>
+          </div>
+          <div>
+            <span className="font-medium text-gray-600">Follow-up:</span>{' '}
+            <span>{formatMetaDate(followUpDate)}</span>
+          </div>
         </div>
       </div>
     </div>
