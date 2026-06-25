@@ -5,7 +5,8 @@ import { auth } from '@/lib/auth'
 import { requireModule } from '@/lib/guard'
 import { CopyLinkButton } from '@/modules/quote-tracker/CopyLinkButton'
 import { EmailGateSettingsForm } from '@/modules/quote-tracker/EmailGateSettingsForm'
-import { isExpired } from '@/modules/quote-tracker/expiry'
+import { ExpireLinkButton } from '@/modules/quote-tracker/ExpireLinkButton'
+import { isActiveLink, isExpired } from '@/modules/quote-tracker/expiry'
 import { getQuoteDetail, setManualTag, updateQuoteEmailGate, updateQuoteScore } from '@/modules/quote-tracker/queries'
 import {
   formatCurrency,
@@ -30,6 +31,7 @@ export default async function QuoteDetailPage({
   if (!detail) notFound()
 
   const expired = isExpired(detail.quote.expiresAt)
+  const active = isActiveLink(detail.quote.expiresAt, detail.quote.archivedAt)
   const quoteUrl = !expired && detail.quote.shortCode
     ? `https://quotes.royalglass.co.nz/q/${detail.quote.shortCode}`
     : ''
@@ -118,7 +120,10 @@ export default async function QuoteDetailPage({
               {expired || !quoteUrl ? (
                 <span className="text-gray-950">{expired ? 'Link expired' : '-'}</span>
               ) : (
-                <a href={quoteUrl} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">{quoteUrl}</a>
+                <div className="flex flex-wrap items-center gap-2">
+                  <a href={quoteUrl} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">{quoteUrl}</a>
+                  {active && <ExpireLinkButton quoteId={detail.quote.id} />}
+                </div>
               )}
             </dd>
           </div>
@@ -166,6 +171,23 @@ export default async function QuoteDetailPage({
           <ViewerAnalyticsTable gated emails={detail.gatedEmailAnalytics} />
         ) : (
           <ViewerAnalyticsTable gated={false} devices={detail.viewerSessions} />
+        )}
+        {detail.notifiedViewers.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Notified viewers</p>
+            <ul className="space-y-1">
+              {detail.notifiedViewers.map((nv) => {
+                const device = nv.deviceType ?? 'Unknown device'
+                const location = nv.geoCity ?? 'unknown location'
+                const isp = nv.geoIsp ? ` (ISP: ${nv.geoIsp})` : ''
+                return (
+                  <li key={`${nv.ipHash}::${nv.userAgentHash}`} className="text-sm text-gray-700">
+                    {device} viewer from {location}{isp} &mdash; notified {formatDateTime(nv.notifiedAt)}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </Section>
 
