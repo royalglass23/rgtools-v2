@@ -37,6 +37,14 @@ const mocks = vi.hoisted(() => {
         })),
       }
     }),
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(() => Promise.resolve()),
+      })),
+    })),
+    delete: vi.fn(() => ({
+      where: vi.fn(() => Promise.resolve()),
+    })),
     transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback({ tx: true })),
   }
 
