@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 
 import { quotes } from '@/drizzle/schema'
+import { resetNotificationState } from './reset-notification-state'
 import { leads } from '@/drizzle/schema-leads'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
@@ -184,6 +185,9 @@ export async function createTrackedQuote(
             emailGateEnabled: false,
             ownerUserId: opts.ownerUserId ?? null,
             workOrderId: meta.jobNumber ?? null,
+            openedNotifiedAt: null,
+            highIntentNotifiedAt: null,
+            archivedAt: null,
             updatedAt: new Date(),
           },
         })
@@ -191,6 +195,8 @@ export async function createTrackedQuote(
 
       const quoteId = row.id
       const finalShortCode = row.shortCode ?? shortCode
+
+      await resetNotificationState(quoteId)
 
       await logAudit({
         actorId: opts.ownerUserId ?? null,
