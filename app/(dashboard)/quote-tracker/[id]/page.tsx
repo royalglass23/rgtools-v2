@@ -88,9 +88,6 @@ export default async function QuoteDetailPage({
             <StatusBadge tag={effectiveTag} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {quoteUrl && <CopyLinkButton value={quoteUrl} label="Copy quote link" />}
-        </div>
       </div>
 
       <Section title="Quote">
@@ -122,6 +119,7 @@ export default async function QuoteDetailPage({
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   <a href={quoteUrl} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">{quoteUrl}</a>
+                  <CopyLinkButton value={quoteUrl} label="Copy" />
                   {active && <ExpireLinkButton quoteId={detail.quote.id} />}
                 </div>
               )}

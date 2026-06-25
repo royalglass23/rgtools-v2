@@ -18,7 +18,7 @@ export function ExpireLinkButton({ quoteId }: { quoteId: string }) {
       }}
       className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
     >
-      {pending ? 'Expiring…' : 'Expire link'}
+      {pending ? 'Expiring…' : 'Expire'}
     </button>
   )
 }
