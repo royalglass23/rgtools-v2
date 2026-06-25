@@ -73,6 +73,26 @@ describe('createTrackedQuoteAction', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/quote-tracker')
   })
 
+  // Re-tracking an expired quote reactivates the same row, so the detail page it
+  // belongs to must be revalidated too — otherwise it keeps rendering "Link expired".
+  it('revalidates the detail page for the tracked quote on success', async () => {
+    createTrackedQuote.mockResolvedValue({
+      ok: true,
+      quoteId: 'q1',
+      shortCode: 'AB12CD34',
+      link: 'https://quotes-worker.example/q/AB12CD34',
+      expiresAt: new Date('2026-06-17T12:00:00Z'),
+      clientName: 'Acme Ltd',
+      jobAddress: '12 Glass St',
+      quoteValue: '100.00',
+      storageDriver: 'r2',
+    })
+
+    await createTrackedQuoteAction('R260210')
+
+    expect(revalidatePath).toHaveBeenCalledWith('/quote-tracker/q1')
+  })
+
   it('passes through a job_not_found error and does not revalidate', async () => {
     createTrackedQuote.mockResolvedValue({
       ok: false,

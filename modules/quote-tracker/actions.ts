@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 
 import { auth } from '@/lib/auth'
+import { logAudit } from '@/lib/audit-db'
 
 import { createTrackedQuote } from './create-tracked-quote'
+import { expireQuoteLink } from './expire-quote-link'
 import { getExpirySettings } from './settings-query'
 
 export type TrackQuoteActionResult =
@@ -37,6 +39,7 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
   }
 
   revalidatePath('/quote-tracker')
+  revalidatePath(`/quote-tracker/${result.quoteId}`)
 
   return {
     ok: true,
@@ -45,4 +48,29 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
     jobAddress: result.jobAddress,
     expiresAt: result.expiresAt,
   }
+}
+
+export type ExpireQuoteLinkActionResult = { ok: true } | { ok: false; message: string }
+
+export async function expireQuoteLinkAction(quoteId: string): Promise<ExpireQuoteLinkActionResult> {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { ok: false, message: 'You must be signed in.' }
+  }
+
+  const result = await expireQuoteLink(quoteId)
+  if (!result.ok) {
+    return { ok: false, message: result.message }
+  }
+
+  await logAudit({
+    actorId: session.user.id,
+    action: 'quote.link_expired',
+    targetId: quoteId,
+    detail: { clientName: result.clientName },
+  })
+
+  revalidatePath(`/quote-tracker/${quoteId}`)
+
+  return { ok: true }
 }
