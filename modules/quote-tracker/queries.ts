@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql, sum } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { quoteEngagement, quoteEvents, quoteRecipients, quoteViewerEmails, quotes, tagOverrides } from '@/drizzle/schema'
+import { quoteEngagement, quoteEvents, quoteNotifiedViewers, quoteRecipients, quoteViewerEmails, quotes, tagOverrides } from '@/drizzle/schema'
 import type { QuoteListFilters } from './list-filters'
 import { validateEmailGateSettings } from './email-gate'
 import { rollupDeviceSessions, rollupGatedEmails } from './viewer-analytics'
@@ -98,13 +98,14 @@ export async function getQuoteDetail(id: string) {
       .orderBy(desc(tagOverrides.createdAt)),
     getViewerSessions(id),
   ])
-  const [recipients, gatedEmailAnalytics] = await Promise.all([
+  const [recipients, gatedEmailAnalytics, notifiedViewers] = await Promise.all([
     db
       .select()
       .from(quoteRecipients)
       .where(eq(quoteRecipients.quoteId, id))
       .orderBy(asc(quoteRecipients.email)),
     getGatedEmailAnalytics(id),
+    getNotifiedViewers(id),
   ])
 
   return {
@@ -115,6 +116,7 @@ export async function getQuoteDetail(id: string) {
     viewerSessions,
     recipients,
     gatedEmailAnalytics,
+    notifiedViewers,
   }
 }
 
@@ -128,6 +130,45 @@ export async function getViewerSessions(quoteId: string) {
     .orderBy(asc(quoteEvents.createdAt))
 
   return rollupDeviceSessions(events)
+}
+
+export async function getNotifiedViewers(quoteId: string) {
+  if (!UUID_RE.test(quoteId)) return []
+
+  const [notified, opens] = await Promise.all([
+    db
+      .select({
+        ipHash: quoteNotifiedViewers.ipHash,
+        userAgentHash: quoteNotifiedViewers.userAgentHash,
+        notifiedAt: quoteNotifiedViewers.notifiedAt,
+      })
+      .from(quoteNotifiedViewers)
+      .where(eq(quoteNotifiedViewers.quoteId, quoteId))
+      .orderBy(desc(quoteNotifiedViewers.notifiedAt)),
+    db
+      .select({
+        ipHash: quoteEvents.ipHash,
+        userAgentHash: quoteEvents.userAgentHash,
+        deviceType: quoteEvents.deviceType,
+        geoCity: quoteEvents.geoCity,
+        geoIsp: quoteEvents.geoIsp,
+        createdAt: quoteEvents.createdAt,
+      })
+      .from(quoteEvents)
+      .where(and(eq(quoteEvents.quoteId, quoteId), eq(quoteEvents.eventType, 'open')))
+      .orderBy(desc(quoteEvents.createdAt)),
+  ])
+
+  const latestEvent = new Map<string, { deviceType: string | null; geoCity: string | null; geoIsp: string | null }>()
+  for (const ev of opens) {
+    const key = `${ev.ipHash}::${ev.userAgentHash}`
+    if (!latestEvent.has(key)) latestEvent.set(key, { deviceType: ev.deviceType, geoCity: ev.geoCity, geoIsp: ev.geoIsp })
+  }
+
+  return notified.map((nv) => {
+    const detail = latestEvent.get(`${nv.ipHash}::${nv.userAgentHash}`)
+    return { ...nv, deviceType: detail?.deviceType ?? null, geoCity: detail?.geoCity ?? null, geoIsp: detail?.geoIsp ?? null }
+  })
 }
 
 export async function getGatedEmailAnalytics(quoteId: string) {

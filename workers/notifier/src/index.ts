@@ -1,3 +1,5 @@
+import { findNewViewersToNotify, type OpenEvent, type NotifiedViewer } from './viewer-notification'
+
 export interface Env {
   DATABASE_URL: string
   RESEND_API_KEY: string
@@ -18,6 +20,7 @@ type QuoteNotificationRow = {
   total_time_ms: number
   latest_city: string | null
   latest_device: string | null
+  opened_notified_at: string | Date | null
 }
 
 const DEFAULT_TO = ['support@royalglass.co.nz']
@@ -131,15 +134,14 @@ async function sendEmail(env: Env, to: string[], subject: string, text: string):
   }
 }
 
-function openEmail(row: QuoteNotificationRow) {
+function openEmail(row: QuoteNotificationRow, viewerLabel: string) {
   return {
     subject: `Quote opened - ${row.client_name}`,
-    text: `Your quote to ${row.client_name} was just opened.
+    text: `Your quote to ${row.client_name} was opened by a new viewer.
 
 Quote: ${row.job_description ?? 'Quote'}
 Value: ${formatCurrency(row.quote_value)}
-Location: ${row.latest_city ?? 'Unknown'}
-Device: ${row.latest_device ?? 'Unknown'}
+Viewer: ${viewerLabel}
 Link: ${quoteLink(row.short_code)}
 
 - Royal Glass rgtools`,
@@ -160,10 +162,18 @@ Link: ${quoteLink(row.short_code)}
   }
 }
 
-async function firstOpenCandidates(sql: SqlClient): Promise<QuoteNotificationRow[]> {
+function viewerLabel(deviceType: string | null, geoCity: string | null, geoIsp: string | null): string {
+  const device = deviceType ?? 'Unknown device'
+  const location = geoCity ?? 'unknown location'
+  const isp = geoIsp ? ` (ISP: ${geoIsp})` : ''
+  return `${device} viewer from ${location}${isp}`
+}
+
+async function perViewerCandidates(sql: SqlClient): Promise<QuoteNotificationRow[]> {
   return await sql`
-    SELECT
+    SELECT DISTINCT ON (q.id)
       q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
+      q.opened_notified_at,
       qe.total_opens, qe.last_opened_at, qe.forwarding_suspected,
       qe.max_scroll_depth, qe.total_time_ms,
       (
@@ -180,16 +190,66 @@ async function firstOpenCandidates(sql: SqlClient): Promise<QuoteNotificationRow
       ) AS latest_device
     FROM quotes q
     JOIN quote_engagement qe ON qe.quote_id = q.id
-    WHERE q.opened_notified_at IS NULL
+    WHERE q.archived_at IS NULL
       AND qe.total_opens > 0
-      AND q.archived_at IS NULL
+      AND EXISTS (
+        SELECT 1 FROM quote_events qev
+        WHERE qev.quote_id = q.id
+          AND qev.event_type = 'open'
+          AND qev.ip_hash IS NOT NULL
+          AND qev.user_agent_hash IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM quote_notified_viewers qnv
+            WHERE qnv.quote_id = q.id
+              AND qnv.ip_hash = qev.ip_hash
+              AND qnv.user_agent_hash = qev.user_agent_hash
+          )
+      )
   ` as QuoteNotificationRow[]
+}
+
+async function getOpenEventsForQuote(sql: SqlClient, quoteId: string): Promise<OpenEvent[]> {
+  return await sql`
+    SELECT ip_hash AS "ipHash", user_agent_hash AS "userAgentHash", session_id AS "sessionId", ip
+    FROM quote_events
+    WHERE quote_id = ${quoteId}
+      AND event_type = 'open'
+  ` as OpenEvent[]
+}
+
+async function getNotifiedViewersForQuote(sql: SqlClient, quoteId: string): Promise<NotifiedViewer[]> {
+  return await sql`
+    SELECT ip_hash AS "ipHash", user_agent_hash AS "userAgentHash"
+    FROM quote_notified_viewers
+    WHERE quote_id = ${quoteId}
+  ` as NotifiedViewer[]
+}
+
+type ViewerEventRow = {
+  deviceType: string | null
+  geoCity: string | null
+  geoIsp: string | null
+}
+
+async function getViewerDetail(sql: SqlClient, quoteId: string, ipHash: string, userAgentHash: string): Promise<ViewerEventRow> {
+  const rows = await sql`
+    SELECT device_type AS "deviceType", geo_city AS "geoCity", geo_isp AS "geoIsp"
+    FROM quote_events
+    WHERE quote_id = ${quoteId}
+      AND event_type = 'open'
+      AND ip_hash = ${ipHash}
+      AND user_agent_hash = ${userAgentHash}
+    ORDER BY created_at DESC
+    LIMIT 1
+  ` as ViewerEventRow[]
+  return rows[0] ?? { deviceType: null, geoCity: null, geoIsp: null }
 }
 
 async function highIntentCandidates(sql: SqlClient): Promise<QuoteNotificationRow[]> {
   return await sql`
     SELECT
       q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
+      q.opened_notified_at,
       qe.total_opens, qe.last_opened_at, qe.forwarding_suspected,
       qe.max_scroll_depth, qe.total_time_ms,
       (
@@ -236,16 +296,29 @@ async function runNotifications(env: Env): Promise<{ opened: number; highIntent:
   let highIntent = 0
   let skippedInternal = 0
 
-  for (const row of await firstOpenCandidates(sql)) {
-    if (await isInternalOnlyOpen(sql, row.id)) {
-      skippedInternal += 1
-      continue
+  for (const row of await perViewerCandidates(sql)) {
+    const openEvents = await getOpenEventsForQuote(sql, row.id)
+    const notifiedViewers = await getNotifiedViewersForQuote(sql, row.id)
+    const newViewers = findNewViewersToNotify(openEvents, notifiedViewers)
+
+    if (newViewers.length === 0) continue
+
+    for (const viewer of newViewers) {
+      const detail = await getViewerDetail(sql, row.id, viewer.ipHash, viewer.userAgentHash)
+      const label = viewerLabel(detail.deviceType, detail.geoCity, detail.geoIsp)
+      const email = openEmail(row, label)
+      await sendEmail(env, settings.to, email.subject, email.text)
+      await sql`
+        INSERT INTO quote_notified_viewers (quote_id, ip_hash, user_agent_hash)
+        VALUES (${row.id}, ${viewer.ipHash}, ${viewer.userAgentHash})
+        ON CONFLICT DO NOTHING
+      `
+      opened += 1
     }
 
-    const email = openEmail(row)
-    await sendEmail(env, settings.to, email.subject, email.text)
-    await sql`UPDATE quotes SET opened_notified_at = NOW(), updated_at = NOW() WHERE id = ${row.id}`
-    opened += 1
+    if (row.opened_notified_at == null) {
+      await sql`UPDATE quotes SET opened_notified_at = NOW(), updated_at = NOW() WHERE id = ${row.id}`
+    }
   }
 
   for (const row of await highIntentCandidates(sql)) {
