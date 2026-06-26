@@ -1,0 +1,22 @@
+name: branch-flow
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require dev as production source
+        shell: bash
+        run: |
+          echo "base=${{ github.base_ref }}"
+          echo "head=${{ github.head_ref }}"
+
+          if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" != "dev" ]]; then
+            echo "::error::Production PRs must target main from dev. Merge feature branches into dev first."
+            exit 1
+          fi
