@@ -140,7 +140,7 @@ flow (Cloudflare generates the DS record, you paste it at 1st Domains).
 **Symptom:** After the domain was live, newly tracked quotes still produced links like
 `https://rg-viewer.royalglass.workers.dev/q/<code>`.
 **Root cause:** Quote links are generated **at runtime** from the `VIEWER_BASE_URL`
-environment variable (`modules/quote-tracker/create-tracked-quote.ts` → `viewerLink()`),
+environment variable (`apps/web/modules/quote-tracker/create-tracked-quote.ts` -> `viewerLink()`),
 **not** stored in the database. The Vercel production env still had `VIEWER_BASE_URL` set to
 the old workers.dev URL, which overrides the code default.
 **Fix:** Set `VIEWER_BASE_URL = https://quotes.royalglass.co.nz` in Vercel and redeploy.
