@@ -255,11 +255,6 @@ function Field({ label, value }: { label: string; value: string }) {
   )
 }
 
-function formatRecipients(recipients: Array<{ email: string }>) {
-  if (recipients.length === 0) return '-'
-  return recipients.map((recipient) => recipient.email).join(', ')
-}
-
 function isStatusTag(value: FormDataEntryValue | null): value is StatusTag {
   return value === 'hot' || value === 'warm' || value === 'cold' || value === 'dead'
 }

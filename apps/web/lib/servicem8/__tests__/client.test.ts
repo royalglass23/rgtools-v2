@@ -431,8 +431,7 @@ describe('createServiceM8WriteRequestFromEnv', () => {
 
   it('authenticates writes with the full-access API key', async () => {
     process.env.SERVICEM8_API_KEY_FULL = 'smk-full-access'
-    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
-      new Response('{}', { status: 200 }))
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const request = createServiceM8WriteRequestFromEnv()
