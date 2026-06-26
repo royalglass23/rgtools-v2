@@ -28,13 +28,21 @@ The Resend sending domain `royalglass.co.nz` must remain verified with SPF, DKIM
 
 ### Deploy
 
-Vercel auto-deploys on push to `main`. No special build configuration is needed beyond what is in `package.json`:
+Vercel auto-deploys on push to `main`. This repository is a pnpm monorepo, so
+the RG Tools Vercel project must point at the internal app package:
 
 ```
-Build command:  next build
+Root Directory: apps/web
+Framework:      Next.js
+Build command:  pnpm build
 Output dir:     .next
-Install cmd:    pnpm install
+Install cmd:    pnpm install --frozen-lockfile
 ```
+
+If Vercel reports `No Next.js version detected`, the project is usually still
+using the repository root as its Root Directory. The root `package.json` is the
+workspace orchestrator; the `next` dependency is declared in
+`apps/web/package.json`.
 
 ### Database migrations
 
