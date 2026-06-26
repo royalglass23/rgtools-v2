@@ -49,6 +49,7 @@ next-env.d.ts
 .claude/
 .superpowers/
 .vscode/
+.worktrees/
 
 # Local scratch (e.g. quote-pull test output)
 tmp/
