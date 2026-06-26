@@ -59,9 +59,9 @@ environment-scoped variables. We do **not** build a second project — we scope 
 ## 3. Stack facts (so the steps make sense)
 
 - **Hosting:** Vercel (Hobby plan), single project.
-- **Database:** Neon Postgres, accessed via `@neondatabase/serverless` (`lib/db.ts`).
+- **Database:** Neon Postgres, accessed via `@neondatabase/serverless` through `packages/db/src/client.ts` and `apps/web/lib/db.ts`.
   Requires the **pooled** connection string (host contains `-pooler`).
-- **Auth:** NextAuth v5 (`lib/auth.ts`), JWT sessions, credentials provider. Route
+- **Auth:** NextAuth v5 (`apps/web/lib/auth.ts`), JWT sessions, credentials provider. Route
   protection is in `app/(dashboard)/layout.tsx` via `await auth()` → `redirect('/login')`
   (no `middleware.ts`).
 - **Registrar:** 1st Domains. **DNS:** moved to Cloudflare (to match `royalglass.co.nz`).
