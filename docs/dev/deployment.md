@@ -42,7 +42,8 @@ Install cmd:    pnpm install --frozen-lockfile
 If Vercel reports `No Next.js version detected`, the project is usually still
 using the repository root as its Root Directory. The root `package.json` is the
 workspace orchestrator; the `next` dependency is declared in
-`apps/web/package.json`.
+`apps/web/package.json`. Vercel project config for the internal app lives in
+`apps/web/vercel.json`.
 
 ### Database migrations
 
