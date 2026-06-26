@@ -2,11 +2,20 @@
 
 Internal operations toolkit for Royal Glass — covering lead intake and scoring, quote pipeline tracking, and quote engagement analytics.
 
+## Workspace layout
+
+This repo is a pnpm workspace:
+
+- `apps/web` - the internal RG Tools Next.js app.
+- `apps/catalog` - placeholder public catalog app for `catalog.royalglass.co.nz`.
+- `packages/db` - shared Drizzle schema and database client.
+- `workers/*` - Cloudflare Workers deployed separately from the apps.
+
 ## What it does
 
 | Module | Description |
 |--------|-------------|
-| **Dashboard** | KPI overview — pipeline value, open quotes, hot leads, win rate, urgent actions |
+| **Dashboard** | KPI overview for active tracked quotes, plus configurable operational tables |
 | **Lead Intake** | Staff form to capture and score inbound enquiries, auto-syncs to ServiceM8 |
 | **Leads** | Paginated lead list and detail view — filter by tier/SM8/date, manual ServiceM8 job fetch |
 | **Quote Tracker** | Pull a ServiceM8 quote into a tracked short link, share it, and see how clients engage (opens, scroll, time, forwarding) — with an optional email gate and open notifications |
@@ -47,11 +56,18 @@ pnpm install
 cp .env.example .env.local   # fill in values — see docs/dev/setup.md
 pnpm db:migrate
 pnpm seed                    # creates initial admin user
-pnpm tsx scripts/seed-scoring-config-v3.ts
+pnpm --dir apps/web tsx scripts/seed-scoring-config-v3.ts
 pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+For a one-off production migration without changing `.env.local`, set `DB_URL_PROD`
+to the production Neon pooled URL and run:
+
+```bash
+pnpm db:migrate:prod
+```
 
 ## Quote pipeline scripts
 
@@ -67,4 +83,6 @@ pnpm quote:create --job R260210 # create a tracked quote in the DB (mints short 
 ```bash
 pnpm test          # watch mode
 pnpm test:run      # single run (CI)
+pnpm test:integration # live DB integration tests
+pnpm test:e2e      # Playwright e2e tests
 ```

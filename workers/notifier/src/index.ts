@@ -3,6 +3,7 @@ import { findNewViewersToNotify, type OpenEvent, type NotifiedViewer } from './v
 export interface Env {
   DATABASE_URL: string
   RESEND_API_KEY: string
+  TEST_QUOTE_ID?: string
 }
 
 type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
@@ -169,8 +170,46 @@ function viewerLabel(deviceType: string | null, geoCity: string | null, geoIsp: 
   return `${device} viewer from ${location}${isp}`
 }
 
-async function perViewerCandidates(sql: SqlClient): Promise<QuoteNotificationRow[]> {
-  return await sql`
+async function perViewerCandidates(sql: SqlClient, quoteId?: string): Promise<QuoteNotificationRow[]> {
+  const baseQuery = quoteId
+    ? sql`
+    SELECT DISTINCT ON (q.id)
+      q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
+      q.opened_notified_at,
+      qe.total_opens, qe.last_opened_at, qe.forwarding_suspected,
+      qe.max_scroll_depth, qe.total_time_ms,
+      (
+        SELECT geo_city FROM quote_events
+        WHERE quote_id = q.id AND event_type = 'open'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) AS latest_city,
+      (
+        SELECT device_type FROM quote_events
+        WHERE quote_id = q.id AND event_type = 'open'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) AS latest_device
+    FROM quotes q
+    JOIN quote_engagement qe ON qe.quote_id = q.id
+    WHERE q.id = ${quoteId}
+      AND q.archived_at IS NULL
+      AND qe.total_opens > 0
+      AND EXISTS (
+        SELECT 1 FROM quote_events qev
+        WHERE qev.quote_id = q.id
+          AND qev.event_type = 'open'
+          AND qev.ip_hash IS NOT NULL
+          AND qev.user_agent_hash IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM quote_notified_viewers qnv
+            WHERE qnv.quote_id = q.id
+              AND qnv.ip_hash = qev.ip_hash
+              AND qnv.user_agent_hash = qev.user_agent_hash
+          )
+      )
+  `
+    : sql`
     SELECT DISTINCT ON (q.id)
       q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
       q.opened_notified_at,
@@ -206,6 +245,8 @@ async function perViewerCandidates(sql: SqlClient): Promise<QuoteNotificationRow
           )
       )
   ` as QuoteNotificationRow[]
+
+  return await baseQuery as QuoteNotificationRow[]
 }
 
 async function getOpenEventsForQuote(sql: SqlClient, quoteId: string): Promise<OpenEvent[]> {
@@ -245,8 +286,47 @@ async function getViewerDetail(sql: SqlClient, quoteId: string, ipHash: string, 
   return rows[0] ?? { deviceType: null, geoCity: null, geoIsp: null }
 }
 
-async function highIntentCandidates(sql: SqlClient): Promise<QuoteNotificationRow[]> {
-  return await sql`
+async function highIntentCandidates(sql: SqlClient, quoteId?: string): Promise<QuoteNotificationRow[]> {
+  const baseQuery = quoteId
+    ? sql`
+    SELECT
+      q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
+      q.opened_notified_at,
+      qe.total_opens, qe.last_opened_at, qe.forwarding_suspected,
+      qe.max_scroll_depth, qe.total_time_ms,
+      (
+        SELECT geo_city FROM quote_events
+        WHERE quote_id = q.id AND event_type = 'open'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) AS latest_city,
+      (
+        SELECT device_type FROM quote_events
+        WHERE quote_id = q.id AND event_type = 'open'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) AS latest_device
+    FROM quotes q
+    JOIN quote_engagement qe ON qe.quote_id = q.id
+    WHERE q.id = ${quoteId}
+      AND q.opened_notified_at IS NOT NULL
+      AND q.high_intent_notified_at IS NULL
+      AND q.archived_at IS NULL
+      AND (
+        qe.total_opens >= 3
+        OR qe.forwarding_suspected = true
+        OR (qe.max_scroll_depth > 80 AND qe.total_time_ms > 300000)
+        OR (
+          SELECT COUNT(DISTINCT DATE(created_at)) FROM quote_events
+          WHERE quote_id = q.id AND event_type = 'open'
+        ) >= 2
+        OR EXISTS (
+          SELECT 1 FROM quote_events
+          WHERE quote_id = q.id AND event_type = 'cta'
+        )
+      )
+  `
+    : sql`
     SELECT
       q.id, q.short_code, q.client_name, q.job_description, q.quote_value,
       q.opened_notified_at,
@@ -283,6 +363,8 @@ async function highIntentCandidates(sql: SqlClient): Promise<QuoteNotificationRo
         )
       )
   ` as QuoteNotificationRow[]
+
+  return await baseQuery as QuoteNotificationRow[]
 }
 
 async function runNotifications(env: Env): Promise<{ opened: number; highIntent: number; skippedInternal: number }> {
@@ -294,9 +376,11 @@ async function runNotifications(env: Env): Promise<{ opened: number; highIntent:
 
   let opened = 0
   let highIntent = 0
-  let skippedInternal = 0
+  const skippedInternal = 0
 
-  for (const row of await perViewerCandidates(sql)) {
+  const quoteId = env.TEST_QUOTE_ID
+
+  for (const row of await perViewerCandidates(sql, quoteId)) {
     const openEvents = await getOpenEventsForQuote(sql, row.id)
     const notifiedViewers = await getNotifiedViewersForQuote(sql, row.id)
     const newViewers = findNewViewersToNotify(openEvents, notifiedViewers)
@@ -321,7 +405,7 @@ async function runNotifications(env: Env): Promise<{ opened: number; highIntent:
     }
   }
 
-  for (const row of await highIntentCandidates(sql)) {
+  for (const row of await highIntentCandidates(sql, quoteId)) {
     if (await isInternalOnlyOpen(sql, row.id)) continue
     if (!await hasReturnVisit(sql, row.id) && row.total_opens < 3 && !row.forwarding_suspected
       && !(row.max_scroll_depth > 80 && row.total_time_ms > 300000) && !await hasCta(sql, row.id)) {

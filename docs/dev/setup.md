@@ -5,7 +5,7 @@
 | Tool | Version | Notes |
 |------|---------|-------|
 | Node.js | 20+ | Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) |
-| pnpm | 9+ | `npm i -g pnpm` |
+| pnpm | 11+ | `npm i -g pnpm` |
 | Neon account | — | [neon.tech](https://neon.tech) — free tier is enough for dev |
 | Google Maps API key | — | Needs Places API + Distance Matrix API enabled (see below) |
 
@@ -16,6 +16,10 @@ git clone <repo-url>
 cd rgtools
 pnpm install
 ```
+
+The repo is a pnpm workspace. The internal app lives in `apps/web`, the public
+catalog placeholder lives in `apps/catalog`, and shared Drizzle schema/client
+code lives in `packages/db`.
 
 ## Environment variables
 
@@ -75,12 +79,19 @@ pnpm db:migrate
 pnpm db:studio
 ```
 
+To migrate production without changing `.env.local`, set `DB_URL_PROD` to the
+production Neon pooled URL and run:
+
+```bash
+pnpm db:migrate:prod
+```
+
 ## Seed the scoring config
 
 Scoring rules are stored in the `scoring_config_versions` table. Seed the current v3 config:
 
 ```bash
-pnpm tsx scripts/seed-scoring-config-v3.ts
+pnpm --dir apps/web tsx scripts/seed-scoring-config-v3.ts
 ```
 
 This deactivates any existing active config and inserts v3 as active.
@@ -131,16 +142,18 @@ pnpm test:run      # Single run (for CI)
 ```
 
 Tests live in:
-- `lib/__tests__/` — auth, access control, DB integration tests
-- `__tests__/` — middleware tests
-- `modules/` — module-level tests (where present)
-- `workers/tracker/src/__tests__/` — tracker worker payload validation
+- `apps/web/lib/__tests__/` - auth, access control, DB integration tests
+- `apps/web/__tests__/` - middleware tests
+- `apps/web/modules/` - module-level tests (where present)
+- `tests/workspace-boundaries.test.ts` - workspace boundary guardrails
+- `workers/tracker/src/__tests__/` - tracker worker payload validation
 
-Integration tests hit a real database. Set `DATABASE_URL` in your environment before running them.
+Integration tests hit a real database and are kept out of the default unit test
+run. Set `DATABASE_URL` in your environment, then run `pnpm test:integration`.
 
 ## Generate a new migration
 
-After changing `drizzle/schema.ts` or `drizzle/schema-leads.ts`:
+After changing `packages/db/src/schema.ts` or `packages/db/src/schema-leads.ts`:
 
 ```bash
 pnpm db:generate   # generates a new SQL file in drizzle/migrations/

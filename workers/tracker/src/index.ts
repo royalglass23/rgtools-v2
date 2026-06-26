@@ -64,8 +64,8 @@ function logWorkerError(source: string, error: unknown, metadata: Record<string,
   return errorId
 }
 
-async function hashIp(ip: string): Promise<string> {
-  const data = new TextEncoder().encode(ip)
+async function hashValue(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value)
   const buf = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(buf))
     .map(b => b.toString(16).padStart(2, '0'))
@@ -148,18 +148,19 @@ async function handleTrack(request: Request, env: Env, payload: BeaconPayload): 
   `
   const recipientId = recipientRows[0]?.recipient_id as string | undefined
   const geo = geoFields(request, settings)
-  const ipHash = await hashIp(geo.ip ?? 'unknown')
+  const ipHash = await hashValue(geo.ip ?? 'unknown')
+  const userAgentHash = await hashValue(request.headers.get('User-Agent') ?? 'unknown')
   const deviceType = detectDevice(request.headers.get('User-Agent') ?? '')
   const eventDuration = event === 'close' ? activeDurationMs ?? duration ?? null : duration ?? null
 
   await sql`
     INSERT INTO quote_events (
       quote_id, recipient_id, event_type, device_type, session_id, scroll_depth, duration_ms,
-      ip_hash, ip, geo_country, geo_city, geo_region, geo_isp, page_number
+      ip_hash, user_agent_hash, ip, geo_country, geo_city, geo_region, geo_isp, page_number
     )
     VALUES (
       ${quoteId}, ${recipientId ?? null}, ${event}, ${deviceType},
-      ${session}::uuid, ${depth ?? null}, ${eventDuration}, ${ipHash},
+      ${session}::uuid, ${depth ?? null}, ${eventDuration}, ${ipHash}, ${userAgentHash},
       ${geo.ip}, ${geo.country}, ${geo.city}, ${geo.region}, ${geo.isp}, ${pageNumber ?? null}
     )
   `

@@ -18,10 +18,10 @@ Four summary cards at the top:
 
 | Card | What it shows |
 |------|--------------|
-| **Pipeline Value** | Total dollar value of all open (non-archived, not yet won/lost) quotes |
-| **Open Quotes** | Count of active quotes across all stages |
-| **Hot Leads** | Count of quotes tagged "hot" — these need immediate attention |
-| **Win Rate** | Percentage of closed quotes that were won |
+| **Tracked Quote Value** | Total dollar value of active tracked quotes that are not archived, expired, won, or lost |
+| **Active Tracked Quotes** | Count of active tracked quote links |
+| **Hot/Warm Quotes** | Count of active tracked quotes tagged hot or warm from quote engagement |
+| **Viewed Quotes** | Count of active tracked quotes with at least one recorded open |
 
 ### Needs Attention
 

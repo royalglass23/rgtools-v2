@@ -6,6 +6,9 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ## [Unreleased]
 
+### Changed
+- Dashboard KPI cards now focus on active tracked quotes: tracked quote value, active tracked quote count, hot/warm quote count, and viewed quote count.
+
 ### Added
 - **Quote Tracker dashboard** — the `quote-tracker` module is now a full staff-facing feature (previously a stub). Includes:
   - List page at `/quote-tracker` with KPI cards, status/search filters (`QuoteTableControls`), and a **Track Quote** button in the page header.
