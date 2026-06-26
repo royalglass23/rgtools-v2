@@ -1,130 +1,119 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Workflow: planning vs execution (MANDATORY)
+## Workflow: planning vs execution (mandatory)
 
-This repo splits **planning** from **execution**. Claude Code plans; Codex executes. Do not
-blur these roles.
+This repo splits **planning** from **execution**. Claude Code plans; Codex executes. Do not blur these roles unless the user explicitly asks Claude Code to implement.
 
-**Claude Code's job — plan, do NOT write feature code:**
-1. Brainstorm and produce a plan (design in `docs/superpowers/specs/`, implementation steps).
-2. Create a **Linear ticket** in the **rgtools** project (Linear `MT-<nn>`). The ticket is the
-   source of truth for scope and acceptance criteria.
-3. Write a **Codex execution brief** in `docs/codex/<module>/` (naming: `YYYY-MM-DD-MT<nn>-short-title.md`)
-   and hand execution to Codex.
+Claude Code's default job:
 
-Claude Code only writes code itself when the user **explicitly** says so (e.g. "you do it",
-"skip Codex"). Otherwise: plan, ticket, brief — then stop.
+1. Brainstorm and produce a plan.
+2. Create a Linear ticket in the `rgtools` project.
+3. Write a Codex execution brief in `docs/codex/<module>/`.
+4. Hand execution to Codex.
 
-**Every Codex brief MUST contain, with no exceptions:**
-- **Step-by-step instructions broken into numbered checkpoints.** Each checkpoint is a small,
-  independently verifiable unit of work — not "build the feature."
-- **A verification block per checkpoint AND at the end:** the exact command(s) to run
-  (`pnpm test:run …`, `pnpm lint`, `pnpm build`, manual steps) and the **expected outcome**
-  (what passing looks like). A checkpoint is not "done" until its test passes.
-- **The Linear ticket reference** (`MT-<nn>`) and a link back to the spec.
-- Explicit scope boundaries: files Codex may touch, and what it must NOT change.
-
-If a brief lacks numbered checkpoints or per-checkpoint test instructions, it is incomplete —
-do not hand it off.
+Every Codex brief must contain numbered checkpoints, verification commands and expected outcomes per checkpoint, the Linear ticket reference, and explicit scope boundaries.
 
 ## Commands
 
-```bash
-pnpm dev              # Next.js dev server at localhost:3000
-pnpm build            # Production build
-pnpm lint             # ESLint
-pnpm test             # Vitest watch mode
-pnpm test:run         # Vitest single run (CI)
+Run commands from the repo root unless noted.
 
-pnpm db:generate      # Generate migration from schema changes
+```bash
+pnpm dev              # @rgtools/web dev server at localhost:3000
+pnpm build            # Build web and catalog workspace apps
+pnpm lint             # Lint web and catalog workspace apps
+pnpm test             # Workspace guardrails, then web app test run
+pnpm test:workspace   # Root workspace guardrail tests only
+pnpm test:integration # Web live DB integration tests
+pnpm test:e2e         # Web Playwright tests
+
+pnpm db:generate      # Generate migration from packages/db schema changes
 pnpm db:migrate       # Apply pending migrations
+pnpm db:migrate:prod  # Apply production migrations from DB_URL_PROD
 pnpm db:studio        # Browse DB in Drizzle Studio
 
-pnpm seed             # Create initial admin user
-pnpm tsx scripts/seed-scoring-config-v4.ts  # Seed lead-scoring rules (required after fresh DB)
+pnpm seed             # Create/update admin user and module rows
+pnpm seed:ps-generator # Seed published PS Generator config
+pnpm --dir apps/web tsx scripts/seed-scoring-config-v4.ts
 
-# Quote pipeline (requires SERVICEM8_API_KEY)
 pnpm quote:pull --latest
 pnpm quote:preview --latest
 pnpm quote:create --job R260210
 ```
 
-Run a single test file: `pnpm test:run lib/__tests__/access.test.ts`
+Run a single web test file:
 
-Workers are excluded from the root Vitest config — run their tests separately inside `workers/<name>/`.
+```bash
+pnpm --filter @rgtools/web test:run -- modules/lead-intake/__tests__/actions.test.ts
+```
 
 ## Architecture
 
-### Next.js App (App Router)
+### Workspace
 
-`app/` — routes only; no business logic lives here.  
-`modules/` — all feature code (actions, queries, components, utils) co-located by domain:
+| Path | Purpose |
+|------|---------|
+| `apps/web` | Internal RG Tools Next.js app |
+| `apps/catalog` | Placeholder public catalog app |
+| `packages/db` | Shared Drizzle schema and database client |
+| `workers/*` | Cloudflare Workers deployed separately |
+
+### Next.js app
+
+`apps/web/app/` contains routes. Business logic lives in `apps/web/modules/`, grouped by domain:
 
 | Module | Description |
 |--------|-------------|
 | `lead-intake` | Staff intake form, scoring engine, ServiceM8 sync, anti-spam |
-| `leads` | Paginated lead list/detail, ServiceM8 job fetch, AI tier suggestion |
+| `leads` | Paginated lead list/detail, ServiceM8 job fetch, AI suggestion |
+| `clients` | Client records, dedupe, and merge review |
 | `quote-tracker` | Tracked quote creation, short links, engagement analytics |
-| `dashboard` | KPI aggregates |
-| `admin` | User management, module grants, scoring config |
+| `ps-generator` | PS1/PS3 Producer Statement generation from published config |
+| `dashboard` | KPI aggregates and configurable tables |
+| `admin` | User management, module grants, scoring/config settings |
 
-`lib/` — shared infrastructure: `db.ts` (Drizzle client), `auth.ts` (NextAuth config), `access.ts` (pure access-control functions), `guard.ts` (Server Action auth guards), `servicem8/` (REST client), `storage/` (R2 + local adapters).
+`apps/web/lib/` contains shared app infrastructure: auth, guards, access, audit, admin navigation, ServiceM8 REST client, short codes, storage adapters, and the app DB re-export.
 
 ### Database
 
-Two schema files:
-- `drizzle/schema.ts` — quotes, users, sessions, events, modules, module grants
-- `drizzle/schema-leads.ts` — leads, scoring config versions, scoring results
+Schema files live in `packages/db/src`:
 
-Both are imported together in `lib/db.ts`. After any schema change, run `db:generate` then `db:migrate`.
+- `schema.ts` - auth, modules, quotes, quote events, settings, audit/error logs.
+- `schema-leads.ts` - clients, leads, scoring, calculator submit, lead email logs.
+- `schema-ps-generator.ts` - PS Generator config, generation events, generated PDFs, audit, migration records.
 
-### Auth & Access Control
+After any schema change, run `pnpm db:generate` and `pnpm db:migrate`.
 
-NextAuth v5 with credential provider + JWT sessions (4h). Two roles: `admin` and `staff`.
+### Auth and access
 
-Module access is grant-based: admins always have access; staff need explicit grants stored in `module_grants`. `lib/access.ts` contains pure functions (no DB) for access decisions — used in `lib/guard.ts` to protect Server Actions.
+NextAuth v5 uses credential login and JWT sessions. Route protection is in `apps/web/proxy.ts`, dashboard layout checks, and module guards in `apps/web/lib/guard.ts`.
+
+Module access is grant-based: admins always have access; staff need explicit grants in `user_module_access`.
 
 ### Cloudflare Workers
 
-Four workers in `workers/` (deployed separately via Wrangler):
-
 | Worker | Role |
 |--------|------|
-| `viewer` | PDF.js viewer with optional email gate (R2-served PDF) |
-| `tracker` | Beacon endpoint — receives engagement events, writes to DB via REST |
-| `notifier` | Cron — sends open/high-intent email alerts via Resend |
-| `cleanup` | Cron — expires old quotes, purges IP data |
+| `viewer` | Public PDF.js viewer with optional email gate |
+| `tracker` | Engagement beacon endpoint |
+| `notifier` | Cron for open/high-intent email alerts |
+| `cleanup` | Cron for quote expiry cleanup and IP purge |
 
-Workers communicate with the Next.js app's `/api` routes over HTTPS, not directly with the DB.
+### Path aliases
 
-### Lead Scoring
-
-Rules are stored in `scoring_config_versions` (active config fetched at runtime). The engine lives in `modules/lead-intake/scoring/`. Tiers A–D are computed from weighted category scores; strike flags can downgrade or reject a lead.
-
-### Key env vars
-
-`DATABASE_URL`, `AUTH_SECRET`, `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`, `GOOGLE_MAPS_SERVER_KEY`, `SERVICEM8_API_KEY`, `SERVICEM8_LEAD_QUALITY_FIELD`, `SERVICEM8_SYNC_SECRET`, `RESEND_API_KEY`, `CALCULATOR_ALLOWED_ORIGIN`. See `docs/dev/setup.md` for the full list.
-
-### Path alias
-
-`@` maps to the repo root — use `@/lib/db` not relative paths across module boundaries.
+Inside `apps/web`, `@/*` maps to the app package. `@rgtools/db` maps to `packages/db/src`.
 
 ## Documentation
 
-Docs live under `docs/`, split by audience and purpose. Put new docs in the right folder:
+Docs live under `docs/`, split by audience:
 
-| Folder | What goes here | Naming / notes |
-|--------|----------------|----------------|
-| `docs/codex/` | Codex execution briefs (strict task specs handed to an agent) | `YYYY-MM-DD-MT<nn>-short-title.md` (e.g. `2026-06-19-MT-31-lead-bulk-import.md`). Group by module in a subfolder (`docs/codex/lead-intake/`, `docs/codex/quotes/`). **Gitignored — local only.** |
-| `docs/superpowers/` | Plans & design specs (brainstorming output in `specs/`, implementation plans in `plans/`) | `YYYY-MM-DD-topic-design.md`. **Gitignored — local only.** |
-| `docs/dev/` | Technical/system documentation — architecture, setup, deployment, integration internals | For developers building the system. |
-| `docs/how-to/` | User-facing tutorials & step-by-step instructions (task-oriented: "how to do X") | Non-technical, written for staff. |
-| `docs/user/` | Non-technical / business documentation — concepts, reference, what things mean | Overviews and reference, not step-by-step tasks. |
+| Folder | What goes here |
+|--------|----------------|
+| `docs/dev/` | Technical/system documentation |
+| `docs/how-to/` | Staff-facing task tutorials |
+| `docs/user/` | Non-technical concepts and reference |
+| `docs/codex/` | Local Codex execution briefs; gitignored |
+| `docs/superpowers/` | Local plans and design specs; gitignored |
 
-When a feature ships, it typically produces: a plan in `docs/superpowers/specs/`, a Codex brief
-in `docs/codex/<module>/`, a tutorial in `docs/how-to/`, and (if it adds business concepts) a
-reference page in `docs/user/`. Cross-link between docs with relative paths and keep `README.md`'s
-doc index in sync. `docs/codex/` and `docs/superpowers/` are gitignored, so don't rely on them
-being present in CI or for other contributors.
+When a feature ships, update the relevant how-to/dev/user docs, `README.md`, and `CHANGELOG.md`.

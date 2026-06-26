@@ -1,269 +1,215 @@
 # Architecture
 
+## Workspace overview
+
+rgtools is a pnpm workspace:
+
+| Path | Purpose |
+|------|---------|
+| `apps/web` | Internal RG Tools Next.js app |
+| `apps/catalog` | Placeholder public catalog app |
+| `packages/db` | Shared Drizzle schema and database client |
+| `workers/viewer` | Public quote PDF viewer and email gate |
+| `workers/tracker` | Quote engagement beacon endpoint |
+| `workers/notifier` | Quote-open and high-intent notification cron |
+| `workers/cleanup` | Expired quote PDF cleanup and raw IP purge cron |
+
+Root scripts in `package.json` delegate to workspace packages. The internal app imports shared DB code through `@rgtools/db`.
+
 ## System overview
 
+The Next.js app handles staff-facing UI and business logic. Cloudflare Workers handle the client-facing quote lifecycle. Neon PostgreSQL is the shared system of record.
+
+```text
+apps/web (Vercel)
+  Dashboard
+  Lead Intake
+  Leads
+  Clients
+  Quote Tracker
+  PS Generator
+       |
+       v
+packages/db -> Neon PostgreSQL
+       ^
+       |
+Cloudflare Workers + R2
+  rg-viewer  /q/<code>
+  rg-tracker POST /track
+  rg-notifier scheduled emails
+  rg-cleanup scheduled expiry cleanup
 ```
-┌─────────────────────────────────┐     ┌──────────────────────────────────┐
-│  Next.js app (Vercel)           │     │  Cloudflare Workers + R2         │
-│                                 │     │                                  │
-│  ┌──────────┐  ┌─────────────┐  │     │  rg-viewer   /q/<code>           │
-│  │ Dashboard │  │ Lead Intake │  │◀───▶│  (PDF.js viewer + email gate)    │
-│  └──────────┘  └─────────────┘  │     │  rg-tracker  POST /track         │
-│  ┌──────────┐  ┌─────────────┐  │     │  (open / scroll / close / cta)   │
-│  │  Admin   │  │Quote Tracker│  │     │  rg-notifier (cron, open emails) │
-│  └──────────┘  └─────────────┘  │     │  rg-cleanup  (cron, expiry+purge)│
-└────────────────┬────────────────┘     └────────────┬─────────────────────┘
-                 │                                    │
-                 ▼                                    ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │           Neon PostgreSQL                                 │
-        │  users · sessions · quotes · quote_events                 │
-        │  quote_recipients · quote_viewer_emails                   │
-        │  quote_engagement · leads · clients                       │
-        │  scoring_config_versions · audit_log · error_log          │
-        └──────────────────────────────────────────────────────────┘
-```
 
-The Next.js app handles all staff-facing UI and business logic. Four Cloudflare Workers handle the client-facing quote lifecycle — each is a separate deploy with its own `wrangler.toml` and shares only the Neon database (and, for the viewer/cleanup, the `rg-quotes` R2 bucket):
+## Authentication and access
 
-- **`rg-viewer`** — serves the PDF.js viewer (and the optional email gate) at `quotes.royalglass.co.nz/q/<code>`, streaming the PDF from R2.
-- **`rg-tracker`** — receives engagement beacons (`POST /track`).
-- **`rg-notifier`** — cron (every 10 min); emails staff on first external open and on high intent.
-- **`rg-cleanup`** — cron (daily 02:00); deletes expired PDFs from R2, archives the quote row, and purges raw IPs after 90 days.
+NextAuth v5 uses a credentials provider. Staff log in with username and password. Sessions are JWTs with admin/staff roles.
 
-## Authentication
+Route protection is enforced in:
 
-NextAuth v5 with a credentials provider. Staff log in with username + password (bcrypt hashed). Sessions are JWTs, 4-hour expiry. The JWT carries `id` and `role` (`admin` | `staff`).
+- `apps/web/proxy.ts` - redirects unauthenticated app routes to `/login`, with public API exceptions.
+- `apps/web/app/(dashboard)/layout.tsx` - requires an authenticated session for dashboard routes.
+- `apps/web/lib/guard.ts` - page/module-level guards such as `requireModule('ps-generator')`.
+- `apps/web/lib/access.ts` and `apps/web/lib/access-db.ts` - module access checks.
 
-Role-based module access:
-- **Admin** — sees all active modules
-- **Staff** — sees modules where a grant row exists in `user_module_access`
-
-Guards are enforced in `middleware.ts` (route-level redirect) and `lib/guard.ts` (page-level server check). Tests live in `__tests__/middleware.test.ts` and `lib/__tests__/access.test.ts`. The `(dashboard)` route group requires an authenticated session; unauthenticated requests redirect to `/login`.
+Admins see all active modules. Staff see modules where a grant row exists in `user_module_access`.
 
 ## Database schema
 
-Two schema files in `drizzle/`:
+Schema files live in `packages/db/src`:
 
-**`schema.ts`** — core tables:
-- `users`, `sessions` — auth
-- `quotes`, `quote_events`, `quote_engagement`, `tag_overrides` — quote pipeline and engagement tracking. `quotes` carries `opened_notified_at` / `high_intent_notified_at` (notifier dedup) and `archived_at` (expiry/cleanup).
-- `quote_recipients`, `quote_viewer_emails` — email-gate recipients and captured viewer-email submissions; `quote_events.recipient_id` links an event to a recipient
-- `settings`, `modules`, `user_module_access` — configuration and access control
-- `audit_log`, `error_log` — observability
+| File | Contents |
+|------|----------|
+| `schema.ts` | Auth, modules, quote tracking, settings, audit, and error-log tables |
+| `schema-leads.ts` | Clients, leads, lead scoring, lead email, calculator submit, and lead outcome tables |
+| `schema-ps-generator.ts` | PS Generator configuration, generation events, generated PDF objects, audit, and migration records |
+| `client.ts` | Neon pool + Drizzle client that loads all schemas |
 
-**`schema-leads.ts`** — lead management:
-- `clients` — deduplicated client records (matched by normalised phone or email)
-- `leads` — individual enquiries linked to a client
-- `lead_category_scores` — per-category scoring answers and points
-- `scoring_config_versions` — versioned scoring config stored as JSONB
-- `lead_outcomes`, `lead_status_changes` — outcome tracking
-- `lead_submit_attempts` - public calculator rate limiting
-- `lead_submit_failures` - dead-letter rows for valid calculator payloads that fail mapping or save
-- `lead_email_log` - customer estimate email send results
+Migrations are generated and applied from the repo root into `drizzle/migrations/`.
 
-Migrations are managed with Drizzle Kit (`drizzle/migrations/`).
+## Staff modules
 
-## Module breakdown
+### Lead Intake
 
-### `modules/lead-intake/`
+Source path: `apps/web/modules/lead-intake`.
 
-The lead intake module is the main staff workflow. Key files:
+The lead intake module captures enquiries, computes distance, scores the lead using the active scoring config, writes audit records, and sends the lead to the ServiceM8 inbox. Public calculator submissions enter through `POST /api/lead-intake/calculator-submit` and use anti-spam checks before mapping the payload into the lead intake flow.
 
-| File | Responsibility |
-|------|---------------|
-| `LeadIntakeForm.tsx` | Client-side form, real-time score panel, distance display |
-| `PlacesAutocomplete.tsx` | Google Places address autocomplete (lazy-loads Maps SDK) |
-| `ScorePanel.tsx` | Live scoring display — reads active config, renders category bars |
-| `actions.ts` | Server actions: `submitLeadIntake`, `computeLeadDistance`, `getLeadIntakeForEdit` |
-| `distance.ts` | Calls Google Distance Matrix API, returns a distance band |
-| `intake-utils.ts` | Input normalisation, validation, category answer building |
-| `scoring/score-lead.ts` | Pure scoring function — takes answers + config, returns score/tier/strike result |
-| `scoring/config-options.ts` | Loads the active scoring config from DB, formats options for the form |
-| `scoring/persist-score.ts` | Runs scoring and writes results back to the `leads` row |
-| `servicem8/client.ts` | SMTP client that sends leads to the ServiceM8 inbox |
-| `servicem8/payload.ts` | Builds the ServiceM8 email payload from a lead record |
-| `servicem8/sync.ts` | Orchestrates ServiceM8 sync — mark pending, attempt, handle retry |
-| `calculator/map-calculator-submission.ts` | Maps the browser calculator payload into lead intake input |
-| `anti-spam/*` | Public calculator protections: client IP, Turnstile, and rate limiting |
-| `email/customer-estimate.ts` | Sends/logs the calculator customer estimate email via Resend |
+Key areas:
 
-### Public calculator submit
+- `LeadIntakeForm.tsx`, `PlacesAutocomplete.tsx`, `ScorePanel.tsx`
+- `actions.ts`, `intake-utils.ts`, `distance.ts`
+- `scoring/*`
+- `servicem8/*`
+- `anti-spam/*`
+- `calculator/*`
 
-`POST /api/lead-intake/calculator-submit` is the public lead front door for the WordPress-hosted calculator. It is excluded from auth middleware but only accepts the configured `CALCULATOR_ALLOWED_ORIGIN`.
+### Leads
 
-The hot path is intentionally short:
+Source path: `apps/web/modules/leads`.
 
-1. CORS, honeypot, time-gate, Turnstile, and IP rate-limit checks run first.
-2. The browser payload is mapped to `LeadIntakeInput`.
-3. `submitLeadIntakeForUser(input, null, { syncServiceM8: false })` saves to Neon and scores the lead.
-4. The route returns `{ ok: true, leadId }`.
-5. Customer email runs in the background; ServiceM8 remains `pending_sync` for the retry route/cron to drain.
+The leads module provides list/detail workflows, filtering, bulk delete, ServiceM8 fetch, and per-user table preferences. ServiceM8 fetch searches for `RGTools Lead {uuid}` in jobs, falls back to inbox messages when needed, stores the job UUID/status, and writes the lead-quality custom field on first link.
 
-Valid prospect payloads that pass anti-spam but fail mapping or saving are written to `lead_submit_failures` with the raw payload and correlation id.
+### Clients
 
-### `modules/leads/`
+Source path: `apps/web/modules/clients`.
 
-The leads module provides the read-side dashboard for reviewing and triaging leads. Key files:
+Client records are deduplicated by normalised phone or email and linked to leads. Merge planning and cleanup live in the clients module.
+
+### Quote Tracker
+
+Source path: `apps/web/modules/quote-tracker`.
+
+The quote tracker pulls a ServiceM8 quote PDF, stores it in R2, mints a short code, and lets staff track client engagement.
+
+Key files:
 
 | File | Responsibility |
-|------|---------------|
-| `queries.ts` | `getLeadsList` (paginated, filtered) and `getLeadDetail` (full record with scored fields) |
-| `LeadsTableControls.tsx` | Client component — filter bar, table, pagination, bulk-delete form |
-| `ServiceM8FetchButton.tsx` | Client component — calls the fetch API route and updates the displayed UUID/status |
-| `DeleteLeadButton.tsx` | Confirmation wrapper for the per-lead delete action |
-| `actions.ts` | `batchDeleteLeadsAction` — soft-deletes selected leads (admin only) |
-| `servicem8-fetch.ts` | `fetchLeadFromServiceM8` — searches ServiceM8 for a job matching `RGTools Lead {uuid}`, stores the UUID and status, sets the Leads Quality custom field on first link |
+|------|----------------|
+| `create-tracked-quote.ts` | Pulls ServiceM8 metadata/PDF, uploads to R2, mints the quote row |
+| `actions.ts` | Server actions behind the Track Quote flow |
+| `QuoteTableControls.tsx` | List filters, search, and table controls |
+| `queries.ts` | List/detail/KPI queries |
+| `email-gate.ts` | Recipient allow-list and email-gate matching |
+| `viewer-analytics.ts` | Per-session/per-recipient engagement read model |
+| `score.ts` | Engagement status and interest score |
+| `settings-query.ts` | Tracking, viewer-feature, and notification settings |
 
-The ServiceM8 fetch uses a dependency-injectable `request` parameter so it can be tested without real API calls.
+### PS Generator
 
-### `modules/admin/`
+Source path: `apps/web/modules/ps-generator`.
 
-User management (create/list/delete users), CSV export of quotes, error log viewer. Admin-only.
+The PS Generator creates PS1 and PS3 Producer Statement PDF packages from the published configuration.
 
-### `modules/quote-tracker/`
-
-The staff-facing quote engagement feature. Key files:
-
-| File | Responsibility |
-|------|---------------|
-| `create-tracked-quote.ts` | Pulls a ServiceM8 quote (metadata + PDF), uploads the PDF to R2, mints a short code, and inserts the `quotes` row. Returns client name, job address, link, and expiry. Refuses to recreate while a live (unexpired) quote already exists for the job. |
-| `actions.ts` | `createTrackedQuoteAction` (server action behind the Track Quote modal) and related mutations |
-| `TrackQuoteButton.tsx` | Header button + modal — enter a Job ID, create, copy link. Hardened with try/catch, escape-to-close, and a stale-response guard |
-| `QuoteTableControls.tsx` | List filters, search, and table for `/quote-tracker` |
-| `presentation.tsx` | Shared presentation helpers for the list and detail pages |
-| `queries.ts` | List + detail queries, KPI aggregates |
-| `list-filters.ts` | Status/search filter parsing for the list |
-| `expiry.ts` | Expiry window parsing (`1h`, `1d`, ISO date, …) and "is live" checks |
-| `email-gate.ts` + `EmailGateSettingsForm.tsx` | Email-gate recipient management and matching |
-| `viewer-analytics.ts` + `ViewerAnalyticsTable.tsx` + `PageTimeModal.tsx` | Per-session/per-recipient engagement analytics and per-page time breakdown |
-| `settings-query.ts` | Reads tracking-signal, viewer-feature, and notification settings |
-| `admin-settings-actions.ts` | `saveTrackingSettings` — persists the Admin → Tracking Settings form |
-| `score.ts` | Engagement → status (hot/warm/cold/dead) and interest score |
-
-### `workers/viewer/` (`rg-viewer`)
-
-Serves the public quote viewer at `quotes.royalglass.co.nz/q/<code>`: looks up the quote by short code, enforces expiry and (if enabled) the email gate, streams the PDF from the `rg-quotes` R2 bucket, and renders a PDF.js page that beacons events to `rg-tracker` (`TRACKER_URL`).
-
-### `workers/tracker/` (`rg-tracker`)
-
-Receives `POST /track` beacon events from the viewer:
-- `open` — increments `total_opens`, `unique_sessions`, `unique_devices`
-- `scroll` — updates `max_scroll_depth`
-- `close` — accumulates `total_time_ms`
-- `cta` — records Accept / Contact Us clicks
-
-IPs are SHA-256 hashed before storage. Device type (mobile/desktop) is detected from User-Agent. Tracking signals are gated by the `track.*` settings (cached ~60s).
-
-### `workers/notifier/` (`rg-notifier`)
-
-Cron worker (every 10 min). Emails staff (via Resend) when a quote is first opened by an external viewer, and again when it crosses the high-intent threshold (≥3 opens, return visit on another day, forwarding suspected, CTA click, or >80% scroll with >5 min reading time). Internal-only opens (single session, same IP as the first open) are skipped. `opened_notified_at` / `high_intent_notified_at` prevent duplicate sends. Recipients and on/off come from the `notifications.enabled` / `notifications.to` settings.
-
-### `workers/cleanup/` (`rg-cleanup`)
-
-Cron worker (daily 02:00). Deletes expired quote PDFs from R2, archives the quote (clears `pdf_storage_key`, sets `archived_at`), and purges raw IPs from `quote_events` older than 90 days.
-
-## Shared libraries (`lib/`)
-
-Utilities used across multiple modules and scripts live in `lib/`:
+Key files:
 
 | File | Responsibility |
-|------|---------------|
-| `access.ts` / `access-db.ts` | Module access checks (in-memory and DB-backed) |
-| `admin-navigation.ts` | Navigation registry for admin sidebar |
-| `audit.ts` | Typed audit log writer |
-| `auth.ts` / `auth-helpers.ts` | NextAuth session helpers |
-| `db.ts` | Drizzle + Neon database client |
-| `error-message.ts` | Safe error-to-string helper |
-| `guard.ts` | Page-level auth/role guard |
-| `logger.ts` | Structured server logger |
-| `short-code.ts` | Base62 short code generator (`generateShortCode`) and validator (`isValidShortCode`) — 7-char URL-safe codes used as public quote link identifiers |
-| `servicem8/client.ts` | Shared ServiceM8 REST client — see below |
+|------|----------------|
+| `generation.ts` | Validates selections, chooses templates, fills PDF AcroForm fields, returns generated PDFs |
+| `configuration.ts` | Loads and builds the published configuration read model |
+| `seed-config.ts` | Seed model for `wordpress-plugin-v1` systems, options, templates, mappings, and descriptions |
+| `config.ts` | Default selections and fixed option categories |
 
-### ServiceM8 client (`lib/servicem8/client.ts`)
+Routes and API:
 
-Centralises authentication and base-URL handling so both the leads module and the quote scripts talk to ServiceM8 identically. Uses `X-API-Key` header auth against the `api_1.0` base URL.
+- `apps/web/app/(dashboard)/ps-generator/page.tsx` - Generate PS page.
+- `apps/web/app/(dashboard)/ps-generator/configuration/page.tsx` - admin-only configuration surface.
+- `apps/web/app/api/ps-generator/generate/route.ts` - authenticated generate endpoint.
+- `apps/web/scripts/seed-ps-generator-config-v1.ts` - published config seed.
 
-Key exports:
+The generated PDF flow reads template PDFs from storage keys such as `templates/ps-generator/wordpress/double-disc/ps1-standard.pdf`. Missing published config raises `published_config_missing`; missing template files raise `template_pdf_missing`.
 
-| Export | What it does |
-|--------|-------------|
-| `createServiceM8RequestFromEnv()` | Returns a `ServiceM8FetchRequest` bound to `SERVICEM8_API_KEY` |
-| `getJobQuoteMeta(jobUuid, request)` | Fetches job metadata + resolves client name via `company_uuid` |
-| `getQuoteAttachmentPdf(jobUuid, request)` | Finds the `QUOTE`-source PDF attachment and downloads it |
-| `waitForQuoteAttachmentPdf(jobUuid, request, opts)` | Polls until the quote PDF appears (for watch mode) |
-| `resolveJobUuid(opts, request)` | Resolves a job UUID from a job number, explicit UUID, or "latest quote" |
-| `downloadAttachmentFile(attachmentUuid, apiKey)` | Downloads raw attachment bytes (follows 302 CDN redirect) |
+### Admin
 
-The injectable `ServiceM8FetchRequest` type allows tests to pass a mock instead of hitting the real API.
+Source path: `apps/web/modules/admin`.
 
-## Quote pipeline scripts (`scripts/`)
+Admin features include user management, CSV export, error-log viewing, dashboard table configuration, scoring configuration, tracking settings, lead import, and client merge review.
 
-Developer scripts for testing the quote delivery pipeline before the full staff UI is built. All accept `--job <number>`, `--uuid <jobUuid>`, or `--latest` to select a ServiceM8 job.
+## Cloudflare workers
 
-| Script | npm alias | What it does |
-|--------|-----------|-------------|
-| `quote-pull-test.ts` | `pnpm quote:pull` | Pulls job metadata + quote PDF, saves PDF to `tmp/`. For verifying a job is pullable without serving it. |
-| `quote-preview.ts` | `pnpm quote:preview` | Pulls the quote, starts the local viewer at `localhost:<port>/q/<code>`, and opens the browser. |
-| `quote-share.ts` | `pnpm quote:share` | Same as preview, plus opens a Cloudflare quick-tunnel and prints a temporary public URL. Downloads `cloudflared.exe` to `tmp/` on first run. |
-| `quote-create.ts` | `pnpm quote:create` | Creates a tracked quote in the database (uploads PDF to R2, mints a short link). Accepts `--expiry` in addition to the job selectors. The CLI counterpart of the Track Quote button. |
+### `workers/viewer`
 
-The scripts share `scripts/lib/quote-server.ts`, which starts a Node HTTP server that:
-- Serves the PDF at `/q/<code>/pdf`
-- Serves a PDF.js viewer HTML page at `/q/<code>`
-- Generates the short code via `lib/short-code.ts`
-- Supports a `--watch` flag to poll until ServiceM8 generates the quote PDF
+Serves public quote links at `quotes.royalglass.co.nz/q/<code>`, enforces expiry and optional email gate, streams the PDF from R2, and renders PDF.js with tracker beacons.
 
-## Scoring engine
+### `workers/tracker`
 
-The scoring engine is config-driven. The active config is a JSONB blob in `scoring_config_versions`. It defines:
+Receives `POST /track` events for opens, scroll, close, page views, downloads, prints, and CTA clicks. IPs are hashed before storage. Tracking signal collection is controlled by settings.
 
-- **Categories** (1–7) — each has a `max` point value and a map of answer keys → points
-- **Tiers** — score thresholds for A, B, C (D is the fallback below C threshold)
-- **Strikes** — "blocker low" answer keys that trigger tier demotion regardless of raw score
+### `workers/notifier`
 
-The `scoreLead()` function in `scoring/score-lead.ts` is pure (no DB calls). It takes `LeadAnswers` and `ScoringConfig` and returns a `ScoreResult` including tier, score, category breakdown, and strike result.
+Runs on cron, emails staff when a quote is first opened by an external viewer and when it crosses the high-intent threshold. Notification timestamps on `quotes` prevent duplicate sends.
 
-Scoring config is versioned. Seeding a new version deactivates the old one. `config_version_id` is stored on each `lead` and `lead_category_score` row so historical scores can always be re-interpreted.
+### `workers/cleanup`
 
-### Strike layer
+Runs on cron, deletes expired quote PDFs from R2, archives quote rows, and purges raw IPs from old quote events.
 
-Certain answer keys are designated "blocker low" in the config's `strikes.weights` map. When selected:
+## Shared app libraries
 
-1. The answer contributes **0 points** to the raw score
-2. The strike weight is accumulated
-3. If total weight ≥ `softDemoteAt` (1.0): tier is soft-demoted one step (A→B, B→C, C→D)
-4. If total weight ≥ `capAt` (2.0): tier is capped at `capCeiling` (C) — the worse of soft-demote and cap applies
+Source path: `apps/web/lib`.
 
-An amber flag note is shown on the score panel and result banner when any strike fires.
+| File | Responsibility |
+|------|----------------|
+| `db.ts` | Re-exports the shared `@rgtools/db` client for app imports |
+| `auth.ts`, `auth-helpers.ts` | NextAuth setup and session helpers |
+| `guard.ts` | Page/module guards |
+| `access.ts`, `access-db.ts` | Module access checks |
+| `audit.ts`, `audit-db.ts`, `audit-export.ts` | Audit logging and export helpers |
+| `admin-navigation.ts` | Dashboard navigation grouping |
+| `short-code.ts` | Base62 short-code generation and validation |
+| `servicem8/client.ts` | Shared ServiceM8 REST client |
+| `storage/*` | Local/R2 storage abstraction |
 
-## ServiceM8 integration
+## ServiceM8 client
 
-ServiceM8 is the field-service management system. rgtools integrates in two stages:
+Source path: `apps/web/lib/servicem8/client.ts`.
 
-### Stage 1 — Inbox sync (on lead creation)
+The client centralises `X-API-Key` authentication and `api_1.0` base URL handling. It exposes helpers for job quote metadata, quote attachment PDF download, polling for quote attachment creation, job UUID resolution, and raw attachment download.
 
-When a lead is submitted via the intake form:
+The injectable request type keeps modules and scripts unit-testable without real ServiceM8 calls.
 
-1. Lead is inserted with `sync_status = 'pending_sync'`
-2. An email is built by `servicem8/payload.ts` — includes client details, score, tier, and an `RGTools Lead {uuid}` reference line in the body
-3. The email is sent via nodemailer to `SERVICEM8_INBOX_EMAIL`
-4. On success: `sync_status = 'synced'`
-5. On failure: `sync_status = 'sync_failed'`, error stored in `sync_error`
+## Scripts
 
-After Stage 1 the lead has no ServiceM8 job UUID — ServiceM8 creates a job from the inbox email asynchronously.
+Most operational scripts live in `apps/web/scripts` and are exposed through root scripts:
 
-### Stage 2 — Job fetch (manual, on demand)
+| Root command | Script |
+|--------------|--------|
+| `pnpm seed` | `apps/web/scripts/seed.ts` |
+| `pnpm seed:ps-generator` | `apps/web/scripts/seed-ps-generator-config-v1.ts` |
+| `pnpm quote:pull` | `apps/web/scripts/quote-pull-test.ts` |
+| `pnpm quote:preview` | `apps/web/scripts/quote-preview.ts` |
+| `pnpm quote:share` | `apps/web/scripts/quote-share.ts` |
+| `pnpm quote:create` | `apps/web/scripts/create-tracked-quote-test.ts` |
+| `pnpm servicem8:webhook:register` | `apps/web/scripts/register-servicem8-attachment-webhook.ts` |
 
-Staff click **Fetch from ServiceM8** on the lead detail page (`/leads/[id]`). This calls `POST /api/leads/[id]/servicem8-fetch`, which runs `fetchLeadFromServiceM8` in `modules/leads/servicem8-fetch.ts`:
+Root-level `scripts/migrate-prod.mjs` runs production migrations from `DB_URL_PROD`.
 
-1. Queries `GET /job.json` with a date filter (`date gt <leadCreatedAt - 1 day>`) — the one-day margin guards against timezone skew
-2. Searches the result for a job whose `job_description` contains `RGTools Lead {leadId}`
-3. **Inbox fallback**: if no matching job is found by date, searches `GET /inboxmessage.json` for a message containing the reference in `message_text`, `message_html`, or `subject`, then follows `converted_to_job_uuid` to the job record
-4. Stores `servicem8_job_uuid` and `servicem8_status` on the lead row
-5. On the **first** link only: writes the lead tier to the `SERVICEM8_LEAD_QUALITY_FIELD` custom field via `POST /job/{uuid}.json`
-6. An audit log entry (`lead.servicem8_fetch`) is written
+## Testing
 
-`modules/leads/servicem8-fetch.ts` re-exports `createServiceM8RequestFromEnv` and `ServiceM8FetchRequest` from `lib/servicem8/client` so existing importers and tests do not need path changes.
+Test layers:
 
-`sync_status` badges on the list: **Linked** = job UUID exists; **Pending** = email sent, UUID not yet fetched; **Failed** = inbox email failed.
+- Root workspace guardrails: `tests/**/*.test.ts`, run by `pnpm test:workspace`.
+- Web app unit tests: `apps/web/**/__tests__`, run by `pnpm --filter @rgtools/web test:run`.
+- Web integration tests: `apps/web/tests/integration`.
+- Web e2e tests: `apps/web/tests/e2e`.
+- Worker tests live under worker packages where present.
+
+The root `pnpm test` command runs workspace guardrails and then the web app test run.

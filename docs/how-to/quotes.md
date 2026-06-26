@@ -312,9 +312,9 @@ pnpm quote:create --uuid <jobUuid>
 | Tracker worker code | `workers/tracker/src/index.ts` |
 | Cleanup cron worker | `workers/cleanup/src/index.ts` |
 | Notifier cron worker (open emails) | `workers/notifier/src/index.ts` |
-| Quote creation logic | `modules/quote-tracker/create-tracked-quote.ts` |
-| Engagement scoring | `modules/quote-tracker/score.ts` |
-| Email gate logic | `modules/quote-tracker/email-gate.ts` |
+| Quote creation logic | `apps/web/modules/quote-tracker/create-tracked-quote.ts` |
+| Engagement scoring | `apps/web/modules/quote-tracker/score.ts` |
+| Email gate logic | `apps/web/modules/quote-tracker/email-gate.ts` |
 | Tracking settings | Admin → Tracking Settings in the dashboard |
 | PDFs at rest | Cloudflare R2 bucket `quotes/<shortcode>.pdf` |
 | Database | Neon (Postgres) — `quotes`, `quote_events`, `quote_engagement`, `quote_recipients`, `quote_viewer_emails` tables |

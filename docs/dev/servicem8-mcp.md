@@ -48,7 +48,7 @@ The official server is intentionally narrow:
 ## What it does NOT cover
 
 These objects are **not** reachable via the official MCP server — use the REST
-client at [`lib/servicem8/client.ts`](../../lib/servicem8/client.ts) (full
+client at [`apps/web/lib/servicem8/client.ts`](../../apps/web/lib/servicem8/client.ts) (full
 `api_1.0` access via `SERVICEM8_API_KEY`) instead:
 
 - Job line items (`jobmaterial`) — needed for quote subtotals + jobcard categories
