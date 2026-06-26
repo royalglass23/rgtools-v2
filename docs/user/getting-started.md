@@ -4,32 +4,28 @@
 
 Go to the rgtools URL provided by your admin and log in with your username and password.
 
-If you don't have an account, ask an admin to create one for you.
+If you do not have an account, ask an admin to create one for you.
 
-Sessions last 4 hours. You'll be redirected to the login page when your session expires.
+Sessions last 4 hours. You will be redirected to the login page when your session expires.
 
 ## The dashboard
 
-After logging in you'll land on the dashboard at `/`. It has three sections:
+After logging in you land on the dashboard at `/`. It has three main areas.
 
 ### KPI row
 
-Four summary cards at the top:
-
 | Card | What it shows |
-|------|--------------|
-| **Pipeline Value** | Total dollar value of all open (non-archived, not yet won/lost) quotes |
-| **Open Quotes** | Count of active quotes across all stages |
-| **Hot Leads** | Count of quotes tagged "hot" — these need immediate attention |
-| **Win Rate** | Percentage of closed quotes that were won |
+|------|---------------|
+| **Tracked Quote Value** | Total dollar value of active tracked quotes that are not archived, expired, won, or lost |
+| **Active Tracked Quotes** | Count of active tracked quote links |
+| **Hot/Warm Quotes** | Count of active tracked quotes tagged hot or warm from engagement |
+| **Viewed Quotes** | Count of active tracked quotes with at least one recorded open |
 
 ### Needs Attention
 
-A table of your hottest open quotes — hot and warm tagged leads ordered by AI score. These are the quotes to act on first. Shows client name, quote value, pipeline stage, status tag, score, and when the quote was sent.
+A table of the hottest open quotes, ordered by engagement score. These are the quotes to follow up first.
 
 ### Pipeline snapshot
-
-A count of quotes at each stage:
 
 | Stage | Meaning |
 |-------|---------|
@@ -41,15 +37,32 @@ A count of quotes at each stage:
 
 ## Navigation
 
-The top navigation bar shows the tools you have access to. Click a tool name to open it. The logo always takes you back to the dashboard.
+The top navigation bar shows the tools you have access to. The logo takes you back to the dashboard.
 
-Your name and role are shown in the top right. Click **Sign out** when you're done.
+Current navigation groups include:
+
+| Menu | What it contains |
+|------|------------------|
+| **Lead Intake** | Lead intake form, Leads list, and admin-only Lead Intake configuration |
+| **PS Generator** | Generate PS and admin-only PS Configuration |
+| **Quote Tracker** | Tracked quote list and quote details |
+| **Clients** | Client records and linked lead/job context |
+| **Admin** | User management, settings, imports, tracking settings, and admin tools |
+
+Your name and role are shown in the top right. Use **Sign out** when you are done.
 
 ## Roles
 
 | Role | Access |
 |------|--------|
-| **Admin** | All tools, including user management |
+| **Admin** | All active tools, including configuration and user management |
 | **Staff** | Tools granted by an admin |
 
-If you try to access a tool you haven't been granted, you'll see a "You don't have access to that tool" message on the dashboard.
+If you try to access a tool you have not been granted, rgtools redirects you back to the dashboard with an access-denied message.
+
+## Common tools
+
+- Use [Lead intake](../how-to/lead-intake.md) to capture and score new enquiries.
+- Use [Leads](../how-to/leads.md) to review leads and link them to ServiceM8.
+- Use [Quote Tracker](../how-to/quotes.md) to create tracked quote links and read engagement.
+- Use [PS Generator](../how-to/ps-generator.md) to generate PS1 and PS3 Producer Statement packages.

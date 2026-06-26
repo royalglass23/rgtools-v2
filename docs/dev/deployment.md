@@ -1,80 +1,102 @@
 # Deployment
 
 rgtools has two independently deployed parts:
-1. **Next.js app** — deployed to Vercel
-2. **Cloudflare Workers** (`workers/`) — four separate Worker deploys backing the quote tracker:
-   - `rg-viewer` — public PDF viewer + email gate (`workers/viewer`)
-   - `rg-tracker` — engagement beacon endpoint (`workers/tracker`)
-   - `rg-notifier` — open / high-intent email notifications, cron (`workers/notifier`)
-   - `rg-cleanup` — expiry + IP purge, cron (`workers/cleanup`)
+
+1. **Next.js apps** - Vercel deploys the internal RG Tools app from `apps/web`; `apps/catalog` is a placeholder workspace app.
+2. **Cloudflare Workers** - separate deploys under `workers/` for quote viewing, tracking, notifications, and cleanup.
 
 ## Next.js app (Vercel)
 
+### Project settings
+
+The internal app is no longer at the repository root. Configure the RG Tools Vercel project as:
+
+```text
+Root Directory: apps/web
+Framework:      Next.js
+Build command:  pnpm build
+Output dir:     .next
+Install cmd:    pnpm install --frozen-lockfile
+```
+
+The root `package.json` is a workspace orchestrator. The `next` dependency lives in `apps/web/package.json`, so Vercel must use `apps/web` as the project root. If Vercel reports `No Next.js version detected`, this setting is usually wrong.
+
+`apps/web/vercel.json` disables automatic deployments for every branch except:
+
+- `main` - production
+- `dev` - staging/preview
+
+Feature branches should merge into `dev`; promote `dev` to `main` when ready for production.
+
 ### Environment variables
 
-Set all variables from [setup.md](setup.md#environment-variables) in the Vercel project settings under **Settings → Environment Variables**. Apply to Production, Preview, and Development as appropriate.
+Set all variables from [setup.md](setup.md#environment-variables) in Vercel under **Settings -> Environment Variables**. Scope them per environment.
 
-`NEXT_PUBLIC_*` variables are embedded at build time — they must be set before deploying.
+Production must have:
 
-For calculator lead submission, confirm these are set before routing production traffic:
-
+- pooled production Neon `DATABASE_URL`
+- `AUTH_SECRET`
+- `AUTH_TRUST_HOST=true`
 - `CALCULATOR_ALLOWED_ORIGIN=https://www.royalglass.co.nz`
 - `TURNSTILE_SECRET`
 - `RESEND_API_KEY`
 - `RESEND_FROM="Royal Glass <support@royalglass.co.nz>"`
-- pooled Neon `DATABASE_URL`
 
-The Resend sending domain `royalglass.co.nz` must remain verified with SPF, DKIM, and DMARC. `support@royalglass.co.nz` should be a monitored mailbox because customer replies go there.
+Preview (`dev`) must use the dev Neon branch connection string, not production. Do not set a global `AUTH_URL` or `NEXTAUTH_URL` that points production at a preview host.
 
-### Deploy
-
-Vercel auto-deploys on push to `main`. No special build configuration is needed beyond what is in `package.json`:
-
-```
-Build command:  next build
-Output dir:     .next
-Install cmd:    pnpm install
-```
+`NEXT_PUBLIC_*` variables are embedded at build time and must be set before deployment.
 
 ### Database migrations
 
-Run migrations **before** the new app version serves traffic:
+Run migrations before the new app version serves traffic:
 
 ```bash
 DATABASE_URL=<production-url> pnpm db:migrate
 ```
 
-Or add this as a Vercel build step (runs during CI before the deploy goes live):
-
-```
-Build command: pnpm db:migrate && next build
-```
-
-### Scoring config seed
-
-Seeding is a one-time operation per config version. Run it against the production database when releasing a new scoring config:
+For a safer one-off production migration that does not require changing `.env.local`, set `DB_URL_PROD` and run:
 
 ```bash
-DATABASE_URL=<production-url> pnpm tsx scripts/seed-scoring-config-v3.ts
+pnpm db:migrate:prod
 ```
 
----
+The `@rgtools/web` build script also runs root migrations before `next build`.
+
+### Seed operations
+
+Seed scripts are operational commands, not part of every deploy.
+
+```bash
+pnpm seed
+pnpm seed:ps-generator
+pnpm --dir apps/web tsx scripts/seed-scoring-config-v3.ts
+```
+
+`pnpm seed` creates/updates the protected admin user and module rows. `pnpm seed:ps-generator` inserts the published `wordpress-plugin-v1` PS Generator config. PS generation also requires the referenced template PDFs in R2.
 
 ## Cloudflare Workers
 
-All four workers live under `workers/` and are deployed independently with [Wrangler](https://developers.cloudflare.com/workers/wrangler/). They share the Neon database; `rg-viewer` and `rg-cleanup` also bind the `rg-quotes` R2 bucket.
+The quote tracker uses four workers:
+
+| Worker | Path | Purpose |
+|--------|------|---------|
+| `rg-viewer` | `workers/viewer` | Public PDF.js viewer and email gate |
+| `rg-tracker` | `workers/tracker` | Engagement beacon endpoint |
+| `rg-notifier` | `workers/notifier` | First-open and high-intent notification cron |
+| `rg-cleanup` | `workers/cleanup` | Expired PDF cleanup and raw IP purge cron |
+
+All workers are deployed independently with Wrangler. They share Neon; `rg-viewer` and `rg-cleanup` also bind the `rg-quotes` R2 bucket.
 
 ### One-time prerequisites
 
 ```bash
-npx wrangler login          # authenticate with the Cloudflare account
-# Create the R2 bucket once (used by viewer + cleanup):
+npx wrangler login
 npx wrangler r2 bucket create rg-quotes
 ```
 
 ### Secrets per worker
 
-Each worker reads its config from encrypted secrets (never plain vars). Set them from the worker's own directory:
+Set secrets from each worker directory:
 
 | Worker | Secrets |
 |--------|---------|
@@ -86,24 +108,29 @@ Each worker reads its config from encrypted secrets (never plain vars). Set them
 ```bash
 cd workers/<name>
 npx wrangler secret put DATABASE_URL
-# notifier also:
+```
+
+For notifier:
+
+```bash
+cd workers/notifier
 npx wrangler secret put RESEND_API_KEY
 ```
 
-### Deploy
+### Deploy workers
 
 ```bash
 cd workers/viewer   && npx wrangler deploy
 cd workers/tracker  && npx wrangler deploy
-cd workers/notifier && npx wrangler deploy   # cron: */10 * * * *
-cd workers/cleanup  && npx wrangler deploy   # cron: 0 2 * * *
+cd workers/notifier && npx wrangler deploy
+cd workers/cleanup  && npx wrangler deploy
 ```
 
-The cron schedules are declared in each worker's `wrangler.toml` (`[triggers] crons`) and take effect on deploy — no separate setup.
+Cron schedules are declared in each worker's `wrangler.toml` and take effect on deploy.
 
 ### Viewer custom domain
 
-`rg-viewer` serves the public quote links. The custom-domain route in `workers/viewer/wrangler.toml` is committed but commented out until `royalglass.co.nz` is fully on Cloudflare. To enable it, uncomment:
+`rg-viewer` serves public quote links at `quotes.royalglass.co.nz/q/<code>`. The custom-domain route in `workers/viewer/wrangler.toml` is committed but commented until `royalglass.co.nz` is fully on Cloudflare:
 
 ```toml
 [[routes]]
@@ -111,21 +138,19 @@ pattern = "quotes.royalglass.co.nz"
 custom_domain = true
 ```
 
-Cloudflare auto-creates the DNS record and edge TLS certificate on deploy. `rg-viewer` also points `TRACKER_URL` (a plain var in its `wrangler.toml`) at the deployed `rg-tracker` URL.
+`rg-viewer` points `TRACKER_URL` at the deployed `rg-tracker` URL.
 
-### Local development
+### Local worker development
 
 ```bash
 cd workers/<name>
 npx wrangler dev
 ```
 
-The tracker runs locally at `http://localhost:8787` — `POST /track` with a JSON body matching the `BeaconPayload` type in `src/validate.ts`. Cron workers (`notifier`, `cleanup`) can be triggered locally with `npx wrangler dev` then hitting the scheduled endpoint, or `wrangler dev --test-scheduled`.
-
----
+Cron workers can be tested locally with `wrangler dev --test-scheduled`.
 
 ## Rollback
 
-- **Vercel** — use the Vercel dashboard to re-deploy a previous deployment instantly
-- **Cloudflare Worker** — `npx wrangler rollback` (from the worker's directory) reverts to the previous uploaded version
-- **Database** — there is no automatic rollback for migrations; keep a Neon branch or snapshot before running migrations on production
+- **Vercel** - redeploy a previous deployment from the Vercel dashboard.
+- **Cloudflare Worker** - run `npx wrangler rollback` from the worker directory.
+- **Database** - no automatic rollback; keep a Neon branch or snapshot before production migrations.
