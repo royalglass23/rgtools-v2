@@ -1,0 +1,46 @@
+name: sync-dev-after-main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fast-forward-dev:
+    name: fast-forward dev after production merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward dev to main when safe
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main dev
+
+          MAIN_SHA="$(git rev-parse origin/main)"
+          DEV_SHA="$(git rev-parse origin/dev)"
+
+          echo "origin/main=${MAIN_SHA}"
+          echo "origin/dev=${DEV_SHA}"
+
+          if [[ "${MAIN_SHA}" == "${DEV_SHA}" ]]; then
+            echo "dev is already aligned with main."
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor origin/dev origin/main; then
+            git push origin "${MAIN_SHA}:refs/heads/dev"
+            echo "Fast-forwarded dev to main."
+            exit 0
+          fi
+
+          echo "::warning::dev has commits that are not in main, so this workflow left both branches unchanged."
+          git log --oneline --left-right --cherry-pick origin/dev...origin/main

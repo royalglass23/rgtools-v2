@@ -26,7 +26,7 @@ The root `package.json` is a workspace orchestrator. The `next` dependency lives
 - `main` - production
 - `dev` - staging/preview
 
-Feature branches should merge into `dev`; promote `dev` to `main` when ready for production.
+Feature branches should merge into `dev`; promote `dev` to `main` when ready for production. See [branch workflow](branch-workflow.md) for the exact pull request flow and the automatic `dev` sync after production merges.
 
 ### Environment variables
 

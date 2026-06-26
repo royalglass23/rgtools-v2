@@ -37,6 +37,7 @@ This repo is a pnpm workspace:
 - [Local setup](docs/dev/setup.md) - prerequisites, env vars, DB migration, seeding, testing
 - [Architecture](docs/dev/architecture.md) - system design, modules, auth, scoring engine
 - [Deployment](docs/dev/deployment.md) - Vercel + Cloudflare Worker deployment
+- [Branch workflow](docs/dev/branch-workflow.md) - feature to staging and staging to production flow
 - [Quote tracking privacy note](docs/dev/quote-tracking.md) - what is collected, retention, access
 
 ## User docs
