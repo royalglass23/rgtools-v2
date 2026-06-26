@@ -18,8 +18,10 @@ describe('production migration command', () => {
 
     expect(packageJson.scripts['db:migrate']).toBe('drizzle-kit migrate')
     expect(packageJson.scripts['db:migrate:prod']).toBe('node scripts/migrate-prod.mjs')
-    expect(script).toContain('process.env.DB_URL_PROD')
+    expect(script).toContain("process.env.DB_URL_PROD ?? readGitignoredProdUrl()")
+    expect(script).toContain("for (const envFile of ['.env.local', '.env'])")
     expect(script).toContain('DATABASE_URL: prodUrl')
+    expect(script).toContain("shell: process.platform === 'win32'")
     expect(script).toContain('DB_URL_PROD is required')
   })
 })
