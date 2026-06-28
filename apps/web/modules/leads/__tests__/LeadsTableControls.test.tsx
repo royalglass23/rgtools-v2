@@ -28,6 +28,7 @@ const filters: LeadsListFilters = {
   tier: 'all',
   sm8: 'all',
   date: 'all',
+  stale: false,
   page: 1,
   size: 10,
   sortColumn: 'createdAt',

@@ -250,6 +250,8 @@ export async function deleteScoringConfigVersion(formData: FormData): Promise<Sa
 }
 
 export async function getScoringVersionRows() {
+  const session = await auth()
+  if (session?.user?.role !== 'admin') return []
   return db
     .select({
       id: scoringConfigVersions.id,

@@ -12,6 +12,8 @@ export type QuoteListSort =
   | 'interest_desc'
 export type QuoteListPageSize = 5 | 10 | 20 | 50
 
+export type QuoteActivity = 'all' | 'expiring' | 'never_opened' | 'forwarding' | 'gone_cold'
+
 export type QuoteListFilters = {
   search: string
   status: QuoteListStatus
@@ -19,6 +21,7 @@ export type QuoteListFilters = {
   sort: QuoteListSort
   page: number
   size: QuoteListPageSize
+  activity: QuoteActivity
 }
 
 export type ParseQuoteListFiltersOptions = {
@@ -49,6 +52,7 @@ export function parseQuoteListFilters(
     sort: isQuoteListSort(sort) ? sort : 'last_opened',
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: size === 5 || size === 10 || size === 20 || size === 50 ? size : 5,
+    activity: toQuoteActivity(stringValue(searchParams[`${prefix}activity`])),
   }
 }
 
@@ -62,6 +66,11 @@ function isQuoteListStatus(value: string | undefined): value is QuoteListStatus 
 
 function isQuoteLinkStatus(value: string | undefined): value is QuoteLinkStatus {
   return value === 'active' || value === 'expired' || value === 'all'
+}
+
+function toQuoteActivity(value: string | undefined): QuoteActivity {
+  if (value === 'expiring' || value === 'never_opened' || value === 'forwarding' || value === 'gone_cold') return value
+  return 'all'
 }
 
 function isQuoteListSort(value: string | undefined): value is QuoteListSort {

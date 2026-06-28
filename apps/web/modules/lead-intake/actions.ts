@@ -2,6 +2,7 @@
 
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
+import { userCanAccessSlug } from '@/lib/access-db'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
 import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
@@ -68,6 +69,11 @@ export type LeadIntakeResult =
   | { error: string }
 
 export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeInput | null> {
+  const session = await auth()
+  if (!session?.user?.id) return null
+  const allowed = await userCanAccessSlug(session.user.id, 'lead-intake')
+  if (!allowed) return null
+
   const [row] = await db
     .select({
       leadId: leads.id,
@@ -136,6 +142,8 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
 }
 
 export async function computeLeadDistance(address: string): Promise<string | null> {
+  const session = await auth()
+  if (!session?.user?.id) return null
   return computeDistanceBand(address)
 }
 

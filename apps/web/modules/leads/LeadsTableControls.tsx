@@ -62,15 +62,6 @@ const COLUMN_DEFS: ColumnDef[] = [
 
 const columnDefByKey = new Map(COLUMN_DEFS.map((column) => [column.key, column]))
 
-const SORT_OPTIONS: Array<[string, string]> = [
-  ['createdAt', 'Date created'],
-  ['clientName', 'Client'],
-  ['tier', 'Tier'],
-  ['seedScore', 'Score'],
-  ['completeness', 'Completeness'],
-  ['followUpDate', 'Follow-up date'],
-  ['updatedAt', 'Last update'],
-]
 
 export function LeadsTableControls({
   filters,
@@ -139,7 +130,26 @@ export function LeadsTableControls({
 
   return (
     <>
-      <FilterBar filters={filters} basePath={basePath} paramPrefix={paramPrefix} isAdmin={isAdmin} selectedCount={selectedIds.length} />
+      <FilterBar
+        filters={filters}
+        basePath={basePath}
+        paramPrefix={paramPrefix}
+        onSort={(column, dir) => persistPrefs({ ...tablePrefs, sortColumn: column, sortDir: dir as 'asc' | 'desc' })}
+      />
+
+      {isAdmin && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500">{selectedIds.length} selected</span>
+          <button
+            type="submit"
+            form="batch-delete-form"
+            disabled={selectedIds.length === 0}
+            className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Delete selected
+          </button>
+        </div>
+      )}
 
       {isAdmin && (
         <form
@@ -205,25 +215,35 @@ export function LeadsTableControls({
 }
 
 function FilterBar({
-  filters, basePath, paramPrefix, isAdmin, selectedCount,
+  filters, basePath, paramPrefix, onSort,
 }: {
-  filters: LeadsListFilters; basePath: string; paramPrefix: string; isAdmin: boolean; selectedCount: number
+  filters: LeadsListFilters; basePath: string; paramPrefix: string; onSort: (column: string, dir: string) => void
 }) {
   const searchParams = useSearchParams()
   const owned = new Set(
-    ['q', 'tier', 'sm8', 'date', 'size', 'sortColumn', 'sortDir', 'page'].map((name) => `${paramPrefix}${name}`),
+    ['q', 'tier', 'sm8', 'date', 'stale', 'size', 'sortColumn', 'sortDir', 'page'].map((name) => `${paramPrefix}${name}`),
   )
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
 
+  const resetParams = new URLSearchParams(carryOver)
+  resetParams.set(`${paramPrefix}size`, String(filters.size))
+  resetParams.set(`${paramPrefix}page`, '1')
+  resetParams.set(`${paramPrefix}sortColumn`, 'clientName')
+  resetParams.set(`${paramPrefix}sortDir`, 'asc')
+  const resetHref = `${basePath}?${resetParams}`
+
+  const filterKey = [filters.q, filters.tier, filters.sm8, filters.date, String(filters.stale), filters.sortColumn, filters.sortDir].join('|')
+
   return (
-    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-6">
+    <form key={filterKey} action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-8">
       {carryOver.map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
       <input type="hidden" name={`${paramPrefix}size`} value={String(filters.size)} />
       <input type="hidden" name={`${paramPrefix}page`} value="1" />
+      <input type="hidden" name={`${paramPrefix}sortColumn`} value={filters.sortColumn} />
+      <input type="hidden" name={`${paramPrefix}sortDir`} value={filters.sortDir} />
 
-      {/* Row 1: Search | Tier | SM8 | Date | Delete selected */}
       <label className="block sm:col-span-2">
         <span className="text-xs font-medium text-gray-600">Search</span>
         <div className="mt-1 flex gap-2">
@@ -244,29 +264,13 @@ function FilterBar({
       <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
       <Select name={`${paramPrefix}sm8`} label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
       <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
-      {isAdmin ? (
-        <div className="flex flex-col justify-end">
-          <button
-            type="submit"
-            form="batch-delete-form"
-            disabled={selectedCount === 0}
-            className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Delete selected
-          </button>
-        </div>
-      ) : (
-        <div />
-      )}
-
-      {/* Row 2: Sort by | Direction | … | N selected */}
-      <Select name={`${paramPrefix}sortColumn`} label="Sort by" value={filters.sortColumn} options={SORT_OPTIONS} />
-      <Select name={`${paramPrefix}sortDir`} label="Direction" value={filters.sortDir} options={[['desc', 'Descending'], ['asc', 'Ascending']]} />
-      {isAdmin && (
-        <div className="flex items-end justify-end sm:col-start-6">
-          <span className="pb-2 text-sm text-gray-500">{selectedCount} selected</span>
-        </div>
-      )}
+      <Select name={`${paramPrefix}stale`} label="Activity" value={filters.stale ? 'true' : 'false'} options={[['false', 'All'], ['true', 'Stale (7d+)']]} />
+      <LeadsSortSelect filters={filters} basePath={basePath} paramPrefix={paramPrefix} onSort={onSort} />
+      <div className="flex items-end justify-end">
+        <Link href={resetHref} className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset
+        </Link>
+      </div>
     </form>
   )
 }
@@ -282,6 +286,50 @@ function Select({ name, label, value, options }: { name: string; label: string; 
         className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
       >
         {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
+      </select>
+    </label>
+  )
+}
+
+function LeadsSortSelect({ filters, basePath, paramPrefix, onSort }: { filters: LeadsListFilters; basePath: string; paramPrefix: string; onSort: (column: string, dir: string) => void }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const currentValue = `${filters.sortColumn}_${filters.sortDir}`
+
+  function handleChange(combined: string) {
+    const idx = combined.lastIndexOf('_')
+    const column = combined.substring(0, idx)
+    const dir = combined.substring(idx + 1)
+    onSort(column, dir)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(`${paramPrefix}sortColumn`, column)
+    params.set(`${paramPrefix}sortDir`, dir)
+    params.set(`${paramPrefix}page`, '1')
+    router.push(`${basePath}?${params}`)
+  }
+
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-gray-600">Sort</span>
+      <select
+        value={currentValue}
+        onChange={(e) => handleChange(e.target.value)}
+        className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+      >
+        <option value="clientName_asc">Client A–Z</option>
+        <option value="clientName_desc">Client Z–A</option>
+        <option value="createdAt_desc">Date newest</option>
+        <option value="createdAt_asc">Date oldest</option>
+        <option value="tier_asc">Tier A–D</option>
+        <option value="tier_desc">Tier D–A</option>
+        <option value="seedScore_desc">Score high–low</option>
+        <option value="seedScore_asc">Score low–high</option>
+        <option value="completeness_desc">Completeness high–low</option>
+        <option value="completeness_asc">Completeness low–high</option>
+        <option value="followUpDate_asc">Follow-up soonest</option>
+        <option value="followUpDate_desc">Follow-up latest</option>
+        <option value="updatedAt_desc">Last update newest</option>
+        <option value="updatedAt_asc">Last update oldest</option>
       </select>
     </label>
   )
@@ -411,6 +459,7 @@ function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: 
   params.set(`${paramPrefix}tier`, filters.tier)
   params.set(`${paramPrefix}sm8`, filters.sm8)
   params.set(`${paramPrefix}date`, filters.date)
+  params.set(`${paramPrefix}stale`, String(filters.stale))
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}q`, filters.q)
   params.set(`${paramPrefix}sortColumn`, filters.sortColumn)

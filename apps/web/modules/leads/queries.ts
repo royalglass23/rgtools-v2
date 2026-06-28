@@ -1,14 +1,17 @@
-import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { DEFAULT_LEADS_PREFS, LEADS_SORT_COLUMNS } from './table-prefs-shared'
+
+export const STALE_LEAD_DAYS = 7
 
 export type LeadsListFilters = {
   q: string
   tier: 'all' | 'A' | 'B' | 'C' | 'D'
   sm8: 'all' | 'linked' | 'pending' | 'failed'
   date: '7' | '30' | 'all'
+  stale: boolean
   page: number
   size: 5 | 10 | 20 | 50 | 100
   sortColumn: string
@@ -39,6 +42,7 @@ export function parseLeadsListFilters(
   const tier = pick('tier')
   const sm8 = pick('sm8')
   const date = pick('date')
+  const stale = stringValue(searchParams[`${prefix}stale`]) === 'true'
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
   const size = Number(pick('size') ?? '10')
   const sortColumn = pick('sortColumn') ?? DEFAULT_LEADS_PREFS.sortColumn
@@ -49,6 +53,7 @@ export function parseLeadsListFilters(
     tier: tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D' ? tier : 'all',
     sm8: sm8 === 'linked' || sm8 === 'pending' || sm8 === 'failed' ? sm8 : 'all',
     date: date === '7' || date === '30' || date === 'all' ? date : '30',
+    stale,
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: size === 5 || size === 20 || size === 50 || size === 100 ? size : 10,
     sortColumn: LEADS_SORT_COLUMNS.includes(sortColumn as (typeof LEADS_SORT_COLUMNS)[number])
@@ -202,6 +207,13 @@ function listWhere(filters: LeadsListFilters) {
     const start = new Date()
     start.setDate(start.getDate() - Number(filters.date))
     conditions.push(gte(leads.createdAt, start))
+  }
+  if (filters.stale) {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - STALE_LEAD_DAYS)
+    conditions.push(isNull(leads.servicem8JobUuid))
+    conditions.push(ne(leads.syncStatus, 'sync_failed'))
+    conditions.push(lte(leads.createdAt, cutoff))
   }
   if (filters.q) {
     const query = `%${escapeLike(filters.q)}%`

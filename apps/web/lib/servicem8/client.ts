@@ -187,6 +187,10 @@ function odataFilter(expr: string): string {
   return `?%24filter=${encodeURIComponent(expr)}`
 }
 
+function escapeOdataString(value: string): string {
+  return value.replace(/'/g, "''")
+}
+
 // NZ GST. ServiceM8 line items (jobmaterial) are stored ex-GST.
 const GST_RATE = 0.15
 
@@ -226,7 +230,7 @@ export async function getJobMaterialsSubtotal(
   jobUuid: string,
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<number> {
-  const res = await request(`/jobmaterial.json${odataFilter(`job_uuid eq '${jobUuid}'`)}`)
+  const res = await request(`/jobmaterial.json${odataFilter(`job_uuid eq '${escapeOdataString(jobUuid)}'`)}`)
   if (!res.ok) return 0
   const rows = await res.json()
   if (!Array.isArray(rows)) return 0
@@ -317,7 +321,7 @@ export async function getJobContact(
   jobUuid: string,
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<ServiceM8JobContact | null> {
-  const res = await request(`/jobcontact.json${odataFilter(`job_uuid eq '${jobUuid}'`)}`)
+  const res = await request(`/jobcontact.json${odataFilter(`job_uuid eq '${escapeOdataString(jobUuid)}'`)}`)
   if (!res.ok) return null
   const contacts = await res.json()
   if (!Array.isArray(contacts)) return null
@@ -328,7 +332,7 @@ export async function getCompanyContact(
   companyUuid: string,
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<ServiceM8JobContact | null> {
-  const contactRes = await request(`/companycontact.json${odataFilter(`company_uuid eq '${companyUuid}'`)}`)
+  const contactRes = await request(`/companycontact.json${odataFilter(`company_uuid eq '${escapeOdataString(companyUuid)}'`)}`)
   if (contactRes.ok) {
     const contacts = await contactRes.json()
     if (Array.isArray(contacts)) {
@@ -351,11 +355,11 @@ export async function getJobNotesAndEmails(
   const [noteRows, emailRows] = await Promise.all([
     readServiceM8Array<ServiceM8NoteRecord>(
       request,
-      `/note.json${odataFilter(`related_object_uuid eq '${jobUuid}'`)}`,
+      `/note.json${odataFilter(`related_object_uuid eq '${escapeOdataString(jobUuid)}'`)}`,
     ),
     readServiceM8Array<ServiceM8EmailRecord>(
       request,
-      `/email.json${odataFilter(`related_object_uuid eq '${jobUuid}'`)}`,
+      `/email.json${odataFilter(`related_object_uuid eq '${escapeOdataString(jobUuid)}'`)}`,
     ),
   ])
 
@@ -701,7 +705,7 @@ export async function findQuoteAttachmentRecord(
   jobUuid: string,
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<QuoteAttachmentRecord | null> {
-  const res = await request(`/attachment.json${odataFilter(`related_object_uuid eq '${jobUuid}'`)}`)
+  const res = await request(`/attachment.json${odataFilter(`related_object_uuid eq '${escapeOdataString(jobUuid)}'`)}`)
   if (!res.ok) throw new Error(`ServiceM8 attachment list failed with HTTP ${res.status}`)
   const list = await res.json()
   const rows: ServiceM8AttachmentRecord[] = Array.isArray(list) ? list : []
@@ -816,7 +820,7 @@ export async function resolveJobUuid(
   if (opts.uuid) return opts.uuid
 
   if (opts.jobNumber) {
-    const res = await request(`/job.json${odataFilter(`generated_job_id eq '${opts.jobNumber}'`)}`)
+    const res = await request(`/job.json${odataFilter(`generated_job_id eq '${escapeOdataString(opts.jobNumber)}'`)}`)
     if (!res.ok) return null
     const jobs = (await res.json()) as ServiceM8JobRecord[]
     return Array.isArray(jobs) && jobs[0]?.uuid ? jobs[0].uuid : null

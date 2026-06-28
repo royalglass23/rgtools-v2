@@ -446,3 +446,35 @@ describe('createServiceM8WriteRequestFromEnv', () => {
     expect(() => createServiceM8WriteRequestFromEnv()).toThrow(/SERVICEM8_API_KEY_FULL/)
   })
 })
+
+describe('MT-71: OData single-quote escaping in resolveJobUuid', () => {
+  it('escapes a single quote in job number to prevent predicate injection', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    }))
+
+    await resolveJobUuid({ jobNumber: "R'INJECT" }, request)
+
+    const calledPath = request.mock.calls[0]?.[0] ?? ''
+    const decoded = decodeURIComponent(calledPath)
+    expect(decoded).toContain("generated_job_id eq 'R''INJECT'")
+    expect(decoded).not.toContain("eq 'R'INJECT'")
+  })
+
+  it('leaves valid job numbers unchanged', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ uuid: 'job-uuid-1' }],
+    }))
+
+    const result = await resolveJobUuid({ jobNumber: 'R260210' }, request)
+
+    const calledPath = request.mock.calls[0]?.[0] ?? ''
+    const decoded = decodeURIComponent(calledPath)
+    expect(decoded).toContain("generated_job_id eq 'R260210'")
+    expect(result).toBe('job-uuid-1')
+  })
+})
