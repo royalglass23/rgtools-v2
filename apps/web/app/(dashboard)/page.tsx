@@ -1,17 +1,13 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db'
-import { quoteEngagement, quotes } from '@rgtools/db/schema'
-import { and, count, eq, gt, isNull, or, sql, sum } from 'drizzle-orm'
+import Link from 'next/link'
 import { getDashboardTables } from '@/modules/dashboard/config'
 import { getTableMeta } from '@/modules/dashboard/tables'
 import { SERVER_TABLES } from '@/modules/dashboard/registry'
-
-function fmtCurrency(val: string | null) {
-  if (!val) return '$0'
-  const n = parseFloat(val)
-  return isNaN(n) ? '$0' : `$${Math.round(n).toLocaleString('en-AU')}`
-}
+import { getDashboardActionCounts, getDashboardChartData, getDashboardKpis } from '@/modules/dashboard/kpis'
+import type { SparkPoint } from '@/modules/dashboard/kpis'
+import { SparkLine } from '@/modules/dashboard/SparkLine'
+import { ChartSection } from '@/modules/dashboard/ChartSection'
 
 export default async function DashboardPage({
   searchParams,
@@ -25,23 +21,11 @@ export default async function DashboardPage({
   const denied = typeof params.denied === 'string' ? params.denied : undefined
   const isAdmin = session.user.role === 'admin'
 
-  const activeTrackedWhere = and(
-    isNull(quotes.archivedAt),
-    isNull(quotes.outcome),
-    or(isNull(quotes.expiresAt), gt(quotes.expiresAt, sql`now()`)),
-  )
-
-  // KPI cards reflect active, unclosed tracked quote links.
-  const [{ activeCount, trackedTotal, priorityCount, viewedCount }] = await db
-    .select({
-      activeCount: count(),
-      trackedTotal: sum(quotes.quoteValue),
-      priorityCount: count(sql`case when ${quotes.statusTag} in ('hot', 'warm') then 1 end`),
-      viewedCount: count(sql`case when ${quoteEngagement.totalOpens} > 0 then 1 end`),
-    })
-    .from(quotes)
-    .leftJoin(quoteEngagement, eq(quoteEngagement.quoteId, quotes.id))
-    .where(activeTrackedWhere)
+  const [actionCounts, kpis, chartData] = await Promise.all([
+    getDashboardActionCounts(),
+    getDashboardKpis(),
+    getDashboardChartData(),
+  ])
 
   // ── Admin-selected tables ───────────────────────────────────────────────────
   const config = await getDashboardTables()
@@ -64,13 +48,12 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Tracked Quote Value" value={fmtCurrency(trackedTotal)} />
-        <KpiCard label="Active Tracked Quotes" value={String(activeCount)} />
-        <KpiCard label="Hot/Warm Quotes" value={String(priorityCount)} hot={priorityCount > 0} />
-        <KpiCard label="Viewed Quotes" value={String(viewedCount)} />
-      </div>
+      {/* Business Overview + Charts — admin only */}
+      {isAdmin && <BusinessOverviewSection kpis={kpis} />}
+      {isAdmin && <ChartSection leadsPerWeek={chartData.leadsPerWeek} pipelineByWeek={chartData.pipelineByWeek} />}
+
+      {/* Actions Needed */}
+      <ActionsNeededSection counts={actionCounts} />
 
       {/* Configurable tables */}
       {visibleSections.length === 0 ? (
@@ -91,21 +74,127 @@ export default async function DashboardPage({
   )
 }
 
-function KpiCard({
+type DashboardKpis = {
+  pipelineValue: number
+  conversionRate: number
+  volumeTrend: number
+  leadVolume: number
+  pipelineSparkline: SparkPoint[]
+  conversionSparkline: SparkPoint[]
+  volumeSparkline: SparkPoint[]
+}
+
+function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
+  const fmtPipeline = kpis.pipelineValue >= 1_000_000
+    ? `$${(kpis.pipelineValue / 1_000_000).toFixed(1)}m`
+    : `$${Math.round(kpis.pipelineValue).toLocaleString('en-AU')}`
+
+  const trendPositive = kpis.volumeTrend > 0
+  const trendNeutral = kpis.volumeTrend === 0
+  const trendValue = trendNeutral
+    ? `${kpis.leadVolume} leads`
+    : `${trendPositive ? '+' : ''}${kpis.volumeTrend}%`
+  const trendSub = trendNeutral ? 'this 30 days (no prior data)' : 'vs prior 30 days'
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Overview</h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <OverviewCard
+          label="Pipeline Value"
+          value={fmtPipeline}
+          sub="Active hot/warm quotes"
+          sparkline={kpis.pipelineSparkline}
+          color="#3b82f6"
+        />
+        <OverviewCard
+          label="Conversion Rate"
+          value={`${kpis.conversionRate}%`}
+          sub="Won quotes out of all closed quotes"
+          sparkline={kpis.conversionSparkline}
+          color="#22c55e"
+        />
+        <OverviewCard
+          label="Lead Volume Trend"
+          value={trendValue}
+          sub={trendSub}
+          sparkline={kpis.volumeSparkline}
+          color={trendPositive ? '#22c55e' : trendNeutral ? '#6b7280' : '#ef4444'}
+        />
+      </div>
+    </section>
+  )
+}
+
+function OverviewCard({
   label,
   value,
-  hot,
+  sub,
+  sparkline,
+  color,
 }: {
   label: string
   value: string
-  hot?: boolean
+  sub: string
+  sparkline: SparkPoint[]
+  color: string
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded p-5">
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">{label}</div>
-      <div className={`text-2xl font-semibold ${hot ? 'text-red-600' : 'text-gray-900'}`}>
-        {value}
-      </div>
+    <div className="bg-white border border-gray-200 rounded p-5 space-y-2">
+      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</div>
+      <div className="text-2xl font-semibold text-gray-900">{value}</div>
+      <div className="text-xs text-gray-500">{sub}</div>
+      {sparkline.length > 0 && <SparkLine data={sparkline} color={color} />}
     </div>
+  )
+}
+
+type ActionCounts = {
+  staleLeads: number
+  unsynced: number
+  expiringSoon: number
+  neverOpened: number
+  forwarding: number
+  goneCold: number
+}
+
+function ActionsNeededSection({ counts }: { counts: ActionCounts }) {
+  const cards: Array<{ label: string; count: number; href: string }> = [
+    { label: 'Tier A/B — No SM8 Job', count: counts.unsynced, href: '/leads?sm8=pending' },
+    { label: 'Stale Leads (7d+)', count: counts.staleLeads, href: '/leads?stale=true' },
+    { label: 'Expiring Soon', count: counts.expiringSoon, href: '/quote-tracker?activity=expiring' },
+    { label: 'Never Opened', count: counts.neverOpened, href: '/quote-tracker?activity=never_opened' },
+    { label: 'Forwarding Suspected', count: counts.forwarding, href: '/quote-tracker?activity=forwarding' },
+    { label: 'Gone Cold (14d+)', count: counts.goneCold, href: '/quote-tracker?activity=gone_cold' },
+  ]
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions Needed</h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {cards.map(({ label, count, href }) => (
+          <ActionCard key={label} label={label} count={count} href={href} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ActionCard({ label, count, href }: { label: string; count: number; href: string }) {
+  const hasAction = count > 0
+  return (
+    <Link
+      href={href}
+      className={`block rounded border p-5 transition-colors ${
+        hasAction
+          ? 'border-orange-200 bg-orange-50 hover:bg-orange-100'
+          : 'border-gray-200 bg-white hover:bg-gray-50'
+      }`}
+    >
+      <div className={`mb-1 text-2xl font-semibold ${hasAction ? 'text-orange-700' : 'text-gray-400'}`}>
+        {count}
+      </div>
+      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
+    </Link>
   )
 }

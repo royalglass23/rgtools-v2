@@ -6,12 +6,19 @@ import { validateEmailGateSettings } from './email-gate'
 import { rollupDeviceSessions, rollupGatedEmails } from './viewer-analytics'
 import type { StatusTag } from './score'
 
+export const EXPIRING_SOON_DAYS = 7
+export const GONE_COLD_DAYS = 14
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function listQuotes(filters: QuoteListFilters) {
   const where = listWhere(filters)
   const offset = (filters.page - 1) * filters.size
-  const [totalRow] = await db.select({ total: count() }).from(quotes).where(where)
+  const [totalRow] = await db
+    .select({ total: count() })
+    .from(quotes)
+    .leftJoin(quoteEngagement, eq(quoteEngagement.quoteId, quotes.id))
+    .where(where)
   const [kpis] = await db
     .select({
       coldCount: count(sql`case when ${quotes.statusTag} = 'cold' then 1 end`),
@@ -277,6 +284,25 @@ function listWhere(filters: QuoteListFilters) {
 
   if (filters.linkStatus === 'expired') {
     conditions.push(or(isNotNull(quotes.archivedAt), lte(quotes.expiresAt, sql`now()`)))
+  }
+
+  if (filters.activity === 'expiring') {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() + EXPIRING_SOON_DAYS)
+    conditions.push(isNull(quotes.archivedAt))
+    conditions.push(or(eq(quotes.statusTag, 'hot'), eq(quotes.statusTag, 'warm')))
+    conditions.push(gt(quotes.expiresAt, sql`now()`))
+    conditions.push(lte(quotes.expiresAt, cutoff))
+  } else if (filters.activity === 'never_opened') {
+    conditions.push(isNull(quotes.archivedAt))
+    conditions.push(or(isNull(quoteEngagement.totalOpens), eq(quoteEngagement.totalOpens, 0)))
+  } else if (filters.activity === 'forwarding') {
+    conditions.push(eq(quoteEngagement.forwardingSuspected, true))
+  } else if (filters.activity === 'gone_cold') {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - GONE_COLD_DAYS)
+    conditions.push(or(eq(quotes.statusTag, 'hot'), eq(quotes.statusTag, 'warm')))
+    conditions.push(or(isNull(quoteEngagement.lastOpenedAt), lte(quoteEngagement.lastOpenedAt, cutoff)))
   }
 
   if (filters.search) {

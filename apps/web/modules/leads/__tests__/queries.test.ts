@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const orderByCalls = vi.hoisted(() => [] as unknown[][])
 const whereCalls = vi.hoisted(() => [] as unknown[])
@@ -15,6 +15,8 @@ vi.mock('drizzle-orm', () => ({
   ilike: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'ilike', column: column.name, value })),
   isNotNull: vi.fn((column: { name?: string }) => ({ type: 'isNotNull', column: column.name })),
   isNull: vi.fn((column: { name?: string }) => ({ type: 'isNull', column: column.name })),
+  lte: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'lte', column: column.name, value })),
+  ne: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'ne', column: column.name, value })),
   or: vi.fn((...conditions: unknown[]) => ({ type: 'or', conditions })),
   sql: vi.fn(() => ({ type: 'sql' })),
 }))
@@ -76,13 +78,14 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { getLeadsList, type LeadsListFilters } from '../queries'
+import { getLeadsList, parseLeadsListFilters, type LeadsListFilters } from '../queries'
 
 const filters: LeadsListFilters = {
   q: '',
   tier: 'all',
   sm8: 'all',
   date: 'all',
+  stale: false,
   page: 1,
   size: 10,
   sortColumn: 'createdAt',
@@ -93,6 +96,68 @@ beforeEach(() => {
   vi.clearAllMocks()
   orderByCalls.length = 0
   whereCalls.length = 0
+})
+
+describe('parseLeadsListFilters – stale param', () => {
+  it('defaults stale to false when param is absent', () => {
+    const result = parseLeadsListFilters({})
+    expect(result.stale).toBe(false)
+  })
+
+  it('returns stale: true when stale=true is in URL params', () => {
+    const result = parseLeadsListFilters({ stale: 'true' })
+    expect(result.stale).toBe(true)
+  })
+
+  it('returns stale: false for invalid values', () => {
+    const result = parseLeadsListFilters({ stale: 'yes' })
+    expect(result.stale).toBe(false)
+  })
+})
+
+describe('getLeadsList – stale filter WHERE clause', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-27T00:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('includes isNull on servicem8_job_uuid when stale is true', async () => {
+    await getLeadsList({ ...filters, stale: true })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'isNull', column: 'servicem8_job_uuid' },
+      ]),
+    }))
+  })
+
+  it('includes ne on sync_status to exclude sync_failed when stale is true', async () => {
+    await getLeadsList({ ...filters, stale: true })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'ne', column: 'sync_status', value: 'sync_failed' },
+      ]),
+    }))
+  })
+
+  it('includes lte on created_at with 7-day cutoff when stale is true', async () => {
+    await getLeadsList({ ...filters, stale: true })
+
+    const cutoff = new Date('2026-06-20T00:00:00Z')
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'lte', column: 'created_at', value: cutoff },
+      ]),
+    }))
+  })
 })
 
 describe('getLeadsList sorting', () => {

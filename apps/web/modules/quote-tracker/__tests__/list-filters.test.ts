@@ -11,6 +11,7 @@ describe('parseQuoteListFilters', () => {
       sort: 'last_opened',
       page: 1,
       size: 5,
+      activity: 'all',
     })
   })
 
@@ -29,6 +30,7 @@ describe('parseQuoteListFilters', () => {
       sort: 'interest_desc',
       page: 3,
       size: 50,
+      activity: 'all',
     })
   })
 
@@ -55,10 +57,33 @@ describe('parseQuoteListFilters', () => {
       sort: 'last_opened',
       page: 1,
       size: 5,
+      activity: 'all',
     })
   })
 
   it.each(['active', 'expired', 'all'] as const)('accepts %s as a link status', (linkStatus) => {
     expect(parseQuoteListFilters({ linkStatus }).linkStatus).toBe(linkStatus)
+  })
+})
+
+describe('parseQuoteListFilters – activity filter', () => {
+  it('returns activity: expiring when activity=expiring is in URL params', () => {
+    expect(parseQuoteListFilters({ activity: 'expiring' }).activity).toBe('expiring')
+  })
+
+  it('returns activity: never_opened when activity=never_opened is in URL params', () => {
+    expect(parseQuoteListFilters({ activity: 'never_opened' }).activity).toBe('never_opened')
+  })
+
+  it('returns activity: forwarding when activity=forwarding is in URL params', () => {
+    expect(parseQuoteListFilters({ activity: 'forwarding' }).activity).toBe('forwarding')
+  })
+
+  it('returns activity: gone_cold when activity=gone_cold is in URL params', () => {
+    expect(parseQuoteListFilters({ activity: 'gone_cold' }).activity).toBe('gone_cold')
+  })
+
+  it('returns activity: all for unknown values', () => {
+    expect(parseQuoteListFilters({ activity: 'bogus' }).activity).toBe('all')
   })
 })

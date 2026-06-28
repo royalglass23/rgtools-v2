@@ -23,13 +23,12 @@ export default async function QuoteTrackerPage({
         <TrackQuoteButton action={createTrackedQuoteAction} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label="Total value" value={formatCurrency(kpis.totalValue)} tone="green" />
         <KpiCard label="Hot quotes" value={String(kpis.hotCount)} tone="red" />
         <KpiCard label="Warm quotes" value={String(kpis.warmCount)} tone="amber" />
         <KpiCard label="Cold quotes" value={String(kpis.coldCount)} tone="blue" />
         <KpiCard label="Dead quotes" value={String(kpis.deadCount)} tone="gray" />
-        <KpiCard label="Total value" value={formatCurrency(kpis.totalValue)} tone="green" />
-        <KpiCard label="Avg interest" value={`${kpis.averageScore}/100`} tone="slate" />
         <KpiCard label="Forwarding flags" value={String(kpis.forwardingCount)} tone="amber" />
       </div>
 

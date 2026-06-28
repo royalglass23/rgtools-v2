@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { CopyLinkButton } from './CopyLinkButton'
 import { isExpired } from './expiry'
 import type { QuoteListFilters } from './list-filters'
@@ -25,7 +25,7 @@ type QuoteRow = {
 }
 
 /** Param names this table owns; used for carry-over of other tables' params on shared URLs. */
-const OWNED_PARAMS = ['search', 'status', 'linkStatus', 'sort', 'size', 'page'] as const
+const OWNED_PARAMS = ['search', 'status', 'linkStatus', 'sort', 'size', 'page', 'activity'] as const
 
 export function QuoteTableControls({
   filters,
@@ -124,12 +124,15 @@ export function QuoteTableControls({
         </table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+      <div className="grid grid-cols-3 items-center gap-3 text-sm text-gray-600">
         <span>{total} tracked quotes</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <PageLink filters={filters} page={Math.max(1, filters.page - 1)} disabled={filters.page <= 1} basePath={basePath} paramPrefix={paramPrefix}>Previous</PageLink>
           <span>Page {filters.page} of {pageCount}</span>
           <PageLink filters={filters} page={Math.min(pageCount, filters.page + 1)} disabled={filters.page >= pageCount} basePath={basePath} paramPrefix={paramPrefix}>Next</PageLink>
+        </div>
+        <div className="flex justify-end">
+          <PageSizeSelect filters={filters} basePath={basePath} paramPrefix={paramPrefix} />
         </div>
       </div>
     </>
@@ -141,26 +144,36 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
   const owned = new Set(OWNED_PARAMS.map((name) => `${paramPrefix}${name}`))
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
   const resetParams = new URLSearchParams(carryOver)
-  resetParams.set(`${paramPrefix}status`, 'all')
-  resetParams.set(`${paramPrefix}linkStatus`, 'active')
-  resetParams.set(`${paramPrefix}sort`, 'last_opened')
-  resetParams.set(`${paramPrefix}size`, '5')
+  resetParams.set(`${paramPrefix}size`, String(filters.size))
   resetParams.set(`${paramPrefix}page`, '1')
   const resetHref = resetParams.toString() ? `${basePath}?${resetParams}` : basePath
 
+  const filterKey = [filters.search, filters.status, filters.linkStatus, filters.activity, filters.sort].join('|')
+
   return (
-    <form action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(180px,1fr)_150px_150px_190px_120px_auto]">
+    <form key={filterKey} action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-7">
       {carryOver.map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
-      <label className="block">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Search</span>
-        <input
-          name={`${paramPrefix}search`}
-          defaultValue={filters.search}
-          placeholder="Client, address, company, code"
-          className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
-        />
+      <input type="hidden" name={`${paramPrefix}size`} value={String(filters.size)} />
+      <input type="hidden" name={`${paramPrefix}page`} value="1" />
+
+      <label className="block sm:col-span-2">
+        <span className="text-xs font-medium text-gray-600">Search</span>
+        <div className="mt-1 flex gap-2">
+          <input
+            name={`${paramPrefix}search`}
+            defaultValue={filters.search}
+            placeholder="Client, address, company, code"
+            className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+          />
+          <button
+            type="submit"
+            className="rounded bg-[#142B3A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]"
+          >
+            Search
+          </button>
+        </div>
       </label>
       <Select
         name={`${paramPrefix}status`}
@@ -173,6 +186,18 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
         label="Link status"
         value={filters.linkStatus}
         options={[['active', 'Active'], ['expired', 'Expired'], ['all', 'All']]}
+      />
+      <Select
+        name={`${paramPrefix}activity`}
+        label="Activity"
+        value={filters.activity}
+        options={[
+          ['all', 'All'],
+          ['expiring', 'Expiring soon (7d)'],
+          ['never_opened', 'Never opened'],
+          ['forwarding', 'Forwarding suspected'],
+          ['gone_cold', 'Gone cold (14d)'],
+        ]}
       />
       <Select
         name={`${paramPrefix}sort`}
@@ -188,20 +213,7 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
           ['interest_asc', 'Interest low-high'],
         ]}
       />
-      <Select
-        name={`${paramPrefix}size`}
-        label="Page size"
-        value={String(filters.size)}
-        options={[['5', '5'], ['10', '10'], ['20', '20'], ['50', '50']]}
-      />
-      <input type="hidden" name={`${paramPrefix}page`} value="1" />
-      <div className="flex items-end gap-2">
-        <button
-          type="submit"
-          className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
-        >
-          Apply
-        </button>
+      <div className="flex items-end justify-end">
         <Link
           href={resetHref}
           className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -213,30 +225,17 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
   )
 }
 
-function Select({
-  name,
-  label,
-  value,
-  options,
-}: {
-  name: string
-  label: string
-  value: string
-  options: Array<[string, string]>
-}) {
+function Select({ name, label, value, options }: { name: string; label: string; value: string; options: Array<[string, string]> }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <span className="text-xs font-medium text-gray-600">{label}</span>
       <select
         name={name}
-        aria-label={label}
-        value={value}
+        defaultValue={value}
         onChange={(event) => event.currentTarget.form?.requestSubmit()}
         className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
       >
-        {options.map(([optionValue, optionLabel]) => (
-          <option key={optionValue} value={optionValue}>{optionLabel}</option>
-        ))}
+        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
       </select>
     </label>
   )
@@ -268,6 +267,33 @@ function PageLink({
   params.set(`${paramPrefix}sort`, filters.sort)
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}page`, String(page))
+  if (filters.activity !== 'all') params.set(`${paramPrefix}activity`, filters.activity)
+  else params.delete(`${paramPrefix}activity`)
 
   return <Link href={`${basePath}?${params}`} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{children}</Link>
+}
+
+function PageSizeSelect({ filters, basePath, paramPrefix }: { filters: QuoteListFilters; basePath: string; paramPrefix: string }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  function handleChange(size: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(`${paramPrefix}size`, size)
+    params.set(`${paramPrefix}page`, '1')
+    router.push(`${basePath}?${params}`)
+  }
+
+  return (
+    <label className="flex items-center gap-2 text-sm text-gray-600">
+      <span className="whitespace-nowrap">Page size</span>
+      <select
+        value={String(filters.size)}
+        onChange={(e) => handleChange(e.target.value)}
+        className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-950"
+      >
+        {(['5', '10', '20', '50'] as const).map((n) => <option key={n} value={n}>{n}</option>)}
+      </select>
+    </label>
+  )
 }
