@@ -7,21 +7,28 @@ workers_dev = true
 [vars]
 TRACKER_URL = "https://track.royalglass.co.nz/track"
 
-# R2 bucket binding - PDF storage
 [[r2_buckets]]
+binding = "QUOTES_BUCKET"
+bucket_name = "rg-dev-quote"
+
+# Dev secrets:
+#   wrangler secret put DATABASE_URL       (dev Neon DB)
+#   wrangler secret put GATE_HMAC_SECRET
+
+[env.prod]
+workers_dev = false
+
+[env.prod.vars]
+TRACKER_URL = "https://track.royalglass.co.nz/track"
+
+[[env.prod.r2_buckets]]
 binding = "QUOTES_BUCKET"
 bucket_name = "rg-quotes"
 
-# DATABASE_URL is set as an encrypted secret via:
-#   wrangler secret put DATABASE_URL
-# (paste the Neon DATABASE_URL from .env.local when prompted)
-
-# GATE_HMAC_SECRET is set as an encrypted secret via:
-#   wrangler secret put GATE_HMAC_SECRET
-# Use a random 32-byte hex string: openssl rand -hex 32
-
-# Custom domain - royalglass.co.nz zone is Active on Cloudflare.
-# Cloudflare auto-creates the DNS record + edge TLS cert on deploy.
-[[routes]]
+[[env.prod.routes]]
 pattern = "quotes.royalglass.co.nz"
 custom_domain = true
+
+# Prod secrets:
+#   wrangler secret put DATABASE_URL --env prod       (prod Neon DB)
+#   wrangler secret put GATE_HMAC_SECRET --env prod

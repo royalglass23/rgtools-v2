@@ -17,22 +17,35 @@ type R2Env = {
 }
 
 function readR2Env(): R2Env {
+  const isDev = process.env.NODE_ENV === 'development'
+
+  const accountId = process.env.R2_ACCOUNT_ID
+  const accessKeyId = isDev
+    ? (process.env.R2_ACCESS_KEY_ID_DEV ?? process.env.R2_ACCESS_KEY_ID)
+    : process.env.R2_ACCESS_KEY_ID
+  const secretAccessKey = isDev
+    ? (process.env.R2_SECRET_ACCESS_KEY_DEV ?? process.env.R2_SECRET_ACCESS_KEY)
+    : process.env.R2_SECRET_ACCESS_KEY
+  const bucket = isDev
+    ? (process.env.R2_BUCKET_DEV ?? process.env.R2_BUCKET)
+    : process.env.R2_BUCKET
+
   const missing = [
-    'R2_ACCOUNT_ID',
-    'R2_ACCESS_KEY_ID',
-    'R2_SECRET_ACCESS_KEY',
-    'R2_BUCKET',
-  ].filter((name) => !process.env[name])
+    !accountId && 'R2_ACCOUNT_ID',
+    !accessKeyId && (isDev ? 'R2_ACCESS_KEY_ID_DEV' : 'R2_ACCESS_KEY_ID'),
+    !secretAccessKey && (isDev ? 'R2_SECRET_ACCESS_KEY_DEV' : 'R2_SECRET_ACCESS_KEY'),
+    !bucket && (isDev ? 'R2_BUCKET_DEV' : 'R2_BUCKET'),
+  ].filter(Boolean)
 
   if (missing.length > 0) {
     throw new Error(`R2 storage driver is selected but missing env vars: ${missing.join(', ')}`)
   }
 
   return {
-    accountId: process.env.R2_ACCOUNT_ID!,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    bucket: process.env.R2_BUCKET!,
+    accountId: accountId!,
+    accessKeyId: accessKeyId!,
+    secretAccessKey: secretAccessKey!,
+    bucket: bucket!,
   }
 }
 
