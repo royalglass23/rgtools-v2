@@ -26,6 +26,7 @@ import { scoringConfigVersions } from '@rgtools/db/schema-leads'
 import {
   activateScoringConfigVersion,
   deleteScoringConfigVersion,
+  getScoringVersionRows,
   saveScoringConfigVersion,
 } from '../actions'
 import type { ScoringConfig } from '@/modules/lead-intake/scoring/score-lead'
@@ -213,5 +214,36 @@ describe('deleteScoringConfigVersion', () => {
     expect(result).toEqual({ error: 'Cannot delete the active scoring config version.' })
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+})
+
+describe('MT-69: getScoringVersionRows authorization', () => {
+  it('returns empty array for unauthenticated callers', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await getScoringVersionRows()
+    expect(result).toEqual([])
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('returns empty array for non-admin authenticated callers', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'staff' } })
+    const result = await getScoringVersionRows()
+    expect(result).toEqual([])
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('queries DB for admin callers', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'admin-1', role: 'admin' } })
+    const rows = [{ id: 'v1', versionLabel: 'v1', isActive: true, config: {}, createdBy: 'admin-1', createdAt: new Date() }]
+    mockSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockResolvedValue(rows),
+        }),
+      }),
+    })
+    const result = await getScoringVersionRows()
+    expect(mockSelect).toHaveBeenCalled()
+    expect(result).toEqual(rows)
   })
 })

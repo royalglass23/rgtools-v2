@@ -27,6 +27,7 @@ import { DEFAULT_PRICING_CONFIG } from '../config-admin'
 import {
   activatePricingConfigVersion,
   deletePricingConfigVersion,
+  getPricingVersionRows,
   savePricingConfigVersion,
 } from '../actions'
 
@@ -147,5 +148,36 @@ describe('deletePricingConfigVersion', () => {
     expect(result).toEqual({ success: true, versionLabel: 'v1-past' })
     expect(updateSetValues[0]).toMatchObject({ archivedAt: expect.any(Date) })
     expect(mockInsert).toHaveBeenCalledWith(auditLog)
+  })
+})
+
+describe('MT-69: getPricingVersionRows authorization', () => {
+  it('returns empty array for unauthenticated callers', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await getPricingVersionRows()
+    expect(result).toEqual([])
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('returns empty array for non-admin authenticated callers', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'staff' } })
+    const result = await getPricingVersionRows()
+    expect(result).toEqual([])
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('queries DB for admin callers', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'admin-1', role: 'admin' } })
+    const rows = [{ id: 'v1', versionLabel: 'v1', isActive: true, config: {}, createdBy: 'admin-1', createdAt: new Date() }]
+    mockSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockResolvedValue(rows),
+        }),
+      }),
+    })
+    const result = await getPricingVersionRows()
+    expect(mockSelect).toHaveBeenCalled()
+    expect(result).toEqual(rows)
   })
 })

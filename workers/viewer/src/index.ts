@@ -5,6 +5,7 @@ export interface Env {
   DATABASE_URL: string
   QUOTES_BUCKET: R2Bucket
   TRACKER_URL?: string
+  GATE_HMAC_SECRET: string
 }
 
 type QuoteRow = {
@@ -105,6 +106,70 @@ function isExpired(value: string | Date | null): boolean {
   return new Date(value).getTime() < Date.now()
 }
 
+function parseCookieValue(header: string, name: string): string | null {
+  for (const part of header.split(';')) {
+    const eqIdx = part.indexOf('=')
+    if (eqIdx < 0) continue
+    if (part.slice(0, eqIdx).trim() === name) return part.slice(eqIdx + 1).trim() || null
+  }
+  return null
+}
+
+function bufToBase64url(buf: ArrayBuffer): string {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function base64urlToBuf(s: string): Uint8Array {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64 + '=='.slice(0, (4 - (b64.length % 4)) % 4)
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0))
+}
+
+const GATE_PROOF_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+async function signGateProof(quoteId: string, secret: string): Promise<string> {
+  const expiresAt = Date.now() + GATE_PROOF_MAX_AGE_MS
+  const payload = `${quoteId}:${expiresAt}`
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
+  return `${payload}.${bufToBase64url(sig)}`
+}
+
+async function verifyGateProof(proof: string, quoteId: string, secret: string): Promise<boolean> {
+  const lastDot = proof.lastIndexOf('.')
+  if (lastDot < 0) return false
+  const payload = proof.slice(0, lastDot)
+  const sigB64url = proof.slice(lastDot + 1)
+
+  const colonIdx = payload.indexOf(':')
+  if (colonIdx < 0) return false
+  const pid = payload.slice(0, colonIdx)
+  const expiryStr = payload.slice(colonIdx + 1)
+  if (pid !== quoteId) return false
+  const expiry = Number(expiryStr)
+  if (!Number.isFinite(expiry) || Date.now() > expiry) return false
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  )
+  try {
+    return await crypto.subtle.verify('HMAC', key, base64urlToBuf(sigB64url), new TextEncoder().encode(payload))
+  } catch {
+    return false
+  }
+}
+
 async function loadQuote(code: string, env: Env): Promise<QuoteState> {
   const sql = neon(env.DATABASE_URL)
   const rows = await sql`
@@ -200,14 +265,29 @@ async function handleGate(code: string, request: Request, env: Env): Promise<Res
     )
   `
 
-  return jsonResponse({ ok: true }, 200)
+  const proof = await signGateProof(recipient.quote_id, env.GATE_HMAC_SECRET)
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+      'Set-Cookie': `rg_gate=${proof}; HttpOnly; Secure; SameSite=Strict; Path=/q/${code}/pdf; Max-Age=86400`,
+    },
+  })
 }
 
-async function handlePdf(code: string, env: Env, method: string): Promise<Response> {
+async function handlePdf(code: string, request: Request, env: Env, method: string): Promise<Response> {
   const state = await loadQuote(code, env)
 
   if (state.status === 'missing' || state.status === 'archived') return emptyResponse(404)
   if (state.status === 'expired') return jsonResponse({ error: 'expired' }, 410)
+
+  if (state.quote.email_gate_enabled && state.quote.email_gate_has_recipients) {
+    if (!env.GATE_HMAC_SECRET) return emptyResponse(403)
+    const proof = parseCookieValue(request.headers.get('Cookie') ?? '', 'rg_gate')
+    const valid = proof != null && await verifyGateProof(proof, state.quote.id, env.GATE_HMAC_SECRET)
+    if (!valid) return emptyResponse(403)
+  }
 
   const pdfStorageKey = state.quote.pdf_storage_key
   if (pdfStorageKey == null) return emptyResponse(404)
@@ -789,7 +869,7 @@ const worker = {
       }
       if (pdfMatch) {
         if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })
-        return await handlePdf(pdfMatch[1], env, request.method)
+        return await handlePdf(pdfMatch[1], request, env, request.method)
       }
       if (viewerMatch) {
         if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })

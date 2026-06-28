@@ -234,6 +234,8 @@ export async function deletePricingConfigVersion(formData: FormData): Promise<Sa
 }
 
 export async function getPricingVersionRows() {
+  const session = await auth()
+  if (session?.user?.role !== 'admin') return []
   return db
     .select({
       id: pricingConfigVersions.id,
