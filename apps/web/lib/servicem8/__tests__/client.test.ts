@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createServiceM8WriteRequestFromEnv,
   getCompanyContact,
+  getJobConversationSnapshotHistory,
   getJobContact,
   getJobNotesAndEmails,
   resolveJobUuid,
@@ -327,6 +328,34 @@ describe('getJobNotesAndEmails', () => {
     })
   })
 
+  it('reports partial source status when one ServiceM8 history source fails', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path.startsWith('/note.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ edit_date: '2026-06-12T09:00:00Z', note: 'ready for follow-up' }],
+        }
+      }
+
+      return { ok: false, status: 503, json: async () => ({ message: 'unavailable' }) }
+    })
+
+    await expect(getJobConversationSnapshotHistory('job-uuid-1', request)).resolves.toEqual({
+      notes: [{ date: '2026-06-12T09:00:00Z', text: 'ready for follow-up' }],
+      emails: [],
+      sourceStatus: {
+        notes: { ok: true, count: 1, latestTimestamp: '2026-06-12T09:00:00Z' },
+        emails: {
+          ok: false,
+          count: 0,
+          latestTimestamp: null,
+          safeError: 'ServiceM8 email history fetch failed with HTTP 503.',
+        },
+      },
+    })
+  })
+
   it('propagates exhausted ServiceM8 retry errors instead of hiding them as empty history', async () => {
     const request = vi.fn<ServiceM8FetchRequest>(async () => {
       throw new ServiceM8RateLimitError(
@@ -437,7 +466,8 @@ describe('createServiceM8WriteRequestFromEnv', () => {
     const request = createServiceM8WriteRequestFromEnv()
     await request('/job/job-uuid-1.json', { method: 'POST', body: '{}' })
 
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+    const [, init] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit | undefined]
+    const headers = new Headers(init?.headers)
     expect(headers.get('X-API-Key')).toBe('smk-full-access')
   })
 

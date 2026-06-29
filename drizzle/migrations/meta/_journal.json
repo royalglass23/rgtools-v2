@@ -190,6 +190,41 @@
       "when": 1782438252326,
       "tag": "0026_fresh_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1782688208596,
+      "tag": "0027_sparkling_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782694326625,
+      "tag": "0028_petite_flatman",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782697336748,
+      "tag": "0029_shiny_satana",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1782698432108,
+      "tag": "0030_breezy_hammerhead",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1782700456000,
+      "tag": "0031_ai_generation_failure_metadata",
+      "breakpoints": true
     }
   ]
 }

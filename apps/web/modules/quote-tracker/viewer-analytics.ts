@@ -28,6 +28,7 @@ export type DeviceSession = {
   maxScrollDepth: number
   pagesSeen: number
   perPage: PageTime[]
+  hasDownload: boolean
   hasCta: boolean
   firstSeenAt: Date
   lastSeenAt: Date
@@ -67,6 +68,7 @@ export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] 
       maxScrollDepth: 0,
       pagesSeen: 0,
       perPage: [],
+      hasDownload: false,
       hasCta: false,
       firstSeenAt: event.createdAt,
       lastSeenAt: event.createdAt,
@@ -80,6 +82,7 @@ export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] 
     session.opens += event.eventType === 'open' ? 1 : 0
     session.totalTimeMs += event.eventType === 'close' ? event.durationMs ?? 0 : 0
     session.maxScrollDepth = Math.max(session.maxScrollDepth, event.scrollDepth ?? 0)
+    session.hasDownload = session.hasDownload || event.eventType === 'download'
     session.hasCta = session.hasCta || event.eventType === 'cta'
     session.firstSeenAt = session.firstSeenAt < event.createdAt ? session.firstSeenAt : event.createdAt
     session.lastSeenAt = session.lastSeenAt > event.createdAt ? session.lastSeenAt : event.createdAt
@@ -121,6 +124,7 @@ export type EmailGroup = {
   opens: number
   totalTimeMs: number
   pagesSeen: number
+  hasDownload: boolean
   hasCta: boolean
   lastSeenAt: Date | null
   forwardingSuspected: boolean
@@ -161,6 +165,7 @@ export function rollupGatedEmails(events: AnalyticsEvent[], links: EmailLink[]):
       opens: devices.reduce((sum, d) => sum + d.opens, 0),
       totalTimeMs: devices.reduce((sum, d) => sum + d.totalTimeMs, 0),
       pagesSeen: distinctPages.size,
+      hasDownload: devices.some((d) => d.hasDownload),
       hasCta: devices.some((d) => d.hasCta),
       lastSeenAt,
       forwardingSuspected: devices.length > 1,

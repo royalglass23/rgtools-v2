@@ -5,6 +5,7 @@ import type { QuoteListFilters } from './list-filters'
 import { validateEmailGateSettings } from './email-gate'
 import { rollupDeviceSessions, rollupGatedEmails } from './viewer-analytics'
 import type { StatusTag } from './score'
+import { getLatestQuoteAiGuidance } from './ai-guidance'
 
 export const EXPIRING_SOON_DAYS = 7
 export const GONE_COLD_DAYS = 14
@@ -92,7 +93,7 @@ export async function getQuoteDetail(id: string) {
     .where(eq(quoteEngagement.quoteId, id))
     .limit(1)
 
-  const [events, overrides, viewerSessions] = await Promise.all([
+  const [events, overrides, viewerSessions, aiGuidance] = await Promise.all([
     db
       .select()
       .from(quoteEvents)
@@ -104,6 +105,7 @@ export async function getQuoteDetail(id: string) {
       .where(eq(tagOverrides.quoteId, id))
       .orderBy(desc(tagOverrides.createdAt)),
     getViewerSessions(id),
+    getLatestQuoteAiGuidance(id),
   ])
   const [recipients, gatedEmailAnalytics, notifiedViewers] = await Promise.all([
     db
@@ -124,6 +126,7 @@ export async function getQuoteDetail(id: string) {
     recipients,
     gatedEmailAnalytics,
     notifiedViewers,
+    aiGuidance,
   }
 }
 
