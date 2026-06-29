@@ -55,15 +55,17 @@ describe('rollupDeviceSessions', () => {
     expect(result[0].pagesSeen).toBe(2)
   })
 
-  it('counts opens and total time, and flags CTA', () => {
+  it('counts opens and total time, and flags download or CTA activity', () => {
     const result = rollupDeviceSessions([
       ev({ sessionId: 'a', eventType: 'open' }),
       ev({ sessionId: 'a', eventType: 'open' }),
       ev({ sessionId: 'a', eventType: 'close', durationMs: 12000 }),
+      ev({ sessionId: 'a', eventType: 'download' }),
       ev({ sessionId: 'a', eventType: 'cta' }),
     ])
     expect(result[0].opens).toBe(2)
     expect(result[0].totalTimeMs).toBe(12000)
+    expect(result[0].hasDownload).toBe(true)
     expect(result[0].hasCta).toBe(true)
   })
 

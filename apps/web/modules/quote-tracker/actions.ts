@@ -1,10 +1,15 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 import { auth } from '@/lib/auth'
 import { logAudit } from '@/lib/audit-db'
+import { requireModule } from '@/lib/guard'
 
+import { generateConversationSnapshotForQuote } from './conversation-snapshot'
+import { getLatestQuoteAiGuidance } from './ai-guidance'
+import { generateAiSuggestionForQuote } from './ai-suggestion'
 import { createTrackedQuote } from './create-tracked-quote'
 import { expireQuoteLink } from './expire-quote-link'
 import { getExpirySettings } from './settings-query'
@@ -73,4 +78,89 @@ export async function expireQuoteLinkAction(quoteId: string): Promise<ExpireQuot
   revalidatePath(`/quote-tracker/${quoteId}`)
 
   return { ok: true }
+}
+
+export async function createConversationSnapshotAction(formData: FormData): Promise<void> {
+  const session = await auth()
+  const quoteId = formData.get('quoteId')?.toString() ?? ''
+  if (!session?.user?.id) {
+    redirect(`/quote-tracker/${quoteId}?snapshotError=${encodeURIComponent('You must be signed in.')}`)
+  }
+  await requireModule('quote-tracker')
+
+  const result = await generateConversationSnapshotForQuote({
+    quoteId,
+    triggeredByUserId: session.user.id,
+  })
+
+  if (!result.ok) {
+    redirect(`/quote-tracker/${quoteId}?snapshotError=${encodeURIComponent(result.message)}`)
+  }
+
+  await logAudit({
+    actorId: session.user.id,
+    entityType: 'quote',
+    action: 'quote.conversation_snapshot_created',
+    targetId: quoteId,
+    detail: { snapshotId: result.snapshotId, partial: result.partial },
+  })
+
+  revalidatePath(`/quote-tracker/${quoteId}`)
+  redirect(`/quote-tracker/${quoteId}?snapshotSaved=${result.partial ? 'partial' : '1'}`)
+}
+
+export async function createAiSuggestionAction(formData: FormData): Promise<void> {
+  const session = await auth()
+  const quoteId = formData.get('quoteId')?.toString() ?? ''
+  if (!session?.user?.id) {
+    redirect(`/quote-tracker/${quoteId}?suggestionError=${encodeURIComponent('You must be signed in.')}`)
+  }
+  await requireModule('quote-tracker')
+
+  const snapshotResult = await generateConversationSnapshotForQuote({
+    quoteId,
+    triggeredByUserId: session.user.id,
+  })
+
+  let snapshotNotice = ''
+  if (!snapshotResult.ok) {
+    const latestGuidance = await getLatestQuoteAiGuidance(quoteId)
+    if (!latestGuidance.conversationSnapshot) {
+      redirect(`/quote-tracker/${quoteId}?snapshotError=${encodeURIComponent(snapshotResult.message)}`)
+    }
+    snapshotNotice = `snapshotError=${encodeURIComponent(snapshotResult.message)}`
+  } else {
+    snapshotNotice = `snapshotSaved=${snapshotResult.partial ? 'partial' : '1'}`
+  }
+
+  if (snapshotResult.ok) {
+    await logAudit({
+      actorId: session.user.id,
+      entityType: 'quote',
+      action: 'quote.conversation_snapshot_created',
+      targetId: quoteId,
+      detail: { snapshotId: snapshotResult.snapshotId, partial: snapshotResult.partial },
+    })
+  }
+
+  const result = await generateAiSuggestionForQuote({
+    quoteId,
+    triggeredByUserId: session.user.id,
+  })
+
+  if (!result.ok) {
+    revalidatePath(`/quote-tracker/${quoteId}`)
+    redirect(`/quote-tracker/${quoteId}?${snapshotNotice}&suggestionError=${encodeURIComponent(result.message)}`)
+  }
+
+  await logAudit({
+    actorId: session.user.id,
+    entityType: 'quote',
+    action: 'quote.ai_suggestion_created',
+    targetId: quoteId,
+    detail: { suggestionId: result.suggestionId },
+  })
+
+  revalidatePath(`/quote-tracker/${quoteId}`)
+  redirect(`/quote-tracker/${quoteId}?${snapshotNotice}&suggestionSaved=1`)
 }

@@ -141,6 +141,82 @@ export const tagOverrides = pgTable('tag_overrides', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const quoteConversationSnapshots = pgTable('quote_conversation_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  triggeredByUserId: uuid('triggered_by_user_id').references(() => users.id),
+  summary: text('summary').notNull(),
+  structuredSummary: jsonb('structured_summary').default({}).notNull(),
+  snapshotCursor: jsonb('snapshot_cursor').default({}).notNull(),
+  sourceStatus: text('source_status').default('complete').notNull(),
+  sourceMetadata: jsonb('source_metadata').default({}).notNull(),
+  safeError: text('safe_error'),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('quote_conversation_snapshots_quote_created_idx').on(table.quoteId, table.createdAt),
+  index('quote_conversation_snapshots_triggered_by_idx').on(table.triggeredByUserId),
+])
+
+export const quoteAiSuggestions = pgTable('quote_ai_suggestions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  conversationSnapshotId: uuid('conversation_snapshot_id').references(() => quoteConversationSnapshots.id, { onDelete: 'set null' }),
+  triggeredByUserId: uuid('triggered_by_user_id').notNull().references(() => users.id),
+  nextViableMove: text('next_viable_move').notNull(),
+  suggestedWinPath: text('suggested_win_path').notNull(),
+  recommendedMove: text('recommended_move').default('wait').notNull(),
+  suggestedTiming: text('suggested_timing').default('').notNull(),
+  timingReason: text('timing_reason').default('').notNull(),
+  confidence: text('confidence').default('Medium').notNull(),
+  confidenceReason: text('confidence_reason').default('').notNull(),
+  likelyCustomerState: text('likely_customer_state').default('').notNull(),
+  reasoning: text('reasoning').default('').notNull(),
+  emailDraftSubject: text('email_draft_subject').default('').notNull(),
+  emailDraftBody: text('email_draft_body').default('').notNull(),
+  phoneTalkingPoints: jsonb('phone_talking_points').default([]).notNull(),
+  useCareGuidance: text('use_care_guidance').default('').notNull(),
+  includeQuoteLink: boolean('include_quote_link').default(false).notNull(),
+  partialContextNote: text('partial_context_note'),
+  waitReason: text('wait_reason'),
+  waitRevisitWindow: text('wait_revisit_window'),
+  model: text('model').default('').notNull(),
+  promptVersion: text('prompt_version').default('quote-ai-guidance-v1').notNull(),
+  inputSnapshotVersion: text('input_snapshot_version').default('quote-ai-guidance-input-v1').notNull(),
+  signalBucket: text('signal_bucket').notNull().default('low_signal'),
+  signalLabel: text('signal_label').notNull().default('Low signal'),
+  analyticsSnapshot: jsonb('analytics_snapshot').default({}).notNull(),
+  recommendationKind: text('recommendation_kind').notNull().default('act_now'),
+  revisitAt: timestamp('revisit_at', { withTimezone: true }),
+  watchForSignals: jsonb('watch_for_signals').default([]).notNull(),
+  staleAt: timestamp('stale_at', { withTimezone: true }),
+  staleReason: text('stale_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('quote_ai_suggestions_quote_created_idx').on(table.quoteId, table.createdAt),
+  index('quote_ai_suggestions_signal_bucket_idx').on(table.signalBucket),
+  index('quote_ai_suggestions_stale_at_idx').on(table.staleAt),
+  index('quote_ai_suggestions_snapshot_idx').on(table.conversationSnapshotId),
+  index('quote_ai_suggestions_triggered_by_idx').on(table.triggeredByUserId),
+])
+
+export const quoteAiGenerationFailures = pgTable('quote_ai_generation_failures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  conversationSnapshotId: uuid('conversation_snapshot_id').references(() => quoteConversationSnapshots.id, { onDelete: 'set null' }),
+  triggeredByUserId: uuid('triggered_by_user_id').notNull().references(() => users.id),
+  failureStage: text('failure_stage').notNull(),
+  errorType: text('error_type').default('generation_error').notNull(),
+  errorMessage: text('error_message').notNull(),
+  attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow().notNull(),
+  retryAfter: timestamp('retry_after', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('quote_ai_generation_failures_quote_created_idx').on(table.quoteId, table.createdAt),
+  index('quote_ai_generation_failures_retry_after_idx').on(table.retryAfter),
+  index('quote_ai_generation_failures_triggered_by_idx').on(table.triggeredByUserId),
+])
+
 export const settings = pgTable('settings', {
   id: uuid('id').primaryKey().defaultRandom(),
   key: text('key').unique().notNull(),

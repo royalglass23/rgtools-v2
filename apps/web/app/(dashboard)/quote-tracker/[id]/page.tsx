@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { requireModule } from '@/lib/guard'
+import { createAiSuggestionAction, createConversationSnapshotAction } from '@/modules/quote-tracker/actions'
+import { AiGuidancePanel } from '@/modules/quote-tracker/AiGuidancePanel'
 import { CopyLinkButton } from '@/modules/quote-tracker/CopyLinkButton'
 import { EmailGateSettingsForm } from '@/modules/quote-tracker/EmailGateSettingsForm'
 import { ExpireLinkButton } from '@/modules/quote-tracker/ExpireLinkButton'
@@ -188,6 +190,39 @@ export default async function QuoteDetailPage({
           </div>
         )}
       </Section>
+
+      {typeof notices.snapshotError === 'string' && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {notices.snapshotError}
+        </div>
+      )}
+      {notices.snapshotSaved === '1' && (
+        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Conversation Snapshot saved.
+        </div>
+      )}
+      {notices.snapshotSaved === 'partial' && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Conversation Snapshot saved with partial ServiceM8 context.
+        </div>
+      )}
+      {typeof notices.suggestionError === 'string' && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {notices.suggestionError}
+        </div>
+      )}
+      {notices.suggestionSaved === '1' && (
+        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          AI Suggestion saved.
+        </div>
+      )}
+      <AiGuidancePanel
+        guidance={detail.aiGuidance}
+        quoteId={detail.quote.id}
+        quoteUrl={quoteUrl}
+        generateSnapshotAction={createConversationSnapshotAction}
+        generateSuggestionAction={createAiSuggestionAction}
+      />
 
       <Section title="Manual Status Override">
         <form action={saveManualTag} className="flex flex-wrap items-end gap-3">
