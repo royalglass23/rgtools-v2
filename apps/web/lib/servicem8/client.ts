@@ -106,6 +106,20 @@ export type LeadServiceM8History = {
   }>
 }
 
+export type ServiceM8HistorySourceStatus = {
+  ok: boolean
+  count: number
+  latestTimestamp: string | null
+  safeError?: string | null
+}
+
+export type ServiceM8ConversationSnapshotHistory = LeadServiceM8History & {
+  sourceStatus: {
+    notes: ServiceM8HistorySourceStatus
+    emails: ServiceM8HistorySourceStatus
+  }
+}
+
 export function getServiceM8ApiKey(): string {
   const apiKey = process.env.SERVICEM8_API_KEY?.trim()
   if (!apiKey) throw new Error('SERVICEM8_API_KEY is not configured')
@@ -352,18 +366,28 @@ export async function getJobNotesAndEmails(
   jobUuid: string,
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<LeadServiceM8History> {
+  const { notes, emails } = await getJobConversationSnapshotHistory(jobUuid, request)
+  return { notes, emails }
+}
+
+export async function getJobConversationSnapshotHistory(
+  jobUuid: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<ServiceM8ConversationSnapshotHistory> {
   const [noteRows, emailRows] = await Promise.all([
-    readServiceM8Array<ServiceM8NoteRecord>(
+    readServiceM8ArrayWithStatus<ServiceM8NoteRecord>(
       request,
       `/note.json${odataFilter(`related_object_uuid eq '${escapeOdataString(jobUuid)}'`)}`,
+      'note',
     ),
-    readServiceM8Array<ServiceM8EmailRecord>(
+    readServiceM8ArrayWithStatus<ServiceM8EmailRecord>(
       request,
       `/email.json${odataFilter(`related_object_uuid eq '${escapeOdataString(jobUuid)}'`)}`,
+      'email',
     ),
   ])
 
-  const notes = newestFirst(noteRows)
+  const notes = newestFirst(noteRows.rows)
     .map((note) => ({
       date: serviceM8Date(note),
       text: cleanNoteText(note.note ?? note.text ?? note.body ?? note.message ?? ''),
@@ -372,7 +396,7 @@ export async function getJobNotesAndEmails(
     .map((note) => ({ date: note.date, text: truncate(note.text, NOTE_CHAR_LIMIT) }))
     .slice(0, NOTE_LIMIT)
 
-  const mappedEmails = newestFirst(emailRows)
+  const mappedEmails = newestFirst(emailRows.rows)
     .map((email) => ({
       date: serviceM8Date(email),
       subject: cleanText(email.subject ?? '') || null,
@@ -392,10 +416,28 @@ export async function getJobNotesAndEmails(
     }))
     .filter((email) => email.subject || email.body.length > 0)
 
-  return capSerializedHistory({
+  const capped = capSerializedHistory({
     notes,
     emails: selectEmailsInboundFirst(mappedEmails, EMAIL_LIMIT),
   })
+
+  return {
+    ...capped,
+    sourceStatus: {
+      notes: {
+        ok: noteRows.ok,
+        count: capped.notes.length,
+        latestTimestamp: latestHistoryTimestamp(capped.notes),
+        safeError: noteRows.safeError,
+      },
+      emails: {
+        ok: emailRows.ok,
+        count: capped.emails.length,
+        latestTimestamp: latestHistoryTimestamp(capped.emails),
+        safeError: emailRows.safeError,
+      },
+    },
+  }
 }
 
 /**
@@ -466,18 +508,38 @@ export function stripEmailNoise(raw: string): string {
   return collapseWhitespace(withoutSignature.join('\n'))
 }
 
-async function readServiceM8Array<T>(
+async function readServiceM8ArrayWithStatus<T>(
   request: ServiceM8FetchRequest,
   path: string,
-): Promise<T[]> {
+  sourceLabel: 'note' | 'email',
+): Promise<{ ok: boolean; rows: T[]; safeError?: string | null }> {
   try {
     const res = await request(path)
-    if (!res.ok) return []
+    if (!res.ok) {
+      return {
+        ok: false,
+        rows: [],
+        safeError: `ServiceM8 ${sourceLabel} history fetch failed with HTTP ${res.status}.`,
+      }
+    }
+
     const rows = await res.json()
-    return Array.isArray(rows) ? rows as T[] : []
+    if (!Array.isArray(rows)) {
+      return {
+        ok: false,
+        rows: [],
+        safeError: `ServiceM8 ${sourceLabel} history returned an unexpected response.`,
+      }
+    }
+
+    return { ok: true, rows: rows as T[] }
   } catch (error) {
     if (error instanceof ServiceM8RateLimitError) throw error
-    return []
+    return {
+      ok: false,
+      rows: [],
+      safeError: `ServiceM8 ${sourceLabel} history could not be fetched.`,
+    }
   }
 }
 
@@ -533,6 +595,15 @@ function capSerializedHistory(history: LeadServiceM8History): LeadServiceM8Histo
   }
 
   return next
+}
+
+function latestHistoryTimestamp(rows: Array<{ date: string | null }>): string | null {
+  const sorted = rows
+    .map((row) => row.date)
+    .filter((date): date is string => Boolean(date))
+    .sort((a, b) => b.localeCompare(a))
+
+  return sorted[0] ?? null
 }
 
 function olderOrSame(left: string | null, right: string | null): boolean {
