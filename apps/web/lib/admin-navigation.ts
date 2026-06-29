@@ -58,6 +58,7 @@ const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   'admin/tracking': '/admin/tracking',
   'admin/lead-import': '/admin/lead-import',
   'admin/client-merge-review': '/admin/client-merge-review',
+  'admin/work-orders': '/admin/work-orders',
 }
 
 const ADMIN_SORT_ORDER: Record<string, number> = {
@@ -69,6 +70,7 @@ const ADMIN_SORT_ORDER: Record<string, number> = {
   'admin/tracking': 4,
   'admin/lead-import': 5,
   'admin/client-merge-review': 6,
+  'admin/work-orders': 7,
 }
 
 function adminItemKey(slug: string) {
