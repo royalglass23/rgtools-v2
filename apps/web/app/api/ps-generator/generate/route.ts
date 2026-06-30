@@ -28,7 +28,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await generateProducerStatementPackage(parseResult.input)
+    const result = await generateProducerStatementPackage(parseResult.input, {
+      persistGeneratedOutputs: true,
+      actor: {
+        id: session.user.id,
+        label: session.user.name ?? session.user.email ?? session.user.id,
+      },
+    })
     return NextResponse.json({
       ok: true,
       operationId: result.operationId,

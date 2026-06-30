@@ -66,6 +66,7 @@ async function main() {
         .insert(psOptionValues)
         .values({
           id: stableUuid(`option:${category.slug}:${value.slug}`),
+          configVersionId: version.id,
           categoryId: row.id,
           slug: value.slug,
           label: value.label,
@@ -75,7 +76,7 @@ async function main() {
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: [psOptionValues.categoryId, psOptionValues.slug],
+          target: [psOptionValues.categoryId, psOptionValues.slug, psOptionValues.configVersionId],
           set: {
             label: value.label,
             sortOrder: value.sortOrder,
