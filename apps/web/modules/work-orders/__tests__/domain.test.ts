@@ -21,10 +21,10 @@ describe('work order identity', () => {
       servicem8JobUuid: null,
       jobNumber: ' R260210 ',
       jobAddress: '  1 Queen   Street ',
-    })).toEqual({ kind: 'job_number_address', value: 'R260210|1 queen street' })
+    })).toEqual({ kind: 'job_number', value: 'R260210' })
   })
 
-  it('treats job number alone as a weak fallback', () => {
+  it('uses job number alone as the trusted fallback', () => {
     expect(matchKeyForWorkOrder({
       servicem8JobUuid: null,
       jobNumber: 'R260210',

@@ -11,7 +11,9 @@ export default async function WorkOrdersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireModule('work-orders')
-  const filters = parseWorkOrderListFilters(await searchParams)
+  const resolvedSearchParams = await searchParams
+  const filters = parseWorkOrderListFilters(resolvedSearchParams)
+  const refreshError = typeof resolvedSearchParams.refreshError === 'string' ? resolvedSearchParams.refreshError : null
   const [{ rows, total, pageCount }, options] = await Promise.all([
     listWorkOrders(filters),
     getWorkOrderFilterOptions(),
@@ -35,6 +37,12 @@ export default async function WorkOrdersPage({
           </button>
         </form>
       </div>
+
+      {refreshError && (
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Work Orders could not refresh from ServiceM8: {refreshError}
+        </div>
+      )}
 
       <WorkOrderFilters filters={filters} options={options} />
       <WorkOrdersTable rows={rows} />
@@ -83,11 +91,12 @@ function WorkOrderFilters({
         </div>
       </label>
       <Select name="servicem8Status" label="SM8 Status" value={filters.servicem8Status} options={statusOptions.map((status) => [status, status === 'all' ? 'All' : status])} />
+      <Select name="current" label="Current" value={filters.current} options={[['current', 'Current'], ['non_current', 'History'], ['all', 'All']]} />
       <Select name="risk" label="Risk" value={filters.risk} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />
       <Select name="importance" label="Importance" value={filters.importance} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />
-      <Select name="installer" label="Installer" value={filters.installer} options={[['all', 'All'], ...options.installers.map((option) => [option.id, option.label] as [string, string])]} />
-      <Select name="stage" label="Stage" value={filters.stage} options={[['all', 'All'], ...options.stages.map((option) => [option.id, option.label] as [string, string])]} />
-      <Select name="hardware" label="Hardware" value={filters.hardware} options={[['all', 'All'], ...options.hardwareStatuses.map((option) => [option.id, option.label] as [string, string])]} />
+      <Select name="installer" label="Installer" value={filters.installer} options={[['all', 'All'], ...options.installers.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
+      <Select name="stage" label="Stage" value={filters.stage} options={[['all', 'All'], ...options.stages.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
+      <Select name="hardware" label="Hardware" value={filters.hardware} options={[['all', 'All'], ...options.hardwareStatuses.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
       <Select
         name="sort"
         label="Sort"
@@ -112,6 +121,8 @@ function WorkOrderFilters({
     </form>
   )
 }
+
+type FilterOption = { id: string; label: string }
 
 function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
   return (
@@ -139,7 +150,7 @@ function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
                 <td className="px-4 py-3 align-top">
                   <span className="font-medium text-gray-950">{row.clientName}</span>
                   {row.companyName && <span className="block text-xs text-gray-500">{row.companyName}</span>}
-                  <span className="mt-1 inline-flex rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{row.servicem8Status}</span>
+                  <span className="mt-1 inline-flex rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{row.isCurrent ? row.servicem8Status : 'History'}</span>
                 </td>
                 <td className="max-w-xs px-4 py-3 align-top text-gray-700">
                   <span className="font-medium text-gray-900">{row.jobNumber ?? '-'}</span>
@@ -231,6 +242,7 @@ function paramsFor(filters: WorkOrderListFilters) {
   const params = new URLSearchParams()
   if (filters.q) params.set('q', filters.q)
   params.set('servicem8Status', filters.servicem8Status)
+  params.set('current', filters.current)
   params.set('risk', filters.risk)
   params.set('importance', filters.importance)
   params.set('installer', filters.installer)

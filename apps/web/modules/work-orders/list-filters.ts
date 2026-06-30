@@ -4,10 +4,12 @@ export type WorkOrderStatusFilter = string
 export type WorkOrderOptionFilter = string
 export type WorkOrderSort = 'lead_score' | 'importance' | 'risk' | 'install_date' | 'client_asc' | 'job_number'
 export type WorkOrderPageSize = 10 | 20 | 50 | 100
+export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
 
 export type WorkOrderListFilters = {
   q: string
   servicem8Status: WorkOrderStatusFilter
+  current: WorkOrderCurrentFilter
   risk: WorkOrderLevel | 'all'
   importance: WorkOrderLevel | 'all'
   installer: WorkOrderOptionFilter
@@ -21,6 +23,7 @@ export type WorkOrderListFilters = {
 const DEFAULT_FILTERS: WorkOrderListFilters = {
   q: '',
   servicem8Status: 'Work Order',
+  current: 'current',
   risk: 'all',
   importance: 'all',
   installer: 'all',
@@ -40,6 +43,7 @@ export function parseWorkOrderListFilters(
 ): WorkOrderListFilters {
   const q = stringValue(searchParams.q)?.trim() ?? DEFAULT_FILTERS.q
   const servicem8Status = stringValue(searchParams.servicem8Status)?.trim() || DEFAULT_FILTERS.servicem8Status
+  const current = currentValue(searchParams.current)
   const risk = levelValue(searchParams.risk)
   const importance = levelValue(searchParams.importance)
   const installer = optionValue(searchParams.installer)
@@ -52,6 +56,7 @@ export function parseWorkOrderListFilters(
   return {
     q,
     servicem8Status,
+    current,
     risk,
     importance,
     installer,
@@ -61,6 +66,11 @@ export function parseWorkOrderListFilters(
     page: Number.isInteger(page) && page > 0 ? page : DEFAULT_FILTERS.page,
     size: SIZES.has(size as WorkOrderPageSize) ? size as WorkOrderPageSize : DEFAULT_FILTERS.size,
   }
+}
+
+function currentValue(value: string | string[] | undefined): WorkOrderCurrentFilter {
+  const candidate = stringValue(value)
+  return candidate === 'non_current' || candidate === 'all' ? candidate : 'current'
 }
 
 function levelValue(value: string | string[] | undefined): WorkOrderLevel | 'all' {

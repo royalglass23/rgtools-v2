@@ -13,6 +13,7 @@ import type { WorkOrderListFilters, WorkOrderSort } from './list-filters'
 export type WorkOrderRow = {
   id: string
   servicem8Status: string
+  isCurrent: boolean
   jobNumber: string | null
   jobAddress: string | null
   jobDescription: string | null
@@ -48,6 +49,7 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
     .select({
       id: workOrders.id,
       servicem8Status: workOrders.servicem8Status,
+      isCurrent: workOrders.isCurrent,
       jobNumber: workOrders.jobNumber,
       jobAddress: workOrders.jobAddress,
       jobDescription: workOrders.jobDescription,
@@ -111,7 +113,7 @@ export async function getWorkOrderFilterOptions() {
     installers,
     stages,
     hardwareStatuses,
-    statuses: statuses.map((row) => row.status),
+    statuses: statuses.map((row: { status: string }) => row.status),
   }
 }
 
@@ -131,9 +133,8 @@ function listWhere(filters: WorkOrderListFilters) {
   if (filters.servicem8Status !== 'all') {
     conditions.push(eq(workOrders.servicem8Status, filters.servicem8Status))
   }
-  if (filters.servicem8Status === 'Work Order') {
-    conditions.push(eq(workOrders.servicem8Active, true))
-  }
+  if (filters.current === 'current') conditions.push(eq(workOrders.isCurrent, true))
+  if (filters.current === 'non_current') conditions.push(eq(workOrders.isCurrent, false))
   if (filters.installer !== 'all') conditions.push(eq(workOrders.installerId, filters.installer))
   if (filters.stage !== 'all') conditions.push(eq(workOrders.stageOptionId, filters.stage))
   if (filters.hardware !== 'all') conditions.push(eq(workOrders.hardwareStatusOptionId, filters.hardware))
@@ -186,11 +187,13 @@ function escapeLike(value: string) {
 }
 
 export async function findLinkedLeadAndClient(input: {
-  servicem8JobUuid: string
+  servicem8JobUuid: string | null
   jobNumber: string | null
 }) {
-  const conditions = [eq(leads.servicem8JobUuid, input.servicem8JobUuid)]
+  const conditions = []
+  if (input.servicem8JobUuid) conditions.push(eq(leads.servicem8JobUuid, input.servicem8JobUuid))
   if (input.jobNumber) conditions.push(eq(leads.servicem8JobNumber, input.jobNumber))
+  if (conditions.length === 0) return null
 
   const [row] = await db
     .select({
@@ -202,7 +205,7 @@ export async function findLinkedLeadAndClient(input: {
     })
     .from(leads)
     .innerJoin(clients, eq(leads.clientId, clients.id))
-    .where(or(...conditions))
+    .where(conditions.length === 1 ? conditions[0] : or(...conditions))
     .limit(1)
 
   return row ?? null

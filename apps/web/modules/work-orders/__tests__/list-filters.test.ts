@@ -7,6 +7,7 @@ describe('parseWorkOrderListFilters', () => {
     expect(parseWorkOrderListFilters({})).toEqual({
       q: '',
       servicem8Status: 'Work Order',
+      current: 'current',
       risk: 'all',
       importance: 'all',
       installer: 'all',
@@ -22,6 +23,7 @@ describe('parseWorkOrderListFilters', () => {
     expect(parseWorkOrderListFilters({
       q: 'queen',
       servicem8Status: 'Completed',
+      current: 'non_current',
       risk: 'high',
       importance: 'medium',
       installer: 'installer-1',
@@ -33,6 +35,7 @@ describe('parseWorkOrderListFilters', () => {
     })).toEqual({
       q: 'queen',
       servicem8Status: 'Completed',
+      current: 'non_current',
       risk: 'high',
       importance: 'medium',
       installer: 'installer-1',
@@ -54,6 +57,7 @@ describe('parseWorkOrderListFilters', () => {
     })).toEqual({
       q: '',
       servicem8Status: 'Work Order',
+      current: 'current',
       risk: 'all',
       importance: 'all',
       installer: 'all',

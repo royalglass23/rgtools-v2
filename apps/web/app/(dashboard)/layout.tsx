@@ -13,6 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const accessibleModules = await getAccessibleModules(session.user.id)
   const { primaryModules, leadIntakeItems, psGeneratorItems, workOrderItems, adminItems } = buildDashboardNavigation(accessibleModules, {
     isAdmin: session.user.role === 'admin',
+    showWorkOrderNavigation: true,
   })
 
   return (
