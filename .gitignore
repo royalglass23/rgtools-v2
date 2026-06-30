@@ -67,3 +67,5 @@ workers/tracker/.dev.vars
 # Reference copy of the cost-calculator repo (separate project, not part of rgtools)
 cost-calculator/
 jobcard-export/
+/security/
+.secure-sdlc/
