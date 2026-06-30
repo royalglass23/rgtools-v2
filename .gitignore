@@ -69,3 +69,5 @@ cost-calculator/
 jobcard-export/
 /security/
 .secure-sdlc/
+
+AGENTS.md
