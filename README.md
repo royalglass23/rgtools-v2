@@ -56,6 +56,7 @@ This repo is a pnpm workspace:
 - [Getting started](docs/user/getting-started.md) - login, dashboard, roles
 - [Lead intake form](docs/how-to/lead-intake.md) - field-by-field guide
 - [Leads dashboard](docs/how-to/leads.md) - list, filters, detail view, ServiceM8 fetch
+- [RG Leads manual checklist](apps/web/tests/rg-leads-test-plan.md) - safe human verification for Quote-status lead workflows
 - [Client records](docs/how-to/clients.md) - client list, detail, links, and merge review
 - [Bulk lead import](docs/how-to/lead-import.md) - admin spreadsheet import
 - [Scoring guide](docs/user/scoring-guide.md) - categories, tiers A-D, strike flags

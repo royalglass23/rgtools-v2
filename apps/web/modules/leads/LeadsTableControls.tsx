@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import type { LeadsListFilters } from './queries'
-import { batchDeleteLeadsAction } from './actions'
+import { batchDeleteLeadsAction, restoreLeadAction } from './actions'
 import { saveTablePrefs } from './table-prefs-actions'
 import { DEFAULT_LEADS_PREFS, type TablePrefs } from './table-prefs-shared'
 
@@ -19,6 +19,7 @@ type LeadRow = {
   seedScore: number | null
   servicem8JobUuid: string | null
   servicem8JobNumber: string | null
+  servicem8Status: string | null
   syncStatus: string
   completeness: number | null
   rcStatus: string | null
@@ -49,9 +50,9 @@ const COLUMN_DEFS: ColumnDef[] = [
   { key: 'address', label: 'Job Address', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.location ?? '-'}</span> },
   { key: 'project', label: 'Project', className: 'text-gray-700', render: (lead) => lead.projectType ?? '-' },
   { key: 'tier', label: 'Tier', sortKey: 'tier', render: (lead) => <TierBadge tier={lead.tier} /> },
-  { key: 'score', label: 'Score', sortKey: 'seedScore', className: 'text-gray-700', render: (lead) => lead.seedScore ?? 0 },
+  { key: 'score', label: 'Score', sortKey: 'seedScore', className: 'text-gray-700', render: (lead) => lead.seedScore ?? '-' },
   { key: 'sm8', label: 'SM8', render: (lead) => <Sm8Badge linked={Boolean(lead.servicem8JobUuid)} status={lead.syncStatus} /> },
-  { key: 'completeness', label: 'Completeness', sortKey: 'completeness', className: 'text-gray-700', render: (lead) => `${lead.completeness ?? 0}%` },
+  { key: 'completeness', label: 'Completeness', sortKey: 'completeness', className: 'text-gray-700', render: (lead) => lead.completeness === null ? '-' : `${lead.completeness}%` },
   { key: 'rcStatus', label: 'RC', className: 'text-gray-700', render: (lead) => lead.rcStatus ?? '-' },
   { key: 'bcStatus', label: 'BC', className: 'text-gray-700', render: (lead) => lead.bcStatus ?? '-' },
   { key: 'buildingStage', label: 'Building Stage', className: 'text-gray-700', render: (lead) => lead.buildingStage ?? '-' },
@@ -134,6 +135,7 @@ export function LeadsTableControls({
         filters={filters}
         basePath={basePath}
         paramPrefix={paramPrefix}
+        isAdmin={isAdmin}
         onSort={(column, dir) => persistPrefs({ ...tablePrefs, sortColumn: column, sortDir: dir as 'asc' | 'desc' })}
       />
 
@@ -152,28 +154,30 @@ export function LeadsTableControls({
       )}
 
       {isAdmin && (
-        <form
-          id="batch-delete-form"
-          action={batchDeleteLeadsAction}
-          onSubmit={(event) => {
-            if (selectedIds.length === 0) {
-              event.preventDefault()
-              return
-            }
+        <>
+          <form
+            id="batch-delete-form"
+            action={batchDeleteLeadsAction}
+            onSubmit={(event) => {
+              if (selectedIds.length === 0) {
+                event.preventDefault()
+                return
+              }
 
-            if (!window.confirm(`Delete ${selectedIds.length} selected lead${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)) {
-              event.preventDefault()
-            }
-          }}
-          className="space-y-3"
-        >
+              if (!window.confirm(`Delete ${selectedIds.length} selected lead${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)) {
+                event.preventDefault()
+              }
+            }}
+          >
           {selectedIds.map((leadId) => (
             <input key={leadId} type="hidden" name="leadId" value={leadId} />
           ))}
+          </form>
 
           <LeadsTable
             rows={rows}
             isAdmin={isAdmin}
+            isArchivedView={filters.statusView === 'archived'}
             columns={visibleColumns}
             prefs={tablePrefs}
             selectedSet={selectedSet}
@@ -182,13 +186,14 @@ export function LeadsTableControls({
             onToggleAllVisible={toggleAllVisible}
             onSort={sortBy}
           />
-        </form>
+        </>
       )}
 
       {!isAdmin && (
         <LeadsTable
           rows={rows}
           isAdmin={isAdmin}
+          isArchivedView={filters.statusView === 'archived'}
           columns={visibleColumns}
           prefs={tablePrefs}
           selectedSet={selectedSet}
@@ -215,13 +220,13 @@ export function LeadsTableControls({
 }
 
 function FilterBar({
-  filters, basePath, paramPrefix, onSort,
+  filters, basePath, paramPrefix, isAdmin, onSort,
 }: {
-  filters: LeadsListFilters; basePath: string; paramPrefix: string; onSort: (column: string, dir: string) => void
+  filters: LeadsListFilters; basePath: string; paramPrefix: string; isAdmin: boolean; onSort: (column: string, dir: string) => void
 }) {
   const searchParams = useSearchParams()
   const owned = new Set(
-    ['q', 'tier', 'sm8', 'date', 'stale', 'size', 'sortColumn', 'sortDir', 'page'].map((name) => `${paramPrefix}${name}`),
+    ['q', 'tier', 'sm8', 'date', 'stale', 'statusView', 'size', 'sortColumn', 'sortDir', 'page'].map((name) => `${paramPrefix}${name}`),
   )
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
 
@@ -232,7 +237,12 @@ function FilterBar({
   resetParams.set(`${paramPrefix}sortDir`, 'asc')
   const resetHref = `${basePath}?${resetParams}`
 
-  const filterKey = [filters.q, filters.tier, filters.sm8, filters.date, String(filters.stale), filters.sortColumn, filters.sortDir].join('|')
+  const filterKey = [filters.q, filters.tier, filters.sm8, filters.date, String(filters.stale), filters.statusView, filters.sortColumn, filters.sortDir].join('|')
+  const statusViewOptions: Array<[string, string]> = [
+    ['current_quotes', 'Current Quotes'],
+    ['all_statuses', 'All statuses'],
+  ]
+  if (isAdmin) statusViewOptions.push(['archived', 'Archived only'])
 
   return (
     <form key={filterKey} action={basePath} className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-8">
@@ -266,6 +276,7 @@ function FilterBar({
       <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
       <Select name={`${paramPrefix}stale`} label="Activity" value={filters.stale ? 'true' : 'false'} options={[['false', 'All'], ['true', 'Stale (7d+)']]} />
       <LeadsSortSelect filters={filters} basePath={basePath} paramPrefix={paramPrefix} onSort={onSort} />
+      <Select name={`${paramPrefix}statusView`} label="View" value={filters.statusView} options={statusViewOptions} />
       <div className="flex items-end justify-end">
         <Link href={resetHref} className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           Reset
@@ -338,6 +349,7 @@ function LeadsSortSelect({ filters, basePath, paramPrefix, onSort }: { filters: 
 function LeadsTable({
   rows,
   isAdmin,
+  isArchivedView,
   columns,
   prefs,
   selectedSet,
@@ -348,6 +360,7 @@ function LeadsTable({
 }: {
   rows: LeadRow[]
   isAdmin: boolean
+  isArchivedView: boolean
   columns: ColumnDef[]
   prefs: TablePrefs
   selectedSet: Set<string>
@@ -377,6 +390,11 @@ function LeadsTable({
                 <SortableHeader column={column} prefs={prefs} onSort={onSort} />
               </th>
             ))}
+            {isAdmin && isArchivedView && (
+              <th className="px-4 py-3">
+                <span>Actions</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -398,11 +416,29 @@ function LeadsTable({
                   <Link href={`/leads/${lead.id}`} className="block">{column.render(lead)}</Link>
                 </td>
               ))}
+              {isAdmin && isArchivedView && (
+                <td className="px-4 py-3">
+                  <form action={restoreLeadAction}>
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <button
+                      type="submit"
+                      className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Restore
+                    </button>
+                  </form>
+                </td>
+              )}
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={columns.length + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">No leads found.</td>
+              <td
+                colSpan={columns.length + (isAdmin ? 1 : 0) + (isAdmin && isArchivedView ? 1 : 0)}
+                className="px-4 py-8 text-center text-gray-500"
+              >
+                No leads found.
+              </td>
             </tr>
           )}
         </tbody>
@@ -460,6 +496,7 @@ function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: 
   params.set(`${paramPrefix}sm8`, filters.sm8)
   params.set(`${paramPrefix}date`, filters.date)
   params.set(`${paramPrefix}stale`, String(filters.stale))
+  params.set(`${paramPrefix}statusView`, filters.statusView)
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}q`, filters.q)
   params.set(`${paramPrefix}sortColumn`, filters.sortColumn)
@@ -471,6 +508,10 @@ function PageLink({ filters, page, disabled, basePath, paramPrefix, children }: 
 }
 
 function TierBadge({ tier }: { tier: string | null }) {
+  if (!tier) {
+    return <span className="inline-flex rounded px-2 py-1 text-xs font-semibold bg-gray-100 text-gray-700">Needs scoring</span>
+  }
+
   const classes = {
     A: 'bg-green-100 text-green-800',
     B: 'bg-blue-100 text-blue-800',

@@ -12,6 +12,7 @@ export type LeadsListFilters = {
   sm8: 'all' | 'linked' | 'pending' | 'failed'
   date: '7' | '30' | 'all'
   stale: boolean
+  statusView: 'current_quotes' | 'all_statuses' | 'archived'
   page: number
   size: 5 | 10 | 20 | 50 | 100
   sortColumn: string
@@ -23,6 +24,7 @@ export type ParseLeadsListFiltersOptions = {
   prefix?: string
   /** Default values (admin-set) used when a param is absent from the URL. */
   defaults?: Partial<Record<'tier' | 'sm8' | 'date' | 'size' | 'sortColumn' | 'sortDir', string>>
+  isAdmin?: boolean
 }
 
 export type LeadsListSort = {
@@ -30,11 +32,15 @@ export type LeadsListSort = {
   sortDir?: 'asc' | 'desc'
 }
 
+export type GetLeadsListOptions = {
+  isAdmin?: boolean
+}
+
 export function parseLeadsListFilters(
   searchParams: Record<string, string | string[] | undefined>,
   options: ParseLeadsListFiltersOptions = {},
 ): LeadsListFilters {
-  const { prefix = '', defaults = {} } = options
+  const { prefix = '', defaults = {}, isAdmin = false } = options
   const pick = (name: 'tier' | 'sm8' | 'date' | 'size' | 'sortColumn' | 'sortDir') =>
     stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
 
@@ -43,6 +49,7 @@ export function parseLeadsListFilters(
   const sm8 = pick('sm8')
   const date = pick('date')
   const stale = stringValue(searchParams[`${prefix}stale`]) === 'true'
+  const statusView = parseStatusView(stringValue(searchParams[`${prefix}statusView`]), isAdmin)
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? '1')
   const size = Number(pick('size') ?? '10')
   const sortColumn = pick('sortColumn') ?? DEFAULT_LEADS_PREFS.sortColumn
@@ -54,6 +61,7 @@ export function parseLeadsListFilters(
     sm8: sm8 === 'linked' || sm8 === 'pending' || sm8 === 'failed' ? sm8 : 'all',
     date: date === '7' || date === '30' || date === 'all' ? date : '30',
     stale,
+    statusView,
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: size === 5 || size === 20 || size === 50 || size === 100 ? size : 10,
     sortColumn: LEADS_SORT_COLUMNS.includes(sortColumn as (typeof LEADS_SORT_COLUMNS)[number])
@@ -63,8 +71,8 @@ export function parseLeadsListFilters(
   }
 }
 
-export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSort = filters) {
-  const where = listWhere(filters)
+export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSort = filters, options: GetLeadsListOptions = {}) {
+  const where = listWhere(filters, options)
   const offset = (filters.page - 1) * filters.size
 
   const [totalRow] = await db
@@ -84,6 +92,7 @@ export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSor
       seedScore: leads.seedScore,
       servicem8JobUuid: leads.servicem8JobUuid,
       servicem8JobNumber: leads.servicem8JobNumber,
+      servicem8Status: leads.servicem8Status,
       syncStatus: leads.syncStatus,
       completeness: leads.completeness,
       rcStatus: leads.rcStatus,
@@ -193,8 +202,19 @@ function cleanDisplayText(value: string) {
     .replaceAll('Ã¢â‚¬â€˜', '-')
 }
 
-function listWhere(filters: LeadsListFilters) {
-  const conditions = [isNull(leads.archivedAt)]
+function listWhere(filters: LeadsListFilters, options: GetLeadsListOptions = {}) {
+  const statusView = filters.statusView === 'archived' && !options.isAdmin ? 'current_quotes' : filters.statusView
+  const conditions = statusView === 'archived'
+    ? [isNotNull(leads.archivedAt)]
+    : [isNull(leads.archivedAt)]
+
+  if (statusView === 'current_quotes') {
+    const currentQuoteCondition = or(
+      isNull(leads.servicem8JobUuid),
+      sql`lower(trim(coalesce(${leads.servicem8Status}, ''))) = 'quote'`,
+    )
+    if (currentQuoteCondition) conditions.push(currentQuoteCondition)
+  }
 
   if (filters.tier !== 'all') conditions.push(eq(leads.tier, filters.tier))
   if (filters.sm8 === 'linked') conditions.push(isNotNull(leads.servicem8JobUuid))
@@ -255,6 +275,12 @@ function listOrderBy(sort: LeadsListSort) {
 
 function stringValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
+}
+
+function parseStatusView(value: string | undefined, isAdmin: boolean): LeadsListFilters['statusView'] {
+  if (value === 'all_statuses') return 'all_statuses'
+  if (value === 'archived' && isAdmin) return 'archived'
+  return 'current_quotes'
 }
 
 function categoryLabel(category: number) {

@@ -8,6 +8,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ### Documentation
 - Added a [Security Policy](SECURITY.md) and a developer [security runbook](dev/security.md) covering reporting, environment separation, secrets, access control, quote data handling, retention, and incident response.
+- Updated the [Leads how-to](how-to/leads.md), ServiceM8 developer notes, and RG Leads manual checklist for the Quote-status lead workflow.
 - Expanded the README docs index so current developer, user, domain, DNS, ServiceM8, security, and admin docs are easier to find.
 - Added a staff [Client records how-to](how-to/clients.md) for client list/detail use and admin merge review.
 - Updated setup and deployment docs for current environment variables, AI guidance configuration, tracking seed data, ServiceM8 webhook registration, R2 dev/prod separation, and Worker secrets.

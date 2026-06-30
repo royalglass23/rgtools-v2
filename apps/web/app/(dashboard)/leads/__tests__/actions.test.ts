@@ -88,4 +88,35 @@ describe('importServiceM8LeadAction', () => {
     expect(result).toEqual({ ok: false, message: 'Please wait a moment before importing again.' })
     expect(mockImportLead).toHaveBeenCalledTimes(1)
   })
+
+  it('lets an immediate reused-existing import open the existing lead instead of showing the cooldown', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'reuse-existing-user' } })
+    mockImportLead
+      .mockResolvedValueOnce({
+        ok: true,
+        leadId: 'lead-1',
+        message: 'Imported.',
+        missingContact: false,
+        reusedExisting: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        leadId: 'lead-1',
+        message: 'Opened existing lead for job Q260010.',
+        missingContact: false,
+        reusedExisting: true,
+      })
+
+    await importServiceM8LeadAction('Q260010')
+    const result = await importServiceM8LeadAction('Q260010')
+
+    expect(mockImportLead).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({
+      ok: true,
+      redirectPath: '/leads/lead-1',
+      message: 'Opened existing lead for job Q260010.',
+      missingContact: false,
+      reusedExisting: true,
+    })
+  })
 })
