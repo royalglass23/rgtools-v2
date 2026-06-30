@@ -49,6 +49,26 @@ const PS_GENERATOR_SORT_ORDER: Record<string, number> = {
   'ps-generator/configuration': 1,
 }
 
+const WORK_ORDER_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
+  'work-orders': {
+    id: 'work-order-list',
+    slug: 'work-orders',
+    name: 'Lists',
+    href: '/work-orders',
+  },
+  'admin/work-orders': {
+    id: 'work-order-configuration',
+    slug: 'admin/work-orders',
+    name: 'Configuration',
+    href: '/admin/work-orders',
+  },
+}
+
+const WORK_ORDER_SORT_ORDER: Record<string, number> = {
+  'work-orders': 0,
+  'admin/work-orders': 1,
+}
+
 const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   admin: '/admin/administration',
   'admin/administration': '/admin/administration',
@@ -58,7 +78,6 @@ const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   'admin/tracking': '/admin/tracking',
   'admin/lead-import': '/admin/lead-import',
   'admin/client-merge-review': '/admin/client-merge-review',
-  'admin/work-orders': '/admin/work-orders',
 }
 
 const ADMIN_SORT_ORDER: Record<string, number> = {
@@ -70,14 +89,13 @@ const ADMIN_SORT_ORDER: Record<string, number> = {
   'admin/tracking': 4,
   'admin/lead-import': 5,
   'admin/client-merge-review': 6,
-  'admin/work-orders': 7,
 }
 
 function adminItemKey(slug: string) {
   return slug === 'admin/administration' ? 'admin' : slug
 }
 
-export function buildDashboardNavigation(modules: DashboardModule[], options: { isAdmin?: boolean } = {}) {
+export function buildDashboardNavigation(modules: DashboardModule[], options: { isAdmin?: boolean; showWorkOrderNavigation?: boolean } = {}) {
   const activeModules = modules
     .filter((mod) => mod.isActive)
     .toSorted((a, b) => a.sortOrder - b.sortOrder)
@@ -86,10 +104,12 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in ADMIN_ROUTE_BY_SLUG) &&
     !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG) &&
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
+    !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
     mod.slug !== 'ps-generator/configuration'
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()
   const psGeneratorItemsByKey = new Map<string, DashboardNavItem>()
+  const workOrderItemsByKey = new Map<string, DashboardNavItem>()
   const adminItemsByKey = new Map<string, DashboardNavItem>()
 
   for (const mod of activeModules) {
@@ -122,6 +142,17 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
       name: 'Configuration',
       href: '/ps-generator/configuration',
     })
+  }
+
+  if (options.showWorkOrderNavigation) {
+    for (const mod of activeModules) {
+      if (mod.slug === 'admin/work-orders' && !options.isAdmin) continue
+
+      const item = WORK_ORDER_ROUTE_BY_SLUG[mod.slug]
+      if (!item) continue
+
+      workOrderItemsByKey.set(item.slug, item)
+    }
   }
 
   for (const mod of activeModules) {
@@ -157,5 +188,11 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     return aOrder - bOrder
   })
 
-  return { primaryModules, leadIntakeItems, psGeneratorItems, adminItems }
+  const workOrderItems = Array.from(workOrderItemsByKey.values()).toSorted((a, b) => {
+    const aOrder = WORK_ORDER_SORT_ORDER[a.slug] ?? Number.MAX_SAFE_INTEGER
+    const bOrder = WORK_ORDER_SORT_ORDER[b.slug] ?? Number.MAX_SAFE_INTEGER
+    return aOrder - bOrder
+  })
+
+  return { primaryModules, leadIntakeItems, psGeneratorItems, workOrderItems, adminItems }
 }
