@@ -51,7 +51,7 @@ Route protection is enforced in:
 - `apps/web/lib/guard.ts` - page/module-level guards such as `requireModule('ps-generator')`.
 - `apps/web/lib/access.ts` and `apps/web/lib/access-db.ts` - module access checks.
 
-Admins see all active modules. Staff see modules where a grant row exists in `user_module_access`.
+Admins see all active modules. Staff see modules where a grant row exists in `user_module_access`. Server actions and route handlers re-check session/module permissions for mutating operations; middleware and layouts are navigation and page-entry guards, not the only security boundary.
 
 ## Database schema
 
@@ -93,7 +93,7 @@ The leads module provides list/detail workflows, filtering, bulk delete, Service
 
 Source path: `apps/web/modules/clients`.
 
-Client records are deduplicated by normalised phone or email and linked to leads. Merge planning and cleanup live in the clients module.
+Client records are deduplicated by normalised phone or email and linked to leads and tracked quotes. Merge planning and cleanup live in the clients module. Admins can review duplicate candidates from `/admin/client-merge-review`; the cleanup script applies approved merge plans with audit records rather than silently deleting history.
 
 ### Quote Tracker
 
@@ -113,6 +113,11 @@ Key files:
 | `viewer-analytics.ts` | Per-session/per-recipient engagement read model |
 | `score.ts` | Engagement status and interest score |
 | `settings-query.ts` | Tracking, viewer-feature, and notification settings |
+| `conversation-snapshot.ts` | ServiceM8 conversation/context snapshot for AI guidance |
+| `ai-suggestion.ts` | OpenAI-backed next viable move guidance and email/phone follow-up content |
+| `ai-guidance.ts` | Latest AI guidance read model for the quote detail page |
+
+Quote detail pages show engagement, viewer analytics, email gate settings, manual status controls, and AI Guidance when configured. AI guidance is staff-facing only; it does not change quote state or send messages automatically.
 
 ### PS Generator
 
@@ -148,7 +153,7 @@ Admin features include user management, CSV export, error-log viewing, dashboard
 
 ### `workers/viewer`
 
-Serves public quote links at `quotes.royalglass.co.nz/q/<code>`, enforces expiry and optional email gate, streams the PDF from R2, and renders PDF.js with tracker beacons.
+Serves public quote links at `quotes.royalglass.co.nz/q/<code>`, enforces expiry and optional email gate, streams the PDF from R2, and renders PDF.js with tracker beacons. The viewer also serves `/privacy` and in-viewer privacy/cookie notices. Email-gated PDF access uses a signed gate proof created with `GATE_HMAC_SECRET`.
 
 ### `workers/tracker`
 
@@ -199,8 +204,20 @@ Most operational scripts live in `apps/web/scripts` and are exposed through root
 | `pnpm quote:share` | `apps/web/scripts/quote-share.ts` |
 | `pnpm quote:create` | `apps/web/scripts/create-tracked-quote-test.ts` |
 | `pnpm servicem8:webhook:register` | `apps/web/scripts/register-servicem8-attachment-webhook.ts` |
+| `pnpm quotes:client-backfill` | `apps/web/scripts/quote-client-link-backfill.ts` |
+| `pnpm clients:merge-cleanup` | `apps/web/scripts/client-merge-cleanup.ts` |
 
 Root-level `scripts/migrate-prod.mjs` runs production migrations from `DB_URL_PROD`.
+
+## Security and privacy boundaries
+
+- App authentication uses NextAuth credentials and JWT sessions.
+- Admins manage users, module grants, settings, imports, exports, and merge review.
+- Staff access is module-grant based and should be checked again in server actions.
+- Quote PDFs live in R2 and should not be exposed as raw bucket URLs.
+- Public viewer routes are intentionally limited to quote viewing, tracking, and privacy notice surfaces.
+- Raw quote-event IP addresses are purged by the cleanup worker; audit logs are archived after their retention window.
+- Secrets are split between Vercel env vars, `.env.local` for local work, and Cloudflare Worker secrets. See [security.md](security.md).
 
 ## Testing
 

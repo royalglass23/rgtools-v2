@@ -201,6 +201,28 @@ Notifications are sent by the `rg-notifier` worker on a schedule (every ~10 minu
 
 ---
 
+## AI Guidance
+
+On a quote detail page, staff may see **AI Guidance** when the feature is configured. It uses current quote details, engagement signals, and the latest conversation snapshot to suggest a next viable move.
+
+AI Guidance can include:
+
+| Field | What it means |
+|---|---|
+| Next viable move | The recommended follow-up action |
+| Suggested timing | When to follow up and why |
+| Confidence | Low, Medium, or High confidence with a reason |
+| Likely customer state | A plain-English read of the client's current position |
+| Phone talking points | Bullets for a call |
+| Email draft | Draft follow-up copy staff can review and send manually |
+| Use care guidance | Notes about where to be careful |
+
+AI Guidance is advisory. It does not send email, call clients, change the status badge, or update ServiceM8. Staff should review and edit any copied email content before sending it.
+
+If the snapshot is partial or stale, the panel shows that context so you know how much confidence to put in the suggestion.
+
+---
+
 ## Troubleshooting
 
 ### "Generate the quote in ServiceM8 first"
@@ -316,5 +338,6 @@ pnpm quote:create --uuid <jobUuid>
 | Engagement scoring | `apps/web/modules/quote-tracker/score.ts` |
 | Email gate logic | `apps/web/modules/quote-tracker/email-gate.ts` |
 | Tracking settings | Admin → Tracking Settings in the dashboard |
+| AI Guidance | Quote detail page in rgtools |
 | PDFs at rest | Cloudflare R2 bucket `quotes/<shortcode>.pdf` |
-| Database | Neon (Postgres) — `quotes`, `quote_events`, `quote_engagement`, `quote_recipients`, `quote_viewer_emails` tables |
+| Database | Neon (Postgres) — `quotes`, `quote_events`, `quote_engagement`, `quote_recipients`, `quote_viewer_emails`, quote AI snapshot/suggestion/failure tables |

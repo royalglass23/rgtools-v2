@@ -2,8 +2,18 @@ import { eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
 import { leads } from '@rgtools/db/schema-leads'
-import { createServiceM8RequestFromEnv, resolveJobUuid } from '@/lib/servicem8/client'
+import {
+  createServiceM8RequestFromEnv,
+  getCompanyContact,
+  getJobContact,
+  getJobQuoteMeta,
+  resolveJobUuid,
+} from '@/lib/servicem8/client'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
+import { resolveClient } from '@/modules/clients/client-resolver'
+import { normalizeNzPhone } from '@/modules/lead-intake/intake-utils'
+import { deriveProjectType } from '@/modules/lead-intake/import/enrich-row'
+import { isServiceM8QuoteStatus } from './lead-lifecycle'
 
 // Re-exported for existing importers/tests that reference these from this module.
 export { createServiceM8RequestFromEnv }
@@ -53,6 +63,23 @@ export type LeadServiceM8ManualLinkResult =
       message: string
     }
 
+export type LeadServiceM8ImportResult =
+  | {
+      ok: true
+      leadId: string
+      jobUuid: string
+      jobNumber: string
+      jobStatus: string | null
+      reusedExisting: boolean
+      missingContact: boolean
+      message: string
+    }
+  | {
+      ok: false
+      reason: 'not_found' | 'not_quote' | 'error'
+      message: string
+    }
+
 export async function fetchLeadFromServiceM8(
   leadId: string,
   actorId: string | null,
@@ -89,13 +116,13 @@ export async function fetchLeadFromServiceM8(
   }
 
   const wasAlreadyLinked = Boolean(lead.servicem8JobUuid)
-  const leadsQuality = `Leads Quality ${lead.tier ?? 'D'}`
+  const leadsQuality = lead.tier ? `Leads Quality ${lead.tier}` : 'Not set'
   const jobNumber = matchingJob.generated_job_id ?? null
   const jobStatus = matchingJob.status ?? null
   let customFieldUpdated = false
   let customFieldError: string | undefined
 
-  if (!wasAlreadyLinked) {
+  if (!wasAlreadyLinked && lead.tier) {
     try {
       await setLeadsQualityCustomField(request, matchingJob.uuid, leadsQuality)
       customFieldUpdated = true
@@ -139,6 +166,136 @@ export async function fetchLeadFromServiceM8(
     leadsQuality,
     customFieldUpdated,
     customFieldError,
+  }
+}
+
+export async function importLeadFromServiceM8JobNumber(
+  jobNumber: string,
+  actorId: string | null,
+  options: { request?: ServiceM8FetchRequest } = {},
+): Promise<LeadServiceM8ImportResult> {
+  const request = options.request ?? createServiceM8RequestFromEnv()
+  const normalizedJobNumber = jobNumber.trim().toUpperCase()
+  if (!normalizedJobNumber) {
+    return { ok: false, reason: 'error', message: 'Enter a ServiceM8 job number' }
+  }
+
+  const jobUuid = await resolveJobUuid({ jobNumber: normalizedJobNumber }, request)
+  if (!jobUuid) {
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: `No ServiceM8 job found with number ${normalizedJobNumber}`,
+    }
+  }
+
+  const meta = await getJobQuoteMeta(jobUuid, request)
+  const resolvedJobNumber = meta.jobNumber ?? normalizedJobNumber
+  if (!isServiceM8QuoteStatus(meta.status)) {
+    return {
+      ok: false,
+      reason: 'not_quote',
+      message: `ServiceM8 job ${resolvedJobNumber} is ${meta.status ?? 'not Quote'}, not Quote. Import a Quote job only.`,
+    }
+  }
+
+  const [existing] = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(or(
+      eq(leads.servicem8JobUuid, meta.jobUuid),
+      eq(leads.servicem8JobNumber, resolvedJobNumber),
+    ))
+    .limit(1)
+
+  if (existing) {
+    return {
+      ok: true,
+      leadId: existing.id,
+      jobUuid: meta.jobUuid,
+      jobNumber: resolvedJobNumber,
+      jobStatus: meta.status,
+      reusedExisting: true,
+      missingContact: false,
+      message: `Opened existing lead for job ${resolvedJobNumber}.`,
+    }
+  }
+
+  const jobContact = await getJobContact(meta.jobUuid, request)
+  const contact = hasContactDetail(jobContact)
+    ? jobContact
+    : meta.companyUuid
+      ? await getCompanyContact(meta.companyUuid, request)
+      : null
+  const phone = contact?.mobile || contact?.phone || null
+  const email = contact?.email || null
+  const missingContact = !phone && !email
+  const clientName = meta.clientName || contact?.name || `ServiceM8 job ${resolvedJobNumber}`
+  const projectType = deriveProjectType(meta.jobDescription)
+  const freeText = missingContact
+    ? '[Import flag] Missing phone/email in ServiceM8 at import time.'
+    : null
+  const now = new Date()
+  let createdLeadId = ''
+
+  await db.transaction(async (tx) => {
+    const resolved = await resolveClient(tx, {
+      servicem8CompanyUuid: meta.companyUuid,
+      clientName,
+      companyName: meta.clientName,
+      phone,
+      phoneNormalized: phone ? normalizeNzPhone(phone) : null,
+      email,
+    })
+
+    const [createdLead] = await tx
+      .insert(leads)
+      .values({
+        clientId: resolved.clientId,
+        contactId: resolved.contactId,
+        source: 'other',
+        externalRef: resolvedJobNumber,
+        syncStatus: 'synced',
+        servicem8JobUuid: meta.jobUuid,
+        servicem8JobNumber: resolvedJobNumber,
+        servicem8Status: meta.status,
+        projectType,
+        location: meta.jobAddress,
+        freeText,
+        createdBy: actorId,
+        updatedAt: now,
+      })
+      .returning({ id: leads.id })
+
+    createdLeadId = createdLead.id
+
+    await logAudit({
+      actorId,
+      entityType: 'lead',
+      action: 'lead.servicem8_import',
+      targetId: createdLeadId,
+      before: null,
+      after: {
+        jobUuid: meta.jobUuid,
+        jobNumber: resolvedJobNumber,
+        jobStatus: meta.status,
+        missingContact,
+        needsScoring: true,
+      },
+    }, tx)
+  })
+
+  return {
+    ok: true,
+    leadId: createdLeadId,
+    jobUuid: meta.jobUuid,
+    jobNumber: resolvedJobNumber,
+    jobStatus: meta.status,
+    reusedExisting: false,
+    missingContact,
+    message: missingContact
+      ? `Imported job ${resolvedJobNumber}. Contact details are missing and need manual follow-up.`
+      : `Imported job ${resolvedJobNumber}.`,
   }
 }
 
@@ -198,6 +355,14 @@ export async function linkLeadToServiceM8JobByNumber(
   const resolvedJobNumber = job.generated_job_id ?? normalizedJobNumber
   const jobStatus = job.status ?? null
 
+  if (!isServiceM8QuoteStatus(jobStatus)) {
+    return {
+      ok: false,
+      reason: 'error',
+      message: `ServiceM8 job ${resolvedJobNumber} is ${jobStatus ?? 'not Quote'}, not Quote. Choose a Quote job to link this lead.`,
+    }
+  }
+
   await db
     .update(leads)
     .set({
@@ -230,6 +395,10 @@ export async function linkLeadToServiceM8JobByNumber(
     jobStatus,
     message: `Linked to job ${resolvedJobNumber}${jobStatus ? ` (${jobStatus})` : ''}`,
   }
+}
+
+function hasContactDetail(contact: { phone: string | null; mobile: string | null; email: string | null } | null): boolean {
+  return Boolean(contact?.phone || contact?.mobile || contact?.email)
 }
 
 async function fetchJobByUuid(

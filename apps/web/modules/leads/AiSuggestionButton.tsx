@@ -9,11 +9,13 @@ export function AiSuggestionButton({
   initialSuggestion,
   initialGeneratedAt,
   action,
+  disabledReason,
 }: {
   leadId: string
   initialSuggestion: string | null
   initialGeneratedAt: Date | string | null
   action: (leadId: string) => Promise<SuggestionResult>
+  disabledReason?: string
 }) {
   const [suggestion, setSuggestion] = useState(initialSuggestion)
   const [generatedAt, setGeneratedAt] = useState<Date | string | null>(initialGeneratedAt)
@@ -51,11 +53,12 @@ export function AiSuggestionButton({
         <button
           type="button"
           onClick={generate}
-          disabled={isPending}
+          disabled={isPending || Boolean(disabledReason)}
           className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? 'Generating...' : suggestion ? 'Refresh' : 'Get suggestion'}
         </button>
+        {disabledReason && <span className="text-sm text-gray-600">{disabledReason}</span>}
         {message && (
           <span className={`text-sm ${message.includes('not configured') || message.includes('Could not') ? 'text-red-700' : 'text-gray-600'}`}>
             {message}

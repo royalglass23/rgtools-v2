@@ -27,6 +27,14 @@ This extends [architecture.md](./architecture.md):
 - Add shared schema in `packages/db/src/schema-servicem8.ts`, separate from the existing `schema.ts`, `schema-leads.ts`, and `schema-ps-generator.ts`.
 - Run sync from a Cloudflare cron worker, or from a secured API route plus external cron if the pull is small enough.
 
+## RG Leads lifecycle boundary
+
+The RG Leads workflow treats ServiceM8 status `Quote` as the only current lead-intake state. The label is singular: `Quote`, not `Quotes`. Code should trim and case-normalize before comparison, but it should not broaden the match to Work Order, completed, unsuccessful, or other statuses.
+
+Current Quote Leads are unlinked lead-intake records plus linked ServiceM8 jobs whose status normalizes to `Quote`. Non-Quote linked leads remain available for client history and downstream modules, but lead-intake edits and lead-intake AI actions are disabled. Fetch from ServiceM8 remains available as the refresh path because a job can move back to `Quote` outside RG Tools.
+
+Import and re-link paths must resolve by job number or UUID, fetch the current ServiceM8 job, and reject non-Quote jobs before mutating the lead. Imported Quote leads start unscored unless RG Tools has real scoring inputs; do not push a ServiceM8 Leads Quality value for an unscored imported lead.
+
 ## Proposed local schema
 
 Proposed file: `packages/db/src/schema-servicem8.ts`.
