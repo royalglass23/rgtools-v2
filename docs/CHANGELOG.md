@@ -6,6 +6,14 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ## [Unreleased]
 
+### Documentation
+- Added a [Security Policy](SECURITY.md) and a developer [security runbook](dev/security.md) covering reporting, environment separation, secrets, access control, quote data handling, retention, and incident response.
+- Updated the [Leads how-to](how-to/leads.md), ServiceM8 developer notes, and RG Leads manual checklist for the Quote-status lead workflow.
+- Expanded the README docs index so current developer, user, domain, DNS, ServiceM8, security, and admin docs are easier to find.
+- Added a staff [Client records how-to](how-to/clients.md) for client list/detail use and admin merge review.
+- Updated setup and deployment docs for current environment variables, AI guidance configuration, tracking seed data, ServiceM8 webhook registration, R2 dev/prod separation, and Worker secrets.
+- Updated architecture and quote-tracking docs to describe AI guidance, privacy surfaces, gate proof enforcement, current worker routes, client merge tooling, and security boundaries.
+
 ### Changed
 - Repo is now a pnpm monorepo: the internal Next.js app moved to `apps/web`, the shared Drizzle schema/client moved to `packages/db`, and root scripts now delegate to workspace packages.
 - Vercel deployment is scoped to the internal app at `apps/web`; `apps/web/vercel.json` only enables automatic deployments for `main` and `dev`.
@@ -30,7 +38,10 @@ All notable changes to rgtools are recorded here, grouped by release.
 - **Configurable dashboard tables** - dashboard table registry and admin editor.
 - `pnpm quote:create` - creates a tracked quote in the database from a ServiceM8 job, with optional expiry.
 - Tracking Settings admin page at `/admin/tracking`.
-- Docs: staff [Quote Tracker how-to](docs/how-to/quotes.md), [PS Generator how-to](docs/how-to/ps-generator.md), and [quote-tracking privacy note](docs/dev/quote-tracking.md).
+- Docs: staff [Quote Tracker how-to](how-to/quotes.md), [PS Generator how-to](how-to/ps-generator.md), and [quote-tracking privacy note](dev/quote-tracking.md).
+- Quote Tracker AI Guidance: conversation snapshots, staff-facing next viable move recommendations, email draft copy support, phone talking points, failure cooldowns, and stale/fresh snapshot display on quote detail pages.
+- Client record workflows: canonical client pages, query helpers, client resolver, merge planning, admin merge review, cleanup script, and quote-client backfill script.
+- Public quote viewer privacy surfaces at `/privacy` and in-viewer privacy/cookie notices.
 - Shared ServiceM8 REST client and short-code utilities for quote tracking scripts and modules.
 - Quote pull, preview, and share scripts for local testing.
 - Inbox message fallback for ServiceM8 lead fetch when the date-filtered job search misses a converted inbox job.

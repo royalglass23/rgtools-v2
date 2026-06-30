@@ -17,6 +17,7 @@ vi.mock('next/link', () => ({
 
 vi.mock('../actions', () => ({
   batchDeleteLeadsAction: vi.fn(),
+  restoreLeadAction: vi.fn(),
 }))
 
 vi.mock('../table-prefs-actions', () => ({
@@ -29,6 +30,7 @@ const filters: LeadsListFilters = {
   sm8: 'all',
   date: 'all',
   stale: false,
+  statusView: 'current_quotes',
   page: 1,
   size: 10,
   sortColumn: 'createdAt',
@@ -56,6 +58,7 @@ const rows = [{
   seedScore: 92,
   servicem8JobUuid: null,
   servicem8JobNumber: null,
+  servicem8Status: null,
   syncStatus: 'pending_sync',
   completeness: 80,
   rcStatus: 'Required',
@@ -86,5 +89,74 @@ describe('LeadsTableControls', () => {
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
     expect(screen.queryByText('Job Address')).not.toBeInTheDocument()
     expect(screen.queryByText('Hidden Road')).not.toBeInTheDocument()
+  })
+
+  it('shows Restore actions only in the admin Archived only view', () => {
+    const { rerender } = render(
+      <LeadsTableControls
+        filters={{ ...filters, statusView: 'archived' }}
+        rows={rows}
+        total={1}
+        pageCount={1}
+        isAdmin
+        prefs={prefs}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
+
+    rerender(
+      <LeadsTableControls
+        filters={{ ...filters, statusView: 'all_statuses' }}
+        rows={rows}
+        total={1}
+        pageCount={1}
+        isAdmin
+        prefs={prefs}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
+  })
+
+  it('keeps restore forms separate from the batch archive form', () => {
+    render(
+      <LeadsTableControls
+        filters={{ ...filters, statusView: 'archived' }}
+        rows={rows}
+        total={1}
+        pageCount={1}
+        isAdmin
+        prefs={prefs}
+      />,
+    )
+
+    expect(document.querySelector('form form')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Restore' }).closest('form')).not.toHaveAttribute('id', 'batch-delete-form')
+  })
+
+  it('labels unscored imported leads as needing scoring instead of showing fallback score values', () => {
+    render(
+      <LeadsTableControls
+        filters={filters}
+        rows={[{ ...rows[0], tier: null, seedScore: null, completeness: null }]}
+        total={1}
+        pageCount={1}
+        isAdmin={false}
+        prefs={{
+          ...prefs,
+          columns: [
+            { key: 'tier', visible: true },
+            { key: 'score', visible: true },
+            { key: 'completeness', visible: true },
+          ],
+        }}
+      />,
+    )
+
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('Needs scoring')).toBeInTheDocument()
+    expect(within(table).getAllByText('-')).toHaveLength(2)
+    expect(within(table).queryByText('D')).not.toBeInTheDocument()
   })
 })

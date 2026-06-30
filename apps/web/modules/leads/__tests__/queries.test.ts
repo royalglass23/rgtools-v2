@@ -86,6 +86,7 @@ const filters: LeadsListFilters = {
   sm8: 'all',
   date: 'all',
   stale: false,
+  statusView: 'current_quotes',
   page: 1,
   size: 10,
   sortColumn: 'createdAt',
@@ -112,6 +113,82 @@ describe('parseLeadsListFilters – stale param', () => {
   it('returns stale: false for invalid values', () => {
     const result = parseLeadsListFilters({ stale: 'yes' })
     expect(result.stale).toBe(false)
+  })
+})
+
+describe('parseLeadsListFilters - lead status view', () => {
+  it('defaults to Current Quotes', () => {
+    const result = parseLeadsListFilters({})
+
+    expect(result.statusView).toBe('current_quotes')
+  })
+
+  it('allows staff to choose All statuses', () => {
+    const result = parseLeadsListFilters({ statusView: 'all_statuses' })
+
+    expect(result.statusView).toBe('all_statuses')
+  })
+
+  it('allows admins to choose Archived only', () => {
+    const result = parseLeadsListFilters({ statusView: 'archived' }, { isAdmin: true })
+
+    expect(result.statusView).toBe('archived')
+  })
+
+  it('keeps non-admin users out of Archived only', () => {
+    const result = parseLeadsListFilters({ statusView: 'archived' }, { isAdmin: false })
+
+    expect(result.statusView).toBe('current_quotes')
+  })
+})
+
+describe('getLeadsList - lead status view WHERE clause', () => {
+  it('shows Current Quotes by default: unlinked or linked Quote leads, excluding archived leads', async () => {
+    await getLeadsList(filters)
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'isNull', column: 'archived_at' },
+        expect.objectContaining({
+          type: 'or',
+          conditions: expect.arrayContaining([
+            { type: 'isNull', column: 'servicem8_job_uuid' },
+            { type: 'sql' },
+          ]),
+        }),
+      ]),
+    }))
+  })
+
+  it('shows All statuses as non-archived leads regardless of ServiceM8 status', async () => {
+    await getLeadsList({ ...filters, statusView: 'all_statuses' })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: [{ type: 'isNull', column: 'archived_at' }],
+    }))
+  })
+
+  it('shows archived leads only in the Archived only view', async () => {
+    await getLeadsList({ ...filters, statusView: 'archived' }, filters, { isAdmin: true })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: [{ type: 'isNotNull', column: 'archived_at' }],
+    }))
+  })
+
+  it('treats Archived only as Current Quotes for non-admin callers', async () => {
+    await getLeadsList({ ...filters, statusView: 'archived' }, filters, { isAdmin: false })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'isNull', column: 'archived_at' },
+        expect.objectContaining({ type: 'or' }),
+      ]),
+    }))
   })
 })
 

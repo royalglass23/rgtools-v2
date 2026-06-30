@@ -5,6 +5,7 @@ import { getLeadDetail } from '@/modules/leads/queries'
 import { ServiceM8FetchButton } from '@/modules/leads/ServiceM8FetchButton'
 import { DeleteLeadButton } from '@/modules/leads/DeleteLeadButton'
 import { AiSuggestionButton } from '@/modules/leads/AiSuggestionButton'
+import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
 import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
 
 export default async function LeadDetailPage({
@@ -19,7 +20,8 @@ export default async function LeadDetailPage({
   const [lead, session] = await Promise.all([getLeadDetail(id), auth()])
   if (!lead) notFound()
 
-  const tier = lead.tier ?? 'D'
+  const scoreSummaryTier = lead.tier ?? 'Needs scoring'
+  const isReadOnly = isLeadReadOnlyForLeadIntake(lead)
   const boundDeleteAction = deleteLeadAction.bind(null, lead.id)
   const intakeSaved = notices.intakeSaved === 'updated' ? 'updated' : notices.intakeSaved === 'added' ? 'added' : null
 
@@ -30,17 +32,19 @@ export default async function LeadDetailPage({
           <Link href="/leads" className="text-sm text-gray-500 hover:text-gray-900">Back to leads</Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold text-gray-950">{lead.clientName}</h1>
-            <TierBadge tier={tier} />
+            <TierBadge tier={lead.tier} />
           </div>
           {lead.companyName && <p className="mt-1 text-sm text-gray-500">{lead.companyName}</p>}
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/lead-intake?leadId=${lead.id}`}
-            className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Edit
-          </Link>
+          {!isReadOnly && (
+            <Link
+              href={`/lead-intake?leadId=${lead.id}`}
+              className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Edit
+            </Link>
+          )}
           {session?.user?.role === 'admin' && (
             <form action={boundDeleteAction}>
               <DeleteLeadButton clientName={lead.clientName} />
@@ -52,6 +56,12 @@ export default async function LeadDetailPage({
       {intakeSaved && (
         <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
           Lead {intakeSaved} and scored successfully.
+        </div>
+      )}
+
+      {isReadOnly && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This lead is read-only because ServiceM8 status is {lead.servicem8Status ?? 'not Quote'}. Lead-intake edits are paused, but you can still fetch from ServiceM8 to refresh the status.
         </div>
       )}
 
@@ -100,9 +110,9 @@ export default async function LeadDetailPage({
 
       <Section title="Score Summary">
         <dl className="grid gap-4 sm:grid-cols-4">
-          <Field label="Tier" value={tier} />
-          <Field label="Score" value={String(lead.seedScore ?? 0)} />
-          <Field label="Completeness" value={`${lead.completeness ?? 0}%`} />
+          <Field label="Tier" value={scoreSummaryTier} />
+          <Field label="Score" value={lead.seedScore === null ? '-' : String(lead.seedScore)} />
+          <Field label="Completeness" value={lead.completeness === null ? '-' : `${lead.completeness}%`} />
           <Field label="Flag note" value={lead.strikeFlag ?? '-'} />
           <Field label="Score reason" value={lead.scoreReason ?? '-'} className="sm:col-span-4" />
         </dl>
@@ -114,6 +124,7 @@ export default async function LeadDetailPage({
           initialSuggestion={lead.aiSuggestion}
           initialGeneratedAt={lead.aiSuggestionAt}
           action={generateLeadSuggestionAction}
+          disabledReason={isReadOnly ? 'AI suggestions are paused while this ServiceM8 job is no longer Quote.' : undefined}
         />
       </Section>
 
@@ -163,7 +174,11 @@ function formatDateTime(date: Date | string) {
   }).format(new Date(date))
 }
 
-function TierBadge({ tier }: { tier: string }) {
+function TierBadge({ tier }: { tier: string | null }) {
+  if (!tier) {
+    return <span className="inline-flex rounded px-2 py-1 text-xs font-semibold bg-gray-100 text-gray-700">Needs scoring</span>
+  }
+
   const classes = {
     A: 'bg-green-100 text-green-800',
     B: 'bg-blue-100 text-blue-800',

@@ -45,13 +45,24 @@ Copy `.env.example` to `.env.local` and fill in all values. The shared DB client
 | `SMTP_PASS` | No | SMTP password |
 | `SMTP_FROM` | Yes | From address for outbound emails |
 | `SERVICEM8_INBOX_EMAIL` | Yes | Comma-separated inbox recipients |
-| `SERVICEM8_API_KEY` | Yes | ServiceM8 API key for lead and quote workflows |
+| `SERVICEM8_API_KEY` | Yes | ServiceM8 read-capable API key for lead and quote workflows |
+| `SERVICEM8_API_KEY_FULL` | Lead quality write-back | ServiceM8 write-capable key used only when updating the Leads Quality custom field |
 | `SERVICEM8_LEAD_QUALITY_FIELD` | Yes | ServiceM8 custom field UUID for lead quality |
 | `SERVICEM8_SYNC_SECRET` | Yes | Bearer secret for the ServiceM8 retry endpoint |
+| `SERVICEM8_WEBHOOK_SECRET` | Quote webhook | Shared secret used to verify ServiceM8 attachment webhook calls |
+| `SERVICEM8_ATTACHMENT_WEBHOOK_URL` | Quote webhook | Public app URL for `/api/servicem8/attachment` when registering the webhook |
 | `CALCULATOR_ALLOWED_ORIGIN` | Yes | Exact browser origin allowed to POST calculator leads |
 | `TURNSTILE_SECRET` | Production | Cloudflare Turnstile siteverify secret |
 | `RESEND_API_KEY` | Production | Resend API key |
 | `RESEND_FROM` | Production | Verified sender, e.g. `Royal Glass <support@royalglass.co.nz>` |
+| `OPENAI_API_KEY` | AI guidance | OpenAI API key for lead next-step and quote AI guidance |
+| `OPENAI_MODEL` | No | Optional model override; lead guidance defaults to `gpt-4o`, quote guidance defaults to `gpt-4o-mini` |
+| `STORAGE_DRIVER` | No | `local`, `r2`, or unset to auto-select R2 when `R2_ACCOUNT_ID` is present |
+| `LOCAL_STORAGE_DIR` | No | Local quote PDF storage path; defaults to `tmp/quotes` |
+| `VIEWER_BASE_URL` | Quote tracking | Base URL for generated quote links, normally `https://quotes.royalglass.co.nz` |
+| `R2_ACCOUNT_ID` | R2 | Cloudflare account ID for R2-backed storage |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | R2 production-like envs | R2 credentials and bucket for non-local storage |
+| `R2_ACCESS_KEY_ID_DEV` / `R2_SECRET_ACCESS_KEY_DEV` / `R2_BUCKET_DEV` | Local dev override | Optional development R2 credentials and bucket used when `NODE_ENV=development` |
 
 The calculator submit path uses Neon directly. In production, use Neon's pooled connection string for `DATABASE_URL`.
 
@@ -95,10 +106,18 @@ pnpm seed:ps-generator
 
 This inserts the published `wordpress-plugin-v1` PS Generator configuration. Generated PDFs also require the referenced fillable PDF templates to exist in storage under `templates/ps-generator/...`.
 
+Seed quote tracking settings:
+
+```bash
+pnpm seed:tracking
+```
+
+This upserts the tracking, viewer button, and notification settings read by the app and tracker/notifier workers.
+
 Seed scoring config when a scoring version changes:
 
 ```bash
-pnpm --dir apps/web tsx scripts/seed-scoring-config-v3.ts
+pnpm --dir apps/web tsx scripts/seed-scoring-config-v4.ts
 ```
 
 ## Run the dev server
@@ -127,6 +146,23 @@ pnpm quote:create --job 123
 
 The quote PDF must exist as a `QUOTE`-source attachment on the ServiceM8 job before these scripts can pull it.
 
+To register the ServiceM8 attachment webhook for automatic quote detection:
+
+```bash
+pnpm servicem8:webhook:register
+```
+
+The registration script requires `SERVICEM8_API_KEY`, `SERVICEM8_WEBHOOK_SECRET`, and `SERVICEM8_ATTACHMENT_WEBHOOK_URL`.
+
+Client maintenance helpers:
+
+```bash
+pnpm quotes:client-backfill
+pnpm clients:merge-cleanup
+```
+
+Use these against a known target environment only. They read `.env.local`, so confirm `DATABASE_URL` before running them.
+
 ## Run tests
 
 ```bash
@@ -146,6 +182,8 @@ Tests live in:
 - `apps/web/tests/integration/` - live DB integration tests.
 - `apps/web/tests/e2e/` - Playwright e2e tests.
 - `workers/*/src/__tests__/` - worker tests where present.
+
+Set `RUN_DB_TESTS=1` only when you intentionally want tests that hit the configured database. Quote-tracker integration tests should use synthetic records such as `QT-TEST-*` and clean them up afterward.
 
 ## Generate a migration
 

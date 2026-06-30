@@ -26,7 +26,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: mockRevalidatePath,
 }))
 
-import { batchDeleteLeadsAction } from '../actions'
+import { batchDeleteLeadsAction, restoreLeadAction } from '../actions'
 
 function formData(ids: string[]) {
   const data = new FormData()
@@ -40,6 +40,14 @@ beforeEach(() => {
 })
 
 describe('batchDeleteLeadsAction', () => {
+  it('throws Forbidden for unauthenticated call', async () => {
+    mockAuth.mockResolvedValue(null)
+
+    await expect(batchDeleteLeadsAction(formData(['lead-1']))).rejects.toThrow('Forbidden')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
   it('soft-deletes selected leads and writes one audit row per lead for admins', async () => {
     // Used directly as <form action>, so the action returns nothing on success.
     await expect(batchDeleteLeadsAction(formData(['lead-1', 'lead-2']))).resolves.toBeUndefined()
@@ -70,6 +78,49 @@ describe('batchDeleteLeadsAction', () => {
     mockAuth.mockResolvedValue({ user: { id: 'staff-id', role: 'staff' } })
 
     await expect(batchDeleteLeadsAction(formData(['lead-1']))).rejects.toThrow('Forbidden')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('restoreLeadAction', () => {
+  it('throws Forbidden for unauthenticated call', async () => {
+    mockAuth.mockResolvedValue(null)
+    const data = new FormData()
+    data.set('leadId', 'lead-1')
+
+    await expect(restoreLeadAction(data)).rejects.toThrow('Forbidden')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
+  it('clears archived state and writes an audit row for admins', async () => {
+    const data = new FormData()
+    data.set('leadId', 'lead-1')
+
+    await expect(restoreLeadAction(data)).resolves.toBeUndefined()
+
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
+      archivedAt: null,
+      updatedAt: expect.any(Date),
+    }))
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'admin-id',
+      entityType: 'lead',
+      action: 'lead.restored',
+      targetId: 'lead-1',
+      detail: expect.objectContaining({ softDelete: { from: true, to: false } }),
+    }))
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/leads')
+  })
+
+  it('blocks staff users without restoring leads', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'staff-id', role: 'staff' } })
+    const data = new FormData()
+    data.set('leadId', 'lead-1')
+
+    await expect(restoreLeadAction(data)).rejects.toThrow('Forbidden')
 
     expect(mockTransaction).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
