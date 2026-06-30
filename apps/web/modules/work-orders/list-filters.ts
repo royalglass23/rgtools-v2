@@ -1,6 +1,5 @@
 import type { WorkOrderLevel } from './domain'
 
-export type WorkOrderStatusFilter = string
 export type WorkOrderOptionFilter = string
 export type WorkOrderSort = 'lead_score' | 'importance' | 'risk' | 'install_date' | 'client_asc' | 'job_number'
 export type WorkOrderPageSize = 10 | 20 | 50 | 100
@@ -8,11 +7,9 @@ export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
 
 export type WorkOrderListFilters = {
   q: string
-  servicem8Status: WorkOrderStatusFilter
   current: WorkOrderCurrentFilter
   risk: WorkOrderLevel | 'all'
   importance: WorkOrderLevel | 'all'
-  installer: WorkOrderOptionFilter
   stage: WorkOrderOptionFilter
   hardware: WorkOrderOptionFilter
   sort: WorkOrderSort
@@ -22,11 +19,9 @@ export type WorkOrderListFilters = {
 
 const DEFAULT_FILTERS: WorkOrderListFilters = {
   q: '',
-  servicem8Status: 'Work Order',
   current: 'current',
   risk: 'all',
   importance: 'all',
-  installer: 'all',
   stage: 'all',
   hardware: 'all',
   sort: 'lead_score',
@@ -42,11 +37,9 @@ export function parseWorkOrderListFilters(
   searchParams: Record<string, string | string[] | undefined>,
 ): WorkOrderListFilters {
   const q = stringValue(searchParams.q)?.trim() ?? DEFAULT_FILTERS.q
-  const servicem8Status = stringValue(searchParams.servicem8Status)?.trim() || DEFAULT_FILTERS.servicem8Status
   const current = currentValue(searchParams.current)
   const risk = levelValue(searchParams.risk)
   const importance = levelValue(searchParams.importance)
-  const installer = optionValue(searchParams.installer)
   const stage = optionValue(searchParams.stage)
   const hardware = optionValue(searchParams.hardware)
   const sortCandidate = stringValue(searchParams.sort) as WorkOrderSort | undefined
@@ -55,11 +48,9 @@ export function parseWorkOrderListFilters(
 
   return {
     q,
-    servicem8Status,
     current,
     risk,
     importance,
-    installer,
     stage,
     hardware,
     sort: sortCandidate && SORTS.has(sortCandidate) ? sortCandidate : DEFAULT_FILTERS.sort,

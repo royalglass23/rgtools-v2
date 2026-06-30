@@ -15,6 +15,10 @@ import {
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
 import { normalizeConfigName } from './domain'
+import {
+  assertCurrentUserCanConfigureWorkOrders,
+  assertCurrentUserCanManageWorkOrders,
+} from './permissions'
 import { findLinkedLeadAndClient } from './queries'
 import { mapServiceM8JobsToWorkOrderInputs, type ServiceM8WorkOrderJob } from './servicem8-sync'
 
@@ -27,8 +31,7 @@ type ServiceM8Company = {
 const WORK_ORDER_FILTER = "active eq 1 and status eq 'Work Order'"
 
 export async function refreshWorkOrdersAction() {
-  const session = await auth()
-  if (!session?.user?.id) throw new Error('Forbidden')
+  await assertCurrentUserCanManageWorkOrders()
 
   try {
     await refreshWorkOrdersFromServiceM8()
@@ -192,6 +195,28 @@ export async function createWorkOrderHardwareStatusAction(formData: FormData) {
   })
 }
 
+export async function updateWorkOrderOperationalFieldsAction(workOrderId: string, formData: FormData) {
+  await assertCurrentUserCanManageWorkOrders()
+
+  const now = new Date()
+  await db
+    .update(workOrders)
+    .set({
+      installerId: nullableString(formData.get('installerId')),
+      stageOptionId: nullableString(formData.get('stageOptionId')),
+      hardwareStatusOptionId: nullableString(formData.get('hardwareStatusOptionId')),
+      installDate: nullableString(formData.get('installDate')),
+      dateCompleted: nullableString(formData.get('dateCompleted')),
+      riskLevelOverride: workOrderLevelValue(formData.get('riskLevel')),
+      importanceOverride: workOrderLevelValue(formData.get('importance')),
+      clientApproachNote: nullableString(formData.get('notes')),
+      updatedAt: now,
+    })
+    .where(eq(workOrders.id, workOrderId))
+
+  revalidatePath('/work-orders')
+}
+
 async function createConfigOption({
   formData,
   table,
@@ -201,8 +226,8 @@ async function createConfigOption({
   table: typeof workOrderInstallers | typeof workOrderStageOptions | typeof workOrderHardwareStatusOptions
   label: string
 }) {
+  await assertCurrentUserCanConfigureWorkOrders()
   const session = await auth()
-  if (session?.user?.role !== 'admin' || !session.user.id) throw new Error('Forbidden')
 
   const displayName = String(formData.get('displayName') ?? '').trim()
   if (!displayName) throw new Error(`Missing ${label} name`)
@@ -214,7 +239,7 @@ async function createConfigOption({
       displayName,
       normalizedName: normalizeConfigName(displayName),
       isActive: true,
-      createdBy: session.user.id,
+      createdBy: session?.user?.id ?? null,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -228,6 +253,18 @@ async function createConfigOption({
     })
 
   revalidatePath('/admin/work-orders')
+}
+
+function nullableString(value: FormDataEntryValue | null) {
+  const normalized = String(value ?? '').trim()
+  return normalized || null
+}
+
+function workOrderLevelValue(value: FormDataEntryValue | null) {
+  const normalized = nullableString(value)
+  return normalized === 'low' || normalized === 'medium' || normalized === 'high'
+    ? normalized
+    : null
 }
 
 async function findLinkedQuote(input: {

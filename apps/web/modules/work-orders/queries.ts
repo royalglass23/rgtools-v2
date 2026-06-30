@@ -130,12 +130,8 @@ export async function getWorkOrderConfigLists() {
 function listWhere(filters: WorkOrderListFilters) {
   const conditions = []
 
-  if (filters.servicem8Status !== 'all') {
-    conditions.push(eq(workOrders.servicem8Status, filters.servicem8Status))
-  }
   if (filters.current === 'current') conditions.push(eq(workOrders.isCurrent, true))
   if (filters.current === 'non_current') conditions.push(eq(workOrders.isCurrent, false))
-  if (filters.installer !== 'all') conditions.push(eq(workOrders.installerId, filters.installer))
   if (filters.stage !== 'all') conditions.push(eq(workOrders.stageOptionId, filters.stage))
   if (filters.hardware !== 'all') conditions.push(eq(workOrders.hardwareStatusOptionId, filters.hardware))
   if (filters.risk !== 'all') {
@@ -169,7 +165,8 @@ function listOrderBy(sort: WorkOrderSort) {
     sql`${workOrders.leadScore} desc nulls last`,
     desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
     desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
-    desc(workOrders.updatedAt),
+    sql`${workOrders.installDate} asc nulls last`,
+    asc(workOrders.updatedAt),
   ]
 }
 

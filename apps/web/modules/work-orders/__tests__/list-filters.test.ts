@@ -3,14 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { parseWorkOrderListFilters } from '../list-filters'
 
 describe('parseWorkOrderListFilters', () => {
-  it('defaults to current ServiceM8 Work Order status and score sorting', () => {
+  it('defaults to current records and priority sorting without hidden status or installer filters', () => {
     expect(parseWorkOrderListFilters({})).toEqual({
       q: '',
-      servicem8Status: 'Work Order',
       current: 'current',
       risk: 'all',
       importance: 'all',
-      installer: 'all',
       stage: 'all',
       hardware: 'all',
       sort: 'lead_score',
@@ -22,11 +20,9 @@ describe('parseWorkOrderListFilters', () => {
   it('accepts valid filters and pagination', () => {
     expect(parseWorkOrderListFilters({
       q: 'queen',
-      servicem8Status: 'Completed',
       current: 'non_current',
       risk: 'high',
       importance: 'medium',
-      installer: 'installer-1',
       stage: 'stage-1',
       hardware: 'hardware-1',
       sort: 'install_date',
@@ -34,11 +30,9 @@ describe('parseWorkOrderListFilters', () => {
       size: '50',
     })).toEqual({
       q: 'queen',
-      servicem8Status: 'Completed',
       current: 'non_current',
       risk: 'high',
       importance: 'medium',
-      installer: 'installer-1',
       stage: 'stage-1',
       hardware: 'hardware-1',
       sort: 'install_date',
@@ -56,11 +50,9 @@ describe('parseWorkOrderListFilters', () => {
       sort: 'unknown',
     })).toEqual({
       q: '',
-      servicem8Status: 'Work Order',
       current: 'current',
       risk: 'all',
       importance: 'all',
-      installer: 'all',
       stage: 'all',
       hardware: 'all',
       sort: 'lead_score',

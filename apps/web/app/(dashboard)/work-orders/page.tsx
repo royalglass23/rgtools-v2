@@ -3,6 +3,7 @@ import { requireModule } from '@/lib/guard'
 import { refreshWorkOrdersAction } from '@/modules/work-orders/actions'
 import type { WorkOrderLevel } from '@/modules/work-orders/domain'
 import { parseWorkOrderListFilters, type WorkOrderListFilters } from '@/modules/work-orders/list-filters'
+import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permissions'
 import { getWorkOrderFilterOptions, listWorkOrders, type WorkOrderRow } from '@/modules/work-orders/queries'
 
 export default async function WorkOrdersPage({
@@ -14,9 +15,10 @@ export default async function WorkOrdersPage({
   const resolvedSearchParams = await searchParams
   const filters = parseWorkOrderListFilters(resolvedSearchParams)
   const refreshError = typeof resolvedSearchParams.refreshError === 'string' ? resolvedSearchParams.refreshError : null
-  const [{ rows, total, pageCount }, options] = await Promise.all([
+  const [{ rows, total, pageCount }, options, permissions] = await Promise.all([
     listWorkOrders(filters),
     getWorkOrderFilterOptions(),
+    getCurrentWorkOrderPermissions(),
   ])
 
   return (
@@ -28,14 +30,16 @@ export default async function WorkOrdersPage({
             {total} jobs shown from saved RG Tools records
           </p>
         </div>
-        <form action={refreshWorkOrdersAction}>
-          <button
-            type="submit"
-            className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
-          >
-            Refresh from ServiceM8
-          </button>
-        </form>
+        {permissions.canManage && (
+          <form action={refreshWorkOrdersAction}>
+            <button
+              type="submit"
+              className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
+            >
+              Refresh from ServiceM8
+            </button>
+          </form>
+        )}
       </div>
 
       {refreshError && (
@@ -45,7 +49,7 @@ export default async function WorkOrdersPage({
       )}
 
       <WorkOrderFilters filters={filters} options={options} />
-      <WorkOrdersTable rows={rows} />
+      <WorkOrdersTable rows={rows} filters={filters} />
 
       <div className="grid grid-cols-3 items-center gap-3 text-sm text-gray-600">
         <span>{total} work orders</span>
@@ -70,10 +74,9 @@ function WorkOrderFilters({
   options: Awaited<ReturnType<typeof getWorkOrderFilterOptions>>
 }) {
   const resetHref = `/work-orders?size=${filters.size}`
-  const statusOptions = Array.from(new Set(['Work Order', ...options.statuses, 'all']))
 
   return (
-    <form action="/work-orders" className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm lg:grid-cols-8">
+    <form action="/work-orders" className="grid gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm lg:grid-cols-7">
       <input type="hidden" name="page" value="1" />
       <input type="hidden" name="size" value={String(filters.size)} />
       <label className="block lg:col-span-2">
@@ -90,11 +93,8 @@ function WorkOrderFilters({
           </button>
         </div>
       </label>
-      <Select name="servicem8Status" label="SM8 Status" value={filters.servicem8Status} options={statusOptions.map((status) => [status, status === 'all' ? 'All' : status])} />
-      <Select name="current" label="Current" value={filters.current} options={[['current', 'Current'], ['non_current', 'History'], ['all', 'All']]} />
-      <Select name="risk" label="Risk" value={filters.risk} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />
       <Select name="importance" label="Importance" value={filters.importance} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />
-      <Select name="installer" label="Installer" value={filters.installer} options={[['all', 'All'], ...options.installers.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
+      <Select name="risk" label="Risk" value={filters.risk} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />
       <Select name="stage" label="Stage" value={filters.stage} options={[['all', 'All'], ...options.stages.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
       <Select name="hardware" label="Hardware" value={filters.hardware} options={[['all', 'All'], ...options.hardwareStatuses.map((option: FilterOption) => [option.id, option.label] as [string, string])]} />
       <Select
@@ -124,15 +124,20 @@ function WorkOrderFilters({
 
 type FilterOption = { id: string; label: string }
 
-function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
+function WorkOrdersTable({ rows, filters }: { rows: WorkOrderRow[]; filters: WorkOrderListFilters }) {
+  const emptyMessage = hasActiveListFilters(filters)
+    ? 'No Work Orders match these filters.'
+    : 'No current Work Orders yet.'
+
   return (
     <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="min-w-[1500px] divide-y divide-gray-200 text-sm">
+        <table className="min-w-[1280px] divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-4 py-3">Client</th>
-              <th className="px-4 py-3">Job</th>
+              <th className="px-4 py-3">Job number</th>
+              <th className="px-4 py-3">Address</th>
               <th className="px-4 py-3">Score</th>
               <th className="px-4 py-3">Importance</th>
               <th className="px-4 py-3">Risk</th>
@@ -140,8 +145,7 @@ function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
               <th className="px-4 py-3">Stage</th>
               <th className="px-4 py-3">Hardware</th>
               <th className="px-4 py-3">Install date</th>
-              <th className="px-4 py-3">AI suggestion</th>
-              <th className="px-4 py-3">Client notes</th>
+              <th className="px-4 py-3">Date completed</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -150,13 +154,9 @@ function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
                 <td className="px-4 py-3 align-top">
                   <span className="font-medium text-gray-950">{row.clientName}</span>
                   {row.companyName && <span className="block text-xs text-gray-500">{row.companyName}</span>}
-                  <span className="mt-1 inline-flex rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{row.isCurrent ? row.servicem8Status : 'History'}</span>
                 </td>
-                <td className="max-w-xs px-4 py-3 align-top text-gray-700">
-                  <span className="font-medium text-gray-900">{row.jobNumber ?? '-'}</span>
-                  <span className="block truncate">{row.jobAddress ?? '-'}</span>
-                  <span className="block truncate text-xs text-gray-500">{row.jobDescription ?? '-'}</span>
-                </td>
+                <td className="px-4 py-3 align-top font-medium text-gray-900">{row.jobNumber ?? '-'}</td>
+                <td className="max-w-xs px-4 py-3 align-top text-gray-700"><span className="block truncate">{row.jobAddress ?? '-'}</span></td>
                 <td className="px-4 py-3 align-top text-gray-700">{row.leadScore ?? '-'}</td>
                 <td className="px-4 py-3 align-top"><LevelBadge level={row.importance} /></td>
                 <td className="px-4 py-3 align-top"><LevelBadge level={row.riskLevel} /></td>
@@ -164,14 +164,13 @@ function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
                 <td className="px-4 py-3 align-top text-gray-700">{row.stageName ?? '-'}</td>
                 <td className="px-4 py-3 align-top text-gray-700">{row.hardwareStatusName ?? '-'}</td>
                 <td className="px-4 py-3 align-top text-gray-700">{formatNullableDate(row.installDate)}</td>
-                <td className="max-w-xs px-4 py-3 align-top text-gray-700"><span className="block truncate">{row.aiSuggestion ?? '-'}</span></td>
-                <td className="max-w-xs px-4 py-3 align-top text-gray-700"><span className="block truncate">{row.clientApproachNote ?? row.clientContextSummary ?? '-'}</span></td>
+                <td className="px-4 py-3 align-top text-gray-700">{formatNullableDate(row.dateCompleted)}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
-                  No work orders found.
+                  {emptyMessage}
                 </td>
               </tr>
             )}
@@ -180,6 +179,14 @@ function WorkOrdersTable({ rows }: { rows: WorkOrderRow[] }) {
       </div>
     </div>
   )
+}
+
+function hasActiveListFilters(filters: WorkOrderListFilters) {
+  return Boolean(filters.q)
+    || filters.risk !== 'all'
+    || filters.importance !== 'all'
+    || filters.stage !== 'all'
+    || filters.hardware !== 'all'
 }
 
 function Select({ name, label, value, options }: { name: string; label: string; value: string; options: Array<[string, string]> }) {
@@ -241,11 +248,9 @@ function PageSizeSelect({ filters }: { filters: WorkOrderListFilters }) {
 function paramsFor(filters: WorkOrderListFilters) {
   const params = new URLSearchParams()
   if (filters.q) params.set('q', filters.q)
-  params.set('servicem8Status', filters.servicem8Status)
   params.set('current', filters.current)
   params.set('risk', filters.risk)
   params.set('importance', filters.importance)
-  params.set('installer', filters.installer)
   params.set('stage', filters.stage)
   params.set('hardware', filters.hardware)
   params.set('sort', filters.sort)
