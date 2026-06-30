@@ -1,0 +1,7 @@
+{
+  "stack": "node",
+  "subFlavor": "next",
+  "detectedAt": "2026-06-30T00:00:00Z",
+  "detectedBy": "marker:package.json",
+  "compliance": ["nz-privacy"]
+}
