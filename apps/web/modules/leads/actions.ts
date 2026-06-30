@@ -1,6 +1,6 @@
 'use server'
 
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -38,6 +38,35 @@ export async function batchDeleteLeadsAction(formData: FormData) {
         after: { softDelete: true, batch: true },
       }, tx),
     ))
+  })
+
+  revalidatePath('/leads')
+}
+
+export async function restoreLeadAction(formData: FormData) {
+  const session = await auth()
+  if (session?.user?.role !== 'admin' || !session.user.id) {
+    throw new Error('Forbidden')
+  }
+
+  const leadId = String(formData.get('leadId') ?? '')
+  if (!leadId) return
+
+  const now = new Date()
+  await db.transaction(async (tx) => {
+    await tx
+      .update(leads)
+      .set({ archivedAt: null, updatedAt: now })
+      .where(eq(leads.id, leadId))
+
+    await logAudit({
+      actorId: session.user.id as string,
+      entityType: 'lead',
+      action: 'lead.restored',
+      targetId: leadId,
+      before: { softDelete: true },
+      after: { softDelete: false },
+    }, tx)
   })
 
   revalidatePath('/leads')
