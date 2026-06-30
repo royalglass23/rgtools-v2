@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session?.user?.id) redirect('/login')
 
   const accessibleModules = await getAccessibleModules(session.user.id)
-  const { primaryModules, leadIntakeItems, psGeneratorItems, adminItems } = buildDashboardNavigation(accessibleModules, {
+  const { primaryModules, leadIntakeItems, psGeneratorItems, workOrderItems, adminItems } = buildDashboardNavigation(accessibleModules, {
     isAdmin: session.user.role === 'admin',
   })
 
@@ -34,13 +34,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="h-[72px] w-auto"
             />
           </Link>
-          {(primaryModules.length > 0 || leadIntakeItems.length > 0 || psGeneratorItems.length > 0 || adminItems.length > 0) && (
+          {(primaryModules.length > 0 || leadIntakeItems.length > 0 || psGeneratorItems.length > 0 || workOrderItems.length > 0 || adminItems.length > 0) && (
             <div className="flex items-center gap-4">
               {leadIntakeItems.length > 0 && (
                 <DropdownMenu label="Lead Intake" items={leadIntakeItems} />
               )}
               {psGeneratorItems.length > 0 && (
                 <DropdownMenu label="PS Generator" items={psGeneratorItems} />
+              )}
+              {workOrderItems.length > 0 && (
+                <DropdownMenu label="Work Order" items={workOrderItems} />
               )}
               {primaryModules.map((mod) => (
                 <Link
