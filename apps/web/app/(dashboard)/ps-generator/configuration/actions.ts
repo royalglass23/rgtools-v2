@@ -221,7 +221,7 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
       if (!before) throw new Error('Option value was not found.')
 
       const sortOrder = parseInteger(formData.get(`sortOrder:${optionValueId}`), before.sortOrder)
-      const archivedAt = formData.get(`archive:${optionValueId}`) === 'on' ? now : before.archivedAt
+      const archivedAt = isActive ? before.archivedAt : now
 
       if (before.label === label && before.isActive === isActive && before.sortOrder === sortOrder && before.archivedAt === archivedAt) continue
 
@@ -254,8 +254,8 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
     }
 
     const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
-    const newSlug = slugify(formData.get('newOptionSlug'))
     const newLabel = String(formData.get('newOptionLabel') ?? '').trim()
+    const newSlug = slugify(newLabel)
     if (newCategoryId && newSlug && newLabel) {
       const [category] = await tx
         .select({ id: psOptionCategories.id })
