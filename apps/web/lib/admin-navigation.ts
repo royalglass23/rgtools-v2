@@ -62,6 +62,10 @@ const PS_GENERATOR_SORT_ORDER: Record<string, number> = {
   'ps-generator/configuration': 2,
 }
 
+const PS_GENERATOR_PERMISSION_ONLY_SLUGS = new Set([
+  'ps-generator/configuration/publish',
+])
+
 const WORK_ORDER_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
   'work-orders': {
     id: 'work-order-list',
@@ -122,6 +126,7 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG) &&
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
     !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
+    !PS_GENERATOR_PERMISSION_ONLY_SLUGS.has(mod.slug) &&
     !WORK_ORDER_PERMISSION_ONLY_SLUGS.has(mod.slug)
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()

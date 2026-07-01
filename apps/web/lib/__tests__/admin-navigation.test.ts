@@ -129,4 +129,25 @@ describe('buildDashboardNavigation', () => {
     ])
     expect(nav.primaryModules).not.toContainEqual(expect.objectContaining({ slug: 'work-orders/manage' }))
   })
+
+  it('does not render PS publish permission rows as top-level navigation', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('ps', 'ps-generator', 'PS Generator', 4),
+      moduleRow('ps-history', 'ps-generator/history', 'PS History', 5),
+      moduleRow('ps-config', 'ps-generator/configuration', 'PS Configuration', 6),
+      moduleRow('ps-publish', 'ps-generator/configuration/publish', 'PS Configuration Publisher', 7),
+    ], { isAdmin: true })
+
+    expect(nav.primaryModules).toEqual([])
+    expect(nav.psGeneratorItems).toEqual([
+      { id: 'ps-generator-generate', slug: 'ps-generator', name: 'Generate PS', href: '/ps-generator' },
+      { id: 'ps-generator-history', slug: 'ps-generator/history', name: 'History', href: '/ps-generator/history' },
+      {
+        id: 'ps-generator-configuration',
+        slug: 'ps-generator/configuration',
+        name: 'Configuration',
+        href: '/ps-generator/configuration',
+      },
+    ])
+  })
 })
