@@ -175,6 +175,159 @@ export function updateDraftOptionValue(
   }, audit))
 }
 
+export function upsertDraftSystem(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    slug: string
+    displayName: string
+    sortOrder?: number
+    heightRules?: unknown
+    metadata?: unknown
+    archived?: boolean
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  requireDraftVersion(rows, input.configVersionId)
+
+  const before = rows.systems.find((system) => (
+    system.configVersionId === input.configVersionId
+    && system.slug === input.slug
+  ))
+  const after: SystemRow = {
+    id: before?.id ?? `draft-system:${input.configVersionId}:${input.slug}`,
+    configVersionId: input.configVersionId,
+    slug: input.slug,
+    displayName: input.displayName,
+    state: 'draft',
+    sortOrder: input.sortOrder ?? before?.sortOrder ?? rows.systems.length,
+    heightRules: input.heightRules ?? before?.heightRules ?? {},
+    metadata: input.metadata ?? before?.metadata ?? {},
+    createdAt: before?.createdAt ?? input.now,
+    updatedAt: input.now,
+    archivedAt: input.archived ? input.now : before?.archivedAt ?? null,
+  }
+
+  const audit = auditEntry(input, {
+    entityType: 'system',
+    entityId: after.id,
+    action: input.archived ? 'archived' : 'draft_saved',
+    configVersionId: input.configVersionId,
+    before: before ?? null,
+    after,
+  })
+
+  return finishRows(withAudit({
+    ...rows,
+    systems: before
+      ? rows.systems.map((system) => system.id === before.id ? after : system)
+      : [...rows.systems, after],
+  }, audit))
+}
+
+export function updateDraftSystemOptionRule(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    systemSlug: string
+    categorySlug: string
+    optionSlug: string
+    isAllowed: boolean
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  requireDraftVersion(rows, input.configVersionId)
+
+  const system = rows.systems.find((candidate) => (
+    candidate.configVersionId === input.configVersionId
+    && candidate.slug === input.systemSlug
+    && candidate.state === 'draft'
+  ))
+  if (!system) throw new Error(`Unknown draft system "${input.systemSlug}".`)
+
+  const category = rows.optionCategories.find((candidate) => candidate.slug === input.categorySlug)
+  if (!category) throw new Error(`Unknown PS option category "${input.categorySlug}".`)
+
+  const option = rows.optionValues.find((candidate) => (
+    candidate.configVersionId === input.configVersionId
+    && candidate.categoryId === category.id
+    && candidate.slug === input.optionSlug
+  ))
+  if (!option) throw new Error(`Unknown draft option value "${input.categorySlug}.${input.optionSlug}".`)
+
+  const before = rows.systemOptionRules.find((rule) => (
+    rule.systemId === system.id
+    && rule.optionValueId === option.id
+  ))
+  if (!before && !input.isAllowed) return finishRows(rows)
+
+  const after: SystemOptionRuleRow = {
+    id: before?.id ?? `draft-rule:${input.configVersionId}:${system.slug}:${category.slug}:${option.slug}`,
+    systemId: system.id,
+    optionValueId: option.id,
+    isAllowed: input.isAllowed,
+    createdAt: before?.createdAt ?? input.now,
+    updatedAt: input.now,
+  }
+  const audit = auditEntry(input, {
+    entityType: 'system_option_rule',
+    entityId: after.id,
+    action: 'draft_saved',
+    configVersionId: input.configVersionId,
+    before: before ?? null,
+    after,
+  })
+
+  return finishRows(withAudit({
+    ...rows,
+    systemOptionRules: before
+      ? rows.systemOptionRules.map((rule) => rule.id === before.id ? after : rule)
+      : [...rows.systemOptionRules, after],
+  }, audit))
+}
+
+export function upsertDraftDescriptionTemplate(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    slug: string
+    label: string
+    pattern: string
+    archived?: boolean
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  requireDraftVersion(rows, input.configVersionId)
+
+  const before = rows.descriptionTemplates.find((template) => (
+    template.configVersionId === input.configVersionId
+    && template.slug === input.slug
+  ))
+  const after: DescriptionTemplateRow = {
+    id: before?.id ?? `draft-description:${input.configVersionId}:${input.slug}`,
+    configVersionId: input.configVersionId,
+    slug: input.slug,
+    label: input.label,
+    pattern: input.pattern,
+    state: 'draft',
+    createdAt: before?.createdAt ?? input.now,
+    updatedAt: input.now,
+    archivedAt: input.archived ? input.now : before?.archivedAt ?? null,
+  }
+  const audit = auditEntry(input, {
+    entityType: 'description_template',
+    entityId: after.id,
+    action: input.archived ? 'archived' : 'draft_saved',
+    configVersionId: input.configVersionId,
+    before: before ?? null,
+    after,
+  })
+
+  return finishRows(withAudit({
+    ...rows,
+    descriptionTemplates: before
+      ? rows.descriptionTemplates.map((template) => template.id === before.id ? after : template)
+      : [...rows.descriptionTemplates, after],
+  }, audit))
+}
+
 export function replaceDraftTemplateVariant(
   rows: PsConfigurationRows,
   input: DraftActorInput & {
@@ -351,10 +504,21 @@ function publishVersionedRows<T extends { configVersionId: string | null; state:
   archivedAt: Date,
 ): T[] {
   return rows.map((row) => {
+    if (row.configVersionId === draftVersionId && row.archivedAt) return { ...row, state: 'archived', updatedAt: archivedAt }
     if (row.configVersionId === draftVersionId) return { ...row, state: 'published', archivedAt: null, updatedAt: archivedAt }
     if (row.state === 'published' && !row.archivedAt) return { ...row, state: 'archived', archivedAt, updatedAt: archivedAt }
     return row
   })
+}
+
+function requireDraftVersion(rows: PsConfigurationRows, configVersionId: string): ConfigVersionRow {
+  const version = rows.versions.find((candidate) => (
+    candidate.id === configVersionId
+    && candidate.state === 'draft'
+    && !candidate.archivedAt
+  ))
+  if (!version) throw new Error('Draft PS configuration was not found.')
+  return version
 }
 
 function latestPublishedVersion(rows: PsConfigurationRows): ConfigVersionRow | null {

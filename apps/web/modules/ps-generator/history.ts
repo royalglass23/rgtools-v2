@@ -112,7 +112,17 @@ function readSelectedOptions(snapshot: unknown): Array<{ categoryLabel: string; 
 }
 
 function readGeneratedDescriptions(snapshot: unknown): Array<{ documentKind: 'ps1' | 'ps3'; description: string | null }> {
-  if (!isRecord(snapshot) || !Array.isArray(snapshot.templates)) return []
+  if (!isRecord(snapshot)) return []
+
+  if (snapshot.migratedDocumentKind === 'ps1' || snapshot.migratedDocumentKind === 'ps3') {
+    const filename = normalizeText(snapshot.migratedFilename)
+    return [{
+      documentKind: snapshot.migratedDocumentKind,
+      description: filename ? `Migrated legacy PDF: ${filename}` : 'Migrated legacy PDF',
+    }]
+  }
+
+  if (!Array.isArray(snapshot.templates)) return []
 
   return snapshot.templates
     .map((template) => {

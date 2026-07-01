@@ -5,7 +5,10 @@ import {
 } from '../configuration'
 import {
   createConfigurationDraft,
+  upsertDraftDescriptionTemplate,
+  upsertDraftSystem,
   runDraftConfigurationTestGeneration,
+  updateDraftSystemOptionRule,
   updateDraftFieldMapping,
   publishConfigurationDraft,
   replaceDraftTemplateVariant,
@@ -147,6 +150,104 @@ describe('published PS Generator configuration', () => {
       actorId: 'publisher-1',
       entityType: 'config_version',
       entityId: draft.configVersionId,
+      before: { state: 'draft' },
+      after: { state: 'published' },
+    })
+  })
+
+  it('manages draft systems, option rules, and versioned descriptions before publish', () => {
+    const now = new Date('2026-06-30T00:00:00.000Z')
+    let rows = createPsGeneratorSeedRows()
+
+    const draft = createConfigurationDraft(rows, {
+      actorId: 'config-editor-1',
+      draftVersionLabel: 'wordpress-plugin-v2-system-draft',
+      now,
+    })
+    rows = draft.rows
+    rows = upsertDraftSystem(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      slug: 'frameless-spigot',
+      displayName: 'Frameless Spigot MK2',
+      sortOrder: 2,
+      now,
+    }).rows
+    rows = upsertDraftSystem(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      slug: 'face-fixed',
+      displayName: 'Face Fixed',
+      sortOrder: 3,
+      now,
+    }).rows
+    rows = updateDraftSystemOptionRule(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      systemSlug: 'double-disc',
+      categorySlug: 'gate_required',
+      optionSlug: 'yes',
+      isAllowed: false,
+      now,
+    }).rows
+    rows = upsertDraftDescriptionTemplate(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      slug: 'standard-balustrade',
+      label: 'Standard Balustrade v2',
+      pattern: 'V2 {system} at {jobAddress}',
+      now,
+    }).rows
+    rows = upsertDraftDescriptionTemplate(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      slug: 'gate-balustrade',
+      label: 'Gate Balustrade',
+      pattern: 'Archived gate template',
+      archived: true,
+      now,
+    }).rows
+
+    const beforePublish = buildPublishedPsConfigurationReadModel(rows)
+    expect(beforePublish.systems.find((system) => system.slug === 'frameless-spigot')?.displayName).toBe('Frameless Spigot')
+    expect(beforePublish.systems.map((system) => system.slug)).not.toContain('face-fixed')
+    expect(beforePublish.systems.find((system) => system.slug === 'double-disc')?.optionRules.gate_required).toContainEqual({
+      slug: 'yes',
+      label: 'Yes',
+    })
+    expect(beforePublish.descriptionTemplates.find((template) => template.slug === 'standard-balustrade')?.pattern).toBe(
+      '{system} glass balustrade to {structure_type}, {location}, fixed to {structure_material}; {glass_type} glass at {thickness}.',
+    )
+
+    const published = publishConfigurationDraft(rows, {
+      actorId: 'config-publisher-1',
+      configVersionId: draft.configVersionId,
+      now,
+    })
+    const afterPublish = buildPublishedPsConfigurationReadModel(published.rows)
+
+    expect(afterPublish.systems.find((system) => system.slug === 'frameless-spigot')?.displayName).toBe('Frameless Spigot MK2')
+    expect(afterPublish.systems.map((system) => system.slug)).toContain('face-fixed')
+    expect(afterPublish.systems.find((system) => system.slug === 'double-disc')?.optionRules.gate_required).toEqual([
+      { slug: 'no', label: 'No' },
+    ])
+    expect(afterPublish.descriptionTemplates.find((template) => template.slug === 'standard-balustrade')).toMatchObject({
+      label: 'Standard Balustrade v2',
+      pattern: 'V2 {system} at {jobAddress}',
+    })
+    expect(afterPublish.descriptionTemplates.map((template) => template.slug)).not.toContain('gate-balustrade')
+    expect(published.auditEntries.map((entry) => entry.entityType)).toEqual([
+      'config_version',
+      'system',
+      'system',
+      'system_option_rule',
+      'description_template',
+      'description_template',
+      'config_version',
+    ])
+    expect(published.auditEntries.at(-1)).toMatchObject({
+      actorId: 'config-publisher-1',
+      action: 'published',
       before: { state: 'draft' },
       after: { state: 'published' },
     })

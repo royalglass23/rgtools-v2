@@ -125,4 +125,34 @@ describe('PS generation history', () => {
       storage: { get: async () => Buffer.from('pdf') },
     })).resolves.toEqual({ ok: false, reason: 'expired' })
   })
+
+  it('renders migrated legacy PDF snapshots as human-readable descriptions', () => {
+    const history = buildPsGenerationHistory([{
+      id: 'event-migrated',
+      actorLabel: 'migrated',
+      generationMode: 'ps3_only',
+      jobNumber: 'R250001',
+      clientName: 'Legacy Customer',
+      jobAddress: '5 Old Road',
+      bcNumber: null,
+      lotDescription: null,
+      selectionsSnapshot: {
+        system: { slug: 'legacy-system', label: 'Legacy System' },
+        options: {
+          glass_type: { slug: 'laminated', label: 'Laminated' },
+        },
+      },
+      descriptionSnapshot: {
+        migratedFilename: 'legacy-ps3.pdf',
+        migratedDocumentKind: 'ps3',
+      },
+      createdAt: new Date('2025-12-01T00:00:00.000Z'),
+      pdfObjects: [],
+    }])
+
+    expect(history[0].generatedDescriptions).toEqual([{
+      documentKind: 'ps3',
+      description: 'Migrated legacy PDF: legacy-ps3.pdf',
+    }])
+  })
 })
