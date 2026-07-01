@@ -37,8 +37,10 @@ async function seed() {
     { slug: 'leads', name: 'Leads', adminOnly: false, sortOrder: 1, isActive: true },
     { slug: 'quote-tracker', name: 'Quote Tracker', adminOnly: false, sortOrder: 2, isActive: true },
     { slug: 'clients', name: 'Clients', adminOnly: false, sortOrder: 3, isActive: true },
-    { slug: 'ps-generator', name: 'PS Generator', adminOnly: false, sortOrder: 4, isActive: false },
-    { slug: 'ps-generator/configuration', name: 'PS Configuration', adminOnly: true, sortOrder: 5, isActive: false },
+    { slug: 'ps-generator', name: 'PS Generator', adminOnly: false, sortOrder: 4, isActive: true },
+    { slug: 'ps-generator/history', name: 'PS History', adminOnly: false, sortOrder: 5, isActive: true },
+    { slug: 'ps-generator/configuration', name: 'PS Configuration', adminOnly: false, sortOrder: 6, isActive: true },
+    { slug: 'ps-generator/configuration/publish', name: 'PS Configuration Publisher', adminOnly: false, sortOrder: 7, isActive: true },
     { slug: 'work-orders', name: 'Work Orders', adminOnly: false, sortOrder: 5, isActive: false },
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99, isActive: true },
     { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100, isActive: true },
@@ -64,19 +66,30 @@ async function seed() {
     }
   }
 
+  const staffDefaultModuleSlugs = [
+    'lead-intake',
+    'leads',
+    'quote-tracker',
+    'clients',
+    'ps-generator',
+    'ps-generator/history',
+    'dashboard',
+    'work-orders',
+  ]
   const staffDefaultModules = await db
     .select({ id: modules.id, slug: modules.slug })
     .from(modules)
     .where(eq(modules.adminOnly, false))
+  const staffDefaultModuleRows = staffDefaultModules.filter((moduleRow) => staffDefaultModuleSlugs.includes(moduleRow.slug))
 
-  if (staffDefaultModules.length > 0) {
+  if (staffDefaultModuleRows.length > 0) {
     const staffUsers = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.role, 'staff'))
 
     for (const staffUser of staffUsers) {
-      for (const moduleRow of staffDefaultModules) {
+      for (const moduleRow of staffDefaultModuleRows) {
         await db
           .insert(userModuleAccess)
           .values({

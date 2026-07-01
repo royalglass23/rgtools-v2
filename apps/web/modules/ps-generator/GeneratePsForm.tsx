@@ -2,6 +2,8 @@
 
 import { FormEvent, useMemo, useState, useTransition } from 'react'
 
+import { PlacesAutocomplete } from '@/modules/lead-intake/PlacesAutocomplete'
+
 import type { PublishedPsConfiguration } from './configuration'
 import type { PsGenerationMode } from './generation'
 
@@ -39,7 +41,7 @@ const MODE_OPTIONS: Array<{ value: PsGenerationMode; label: string; body: string
 ]
 
 export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps) {
-  const [mode, setMode] = useState<PsGenerationMode>('both')
+  const [mode, setMode] = useState<PsGenerationMode>('ps1_only')
   const [projectDetails, setProjectDetails] = useState({
     jobNumber: '',
     clientName: '',
@@ -175,7 +177,13 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
             </div>
           </label>
           <TextInput label="Client name" value={projectDetails.clientName} onChange={(value) => setProjectField('clientName', value)} required />
-          <TextInput label="Job address" value={projectDetails.jobAddress} onChange={(value) => setProjectField('jobAddress', value)} required />
+          <PlacesAutocomplete
+            label="Job address"
+            value={projectDetails.jobAddress}
+            onChange={(address) => setProjectField('jobAddress', address)}
+            required
+            updateOnInput
+          />
           <TextInput label="BC number" value={projectDetails.bcNumber} onChange={(value) => setProjectField('bcNumber', value)} />
           <TextInput label="Lot description" value={projectDetails.lotDescription} onChange={(value) => setProjectField('lotDescription', value)} />
         </div>
@@ -250,8 +258,12 @@ function TextInput({
 }) {
   return (
     <label className="text-sm font-medium text-gray-700">
-      {label}
+      <span className="flex items-center gap-2">
+        {label}
+        {required ? <span aria-hidden="true" className="text-red-600">*</span> : null}
+      </span>
       <input
+        aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required={required}

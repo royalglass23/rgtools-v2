@@ -18,9 +18,9 @@ describe('GeneratePsForm', () => {
     render(<GeneratePsForm configuration={configuration} />)
 
     expect(screen.getByRole('heading', { name: 'Generate PS' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'PS1 only' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'PS1 only' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'PS3 only' })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: 'PS1 + PS3' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'PS1 + PS3' })).not.toBeChecked()
 
     expect(screen.getByLabelText('System')).toHaveValue('double-disc')
     expect(screen.getByLabelText('Structure material')).toHaveValue('timber')
@@ -64,8 +64,8 @@ describe('GeneratePsForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Find job' }))
 
     await waitFor(() => expect(lookupJob).toHaveBeenCalledWith('R260210'))
+    await waitFor(() => expect(screen.getByLabelText('Job address')).toHaveValue('12 Glass Lane'))
     expect(screen.getByLabelText('Client name')).toHaveValue('Jane Customer')
-    expect(screen.getByLabelText('Job address')).toHaveValue('12 Glass Lane')
     expect(screen.getByLabelText('BC number')).toHaveValue('BC-123')
     expect(screen.getByLabelText('Lot description')).toHaveValue('Lot 4 DP 12345')
   })

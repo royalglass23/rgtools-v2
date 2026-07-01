@@ -42,11 +42,24 @@ const PS_GENERATOR_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
     name: 'Generate PS',
     href: '/ps-generator',
   },
+  'ps-generator/configuration': {
+    id: 'ps-generator-configuration',
+    slug: 'ps-generator/configuration',
+    name: 'Configuration',
+    href: '/ps-generator/configuration',
+  },
+  'ps-generator/history': {
+    id: 'ps-generator-history',
+    slug: 'ps-generator/history',
+    name: 'History',
+    href: '/ps-generator/history',
+  },
 }
 
 const PS_GENERATOR_SORT_ORDER: Record<string, number> = {
   'ps-generator': 0,
-  'ps-generator/configuration': 1,
+  'ps-generator/history': 1,
+  'ps-generator/configuration': 2,
 }
 
 const WORK_ORDER_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
@@ -104,8 +117,7 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in ADMIN_ROUTE_BY_SLUG) &&
     !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG) &&
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
-    !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
-    mod.slug !== 'ps-generator/configuration'
+    !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG)
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()
   const psGeneratorItemsByKey = new Map<string, DashboardNavItem>()
@@ -135,7 +147,13 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     psGeneratorItemsByKey.set(item.slug, item)
   }
 
-  if (options.isAdmin && psGeneratorItemsByKey.size > 0) {
+  if (options.isAdmin && psGeneratorItemsByKey.has('ps-generator')) {
+    psGeneratorItemsByKey.set('ps-generator/history', {
+      id: 'ps-generator-history',
+      slug: 'ps-generator/history',
+      name: 'History',
+      href: '/ps-generator/history',
+    })
     psGeneratorItemsByKey.set('ps-generator/configuration', {
       id: 'ps-generator-configuration',
       slug: 'ps-generator/configuration',

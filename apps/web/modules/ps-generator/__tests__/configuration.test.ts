@@ -5,7 +5,10 @@ import {
 } from '../configuration'
 import {
   createConfigurationDraft,
+  runDraftConfigurationTestGeneration,
+  updateDraftFieldMapping,
   publishConfigurationDraft,
+  replaceDraftTemplateVariant,
   updateDraftOptionValue,
 } from '../configuration-drafts'
 import { PS_GENERATOR_OPTION_CATEGORIES } from '../config'
@@ -146,6 +149,90 @@ describe('published PS Generator configuration', () => {
       entityId: draft.configVersionId,
       before: { state: 'draft' },
       after: { state: 'published' },
+    })
+  })
+
+  it('updates draft templates and field mappings without publishing or retaining test output', async () => {
+    const now = new Date('2026-06-30T00:00:00.000Z')
+    let rows = createPsGeneratorSeedRows()
+    const draft = createConfigurationDraft(rows, {
+      actorId: 'editor-1',
+      draftVersionLabel: 'wordpress-plugin-v2-template-draft',
+      now,
+    })
+    rows = draft.rows
+
+    rows = replaceDraftTemplateVariant(rows, {
+      actorId: 'editor-1',
+      configVersionId: draft.configVersionId,
+      templateVariantId: 'draft-template:wordpress-plugin-v2-template-draft:seed-template:double-disc-ps3',
+      r2ObjectKey: 'drafts/ps-generator/ps3-v2.pdf',
+      originalFilename: 'PS3 v2.pdf',
+      fieldDiscovery: {
+        text: ['completion_date', 'description', 'job_address'],
+        checkbox: [],
+      },
+      now,
+    }).rows
+    rows = updateDraftFieldMapping(rows, {
+      actorId: 'editor-1',
+      configVersionId: draft.configVersionId,
+      templateVariantId: 'draft-template:wordpress-plugin-v2-template-draft:seed-template:double-disc-ps3',
+      fieldName: 'job_address',
+      fieldType: 'text',
+      sourceType: 'project_value',
+      sourceKey: 'jobAddress',
+      now,
+    }).rows
+
+    expect(buildPublishedPsConfigurationReadModel(rows).templateVariants.find((variant) => variant.variantKind === 'ps3')).toMatchObject({
+      r2ObjectKey: 'templates/ps-generator/wordpress/double-disc/ps3.pdf',
+    })
+
+    const generated = await runDraftConfigurationTestGeneration(rows, {
+      configVersionId: draft.configVersionId,
+      actorId: 'editor-1',
+      now,
+      input: {
+        mode: 'ps3_only',
+        projectDetails: {
+          clientName: 'Jane Customer',
+          jobAddress: '12 Glass Lane',
+        },
+        selections: {
+          system: 'double-disc',
+          structure_material: 'timber',
+          structure_type: 'deck',
+          location: 'external',
+          structure_built: 'new',
+          glass_type: 'toughened',
+          thickness: '12mm',
+          gate_required: 'no',
+        },
+      },
+      generator: async (input, dependencies) => ({
+        operationId: dependencies.operationId ?? 'test-operation',
+        mode: input.mode,
+        versionLabel: dependencies.configuration?.versionLabel ?? '',
+        outputs: [{
+          documentKind: 'ps3',
+          templateVariantId: 'draft-template:wordpress-plugin-v2-template-draft:seed-template:double-disc-ps3',
+          templateLabel: 'Double Disc PS3',
+          sourceObjectKey: 'drafts/ps-generator/ps3-v2.pdf',
+          filename: 'PS3-Jane-Customer.pdf',
+          contentType: 'application/pdf',
+          bytes: Buffer.from('draft-test'),
+        }],
+      }),
+    })
+
+    expect(generated.outputs).toHaveLength(1)
+    expect(generated.outputs[0].r2ObjectKey).toBeUndefined()
+    expect(generated.auditEntries.at(-1)).toMatchObject({
+      actorId: 'editor-1',
+      entityType: 'config_version',
+      action: 'test_generated',
+      configVersionId: draft.configVersionId,
     })
   })
 })

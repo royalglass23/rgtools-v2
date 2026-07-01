@@ -294,6 +294,16 @@ export function createPsGeneratorSeedRows(): PsConfigurationRows {
 export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows): PublishedPsConfiguration {
   const version = rows.versions.find((row) => row.state === 'published' && !row.archivedAt)
   if (!version) return EMPTY_CONFIGURATION
+  return buildConfigurationReadModel(rows, version.id, 'published')
+}
+
+export function buildConfigurationReadModel(
+  rows: PsConfigurationRows,
+  configVersionId: string,
+  state: PsConfigState,
+): PublishedPsConfiguration {
+  const version = rows.versions.find((row) => row.id === configVersionId && row.state === state && !row.archivedAt)
+  if (!version) return EMPTY_CONFIGURATION
 
   const categories = rows.optionCategories
     .filter((category) => category.isActive && PS_GENERATOR_OPTION_CATEGORIES.includes(category.slug as never))
@@ -301,7 +311,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const values = rows.optionValues
     .filter((value) => (
-      value.configVersionId === version.id
+      value.configVersionId === configVersionId
       && value.isActive
       && !value.archivedAt
       && categoryById.has(value.categoryId)
@@ -309,7 +319,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
     .sort(sortByOrder)
   const valueById = new Map(values.map((value) => [value.id, value]))
   const systemRows = rows.systems
-    .filter((system) => system.configVersionId === version.id && system.state === 'published' && !system.archivedAt)
+    .filter((system) => system.configVersionId === configVersionId && system.state === state && !system.archivedAt)
     .sort(sortByOrder)
   const systemById = new Map(systemRows.map((system) => [system.id, system]))
 
@@ -346,8 +356,8 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
 
   const templateRows = rows.templateVariants
     .filter((variant) => (
-      variant.configVersionId === version.id
-      && variant.state === 'published'
+      variant.configVersionId === configVersionId
+      && variant.state === state
       && !variant.archivedAt
       && (!variant.systemId || systemById.has(variant.systemId))
     ))
@@ -377,7 +387,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
   }))
 
   const descriptionTemplates = rows.descriptionTemplates
-    .filter((template) => template.configVersionId === version.id && template.state === 'published' && !template.archivedAt)
+    .filter((template) => template.configVersionId === configVersionId && template.state === state && !template.archivedAt)
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((template) => ({
       slug: template.slug,

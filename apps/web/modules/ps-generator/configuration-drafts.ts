@@ -1,4 +1,14 @@
 import type { PsConfigurationRows } from './configuration'
+import {
+  buildConfigurationReadModel,
+  type PublishedPsConfiguration,
+} from './configuration'
+import {
+  generateProducerStatementPackage,
+  type GenerateProducerStatementPackageInput,
+  type GenerateProducerStatementPackageDependencies,
+  type GenerateProducerStatementPackageResult,
+} from './generation'
 
 type ConfigVersionRow = PsConfigurationRows['versions'][number]
 type SystemRow = PsConfigurationRows['systems'][number]
@@ -163,6 +173,141 @@ export function updateDraftOptionValue(
     ...rows,
     optionValues: rows.optionValues.map((value) => value.id === before.id ? after : value),
   }, audit))
+}
+
+export function replaceDraftTemplateVariant(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    templateVariantId: string
+    r2ObjectKey: string
+    originalFilename: string
+    fieldDiscovery: unknown
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  const before = rows.templateVariants.find((variant) => (
+    variant.id === input.templateVariantId
+    && variant.configVersionId === input.configVersionId
+    && variant.state === 'draft'
+  ))
+  if (!before) throw new Error('Draft template variant was not found.')
+
+  const after: TemplateVariantRow = {
+    ...before,
+    r2ObjectKey: input.r2ObjectKey,
+    originalFilename: input.originalFilename,
+    fieldDiscovery: input.fieldDiscovery,
+    updatedAt: input.now,
+  }
+
+  const audit = auditEntry(input, {
+    entityType: 'template_variant',
+    entityId: before.id,
+    action: 'draft_saved',
+    configVersionId: input.configVersionId,
+    before,
+    after,
+  })
+
+  return finishRows(withAudit({
+    ...rows,
+    templateVariants: rows.templateVariants.map((variant) => variant.id === before.id ? after : variant),
+  }, audit))
+}
+
+export function updateDraftFieldMapping(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    templateVariantId: string
+    fieldName: string
+    fieldType: FieldMappingRow['fieldType']
+    sourceType: FieldMappingRow['sourceType']
+    sourceKey?: string | null
+    fixedValue?: string | null
+    checkboxValue?: boolean | null
+    sortOrder?: number
+    archived?: boolean
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  const template = rows.templateVariants.find((variant) => (
+    variant.id === input.templateVariantId
+    && variant.configVersionId === input.configVersionId
+    && variant.state === 'draft'
+  ))
+  if (!template) throw new Error('Draft template variant was not found.')
+
+  const before = rows.fieldMappings.find((mapping) => (
+    mapping.templateVariantId === input.templateVariantId
+    && mapping.fieldName === input.fieldName
+  ))
+  const after: FieldMappingRow = {
+    id: before?.id ?? `draft-field:${input.configVersionId}:${input.templateVariantId}:${input.fieldName}`,
+    templateVariantId: input.templateVariantId,
+    fieldName: input.fieldName,
+    fieldType: input.fieldType,
+    sourceType: input.sourceType,
+    sourceKey: input.sourceKey ?? null,
+    fixedValue: input.fixedValue ?? null,
+    checkboxValue: input.checkboxValue ?? null,
+    sortOrder: input.sortOrder ?? before?.sortOrder ?? rows.fieldMappings.length,
+    createdAt: before?.createdAt ?? input.now,
+    updatedAt: input.now,
+    archivedAt: input.archived ? input.now : null,
+  }
+
+  const audit = auditEntry(input, {
+    entityType: 'field_mapping',
+    entityId: after.id,
+    action: input.archived ? 'archived' : 'draft_saved',
+    configVersionId: input.configVersionId,
+    before: before ?? null,
+    after,
+  })
+
+  return finishRows(withAudit({
+    ...rows,
+    fieldMappings: before
+      ? rows.fieldMappings.map((mapping) => mapping.id === before.id ? after : mapping)
+      : [...rows.fieldMappings, after],
+  }, audit))
+}
+
+export async function runDraftConfigurationTestGeneration(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    input: GenerateProducerStatementPackageInput
+    generator?: (
+      input: GenerateProducerStatementPackageInput,
+      dependencies: GenerateProducerStatementPackageDependencies & { configuration: PublishedPsConfiguration },
+    ) => Promise<GenerateProducerStatementPackageResult>
+  },
+): Promise<GenerateProducerStatementPackageResult & { auditEntries: AuditEntry[] }> {
+  const configuration = buildConfigurationReadModel(rows, input.configVersionId, 'draft')
+  if (!configuration.versionLabel) throw new Error('Draft PS configuration was not found.')
+
+  const generator = input.generator ?? generateProducerStatementPackage
+  const result = await generator(input.input, {
+    configuration,
+    persistGeneratedOutputs: false,
+    now: input.now,
+    operationId: `draft-test:${input.configVersionId}`,
+  })
+  const audit = auditEntry(input, {
+    entityType: 'config_version',
+    entityId: input.configVersionId,
+    action: 'test_generated',
+    configVersionId: input.configVersionId,
+    before: null,
+    after: {
+      mode: input.input.mode,
+      outputCount: result.outputs.length,
+    },
+  })
+
+  rows.auditEntries = [...(rows.auditEntries ?? []), audit]
+  return { ...result, auditEntries: rows.auditEntries }
 }
 
 export function publishConfigurationDraft(
