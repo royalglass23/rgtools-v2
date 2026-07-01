@@ -29,7 +29,7 @@ async function login(page: Page) {
   await page.getByLabel('Username').fill(e2eUser)
   await page.getByLabel('Password').fill(e2ePassword)
   await page.getByRole('button', { name: /^sign in$/i }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 })
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000, waitUntil: 'commit' })
 }
 
 async function expectNoCriticalBrowserErrors(page: Page, action: () => Promise<void>) {

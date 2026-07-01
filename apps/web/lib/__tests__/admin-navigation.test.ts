@@ -117,6 +117,7 @@ describe('buildDashboardNavigation', () => {
   it('groups work order list and configuration under the Work Order menu when enabled', () => {
     const nav = buildDashboardNavigation([
       moduleRow('work-orders', 'work-orders', 'Work Orders', 5),
+      moduleRow('work-order-manage', 'work-orders/manage', 'Work Orders Manage', 6),
       moduleRow('work-order-config', 'admin/work-orders', 'Work Order Configuration', 106, true),
     ], { isAdmin: true, showWorkOrderNavigation: true })
 
@@ -126,5 +127,6 @@ describe('buildDashboardNavigation', () => {
       { id: 'work-order-list', slug: 'work-orders', name: 'Lists', href: '/work-orders' },
       { id: 'work-order-configuration', slug: 'admin/work-orders', name: 'Configuration', href: '/admin/work-orders' },
     ])
+    expect(nav.primaryModules).not.toContainEqual(expect.objectContaining({ slug: 'work-orders/manage' }))
   })
 })

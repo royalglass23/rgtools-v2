@@ -74,7 +74,37 @@ export const DASHBOARD_TABLES: DashboardTableMeta[] = [
     ],
   },
   // Placeholder — flip `available` to true once its list page + table-controls component exist.
-  { key: 'work_orders', label: 'Work Orders', available: false, paramPrefix: 'wo_', filterFields: [] },
+  {
+    key: 'work_orders',
+    label: 'Work Orders',
+    available: true,
+    paramPrefix: 'wo_',
+    filterFields: [
+      { name: 'current', label: 'Current', options: [['current', 'Current'], ['all', 'All'], ['non_current', 'Non-current']], default: 'current' },
+      { name: 'risk', label: 'Risk', options: [['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], default: 'all' },
+      { name: 'importance', label: 'Importance', options: [['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], default: 'all' },
+      {
+        name: 'sort',
+        label: 'Sort',
+        options: [
+          ['lead_score_desc', 'Lead score high-low'],
+          ['lead_score_asc', 'Lead score low-high'],
+          ['importance_desc', 'Importance high-low'],
+          ['importance_asc', 'Importance low-high'],
+          ['risk_desc', 'Risk high-low'],
+          ['risk_asc', 'Risk low-high'],
+          ['install_date_asc', 'Install date asc'],
+          ['install_date_desc', 'Install date desc'],
+          ['client_asc', 'Client A-Z'],
+          ['client_desc', 'Client Z-A'],
+          ['job_number_asc', 'Job number asc'],
+          ['job_number_desc', 'Job number desc'],
+        ],
+        default: 'lead_score_desc',
+      },
+      { name: 'size', label: 'Page size', options: [['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']], default: '10' },
+    ],
+  },
 ]
 
 export type DashboardTableConfig = {

@@ -69,6 +69,10 @@ const WORK_ORDER_SORT_ORDER: Record<string, number> = {
   'admin/work-orders': 1,
 }
 
+const WORK_ORDER_PERMISSION_ONLY_SLUGS = new Set([
+  'work-orders/manage',
+])
+
 const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   admin: '/admin/administration',
   'admin/administration': '/admin/administration',
@@ -105,6 +109,7 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG) &&
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
     !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
+    !WORK_ORDER_PERMISSION_ONLY_SLUGS.has(mod.slug) &&
     mod.slug !== 'ps-generator/configuration'
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()

@@ -65,6 +65,7 @@ export const psOptionCategories = pgTable('ps_option_categories', {
 export const psOptionValues = pgTable('ps_option_values', {
   id: uuid('id').primaryKey().defaultRandom(),
   categoryId: uuid('category_id').notNull().references(() => psOptionCategories.id, { onDelete: 'cascade' }),
+  configVersionId: uuid('config_version_id').references(() => psConfigVersions.id, { onDelete: 'set null' }),
   slug: text('slug').notNull(),
   label: text('label').notNull(),
   sortOrder: integer('sort_order').default(0).notNull(),
@@ -73,8 +74,9 @@ export const psOptionValues = pgTable('ps_option_values', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
 }, (table) => [
-  uniqueIndex('ps_option_values_category_slug_uq').on(table.categoryId, table.slug),
+  uniqueIndex('ps_option_values_category_slug_version_uq').on(table.categoryId, table.slug, table.configVersionId),
   index('ps_option_values_category_idx').on(table.categoryId),
+  index('ps_option_values_config_version_idx').on(table.configVersionId),
 ])
 
 export const psSystemOptionRules = pgTable('ps_system_option_rules', {

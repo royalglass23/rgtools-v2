@@ -1,5 +1,7 @@
 export type WorkOrderLevel = 'low' | 'medium' | 'high'
 
+export const WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS = 5 * 60 * 1000
+
 export type WorkOrderIdentityInput = {
   servicem8JobUuid: string | null
   jobNumber: string | null
@@ -8,7 +10,6 @@ export type WorkOrderIdentityInput = {
 
 export type WorkOrderMatchKey =
   | { kind: 'servicem8_uuid'; value: string }
-  | { kind: 'job_number_address'; value: string }
   | { kind: 'job_number'; value: string }
   | { kind: 'none'; value: null }
 
@@ -26,9 +27,6 @@ export function matchKeyForWorkOrder(input: WorkOrderIdentityInput): WorkOrderMa
 
   const jobNumber = input.jobNumber?.trim()
   if (!jobNumber) return { kind: 'none', value: null }
-
-  const jobAddress = input.jobAddress ? normalizeAddress(input.jobAddress) : ''
-  if (jobAddress) return { kind: 'job_number_address', value: `${jobNumber}|${jobAddress}` }
 
   return { kind: 'job_number', value: jobNumber }
 }

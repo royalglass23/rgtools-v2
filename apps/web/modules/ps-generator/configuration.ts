@@ -45,6 +45,7 @@ interface OptionCategoryRow {
 interface OptionValueRow {
   id: string
   categoryId: string
+  configVersionId: string | null
   slug: string
   label: string
   sortOrder: number
@@ -181,6 +182,7 @@ export function createPsGeneratorSeedRows(): PsConfigurationRows {
     category.values.map((value) => ({
       id: `seed-option:${category.slug}:${value.slug}`,
       categoryId: `seed-category:${category.slug}`,
+      configVersionId: versionId,
       slug: value.slug,
       label: value.label,
       sortOrder: value.sortOrder,
@@ -271,7 +273,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
     .sort(sortByOrder)
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const values = rows.optionValues
-    .filter((value) => value.isActive && !value.archivedAt && categoryById.has(value.categoryId))
+    .filter((value) => value.configVersionId === version.id && value.isActive && !value.archivedAt && categoryById.has(value.categoryId))
     .sort(sortByOrder)
   const valueById = new Map(values.map((value) => [value.id, value]))
   const systemRows = rows.systems
@@ -381,7 +383,7 @@ export async function getPublishedPsConfiguration(database?: Awaited<ReturnType<
   ] = await Promise.all([
     db.select().from(psSystems).where(eq(psSystems.configVersionId, version.id)).orderBy(asc(psSystems.sortOrder)),
     db.select().from(psOptionCategories).orderBy(asc(psOptionCategories.sortOrder)),
-    db.select().from(psOptionValues).orderBy(asc(psOptionValues.sortOrder)),
+    db.select().from(psOptionValues).where(eq(psOptionValues.configVersionId, version.id)).orderBy(asc(psOptionValues.sortOrder)),
     db.select().from(psSystemOptionRules),
     db.select().from(psTemplateVariants).where(eq(psTemplateVariants.configVersionId, version.id)),
     db.select().from(psFieldMappings).orderBy(asc(psFieldMappings.sortOrder)),

@@ -8,6 +8,10 @@ import { LeadsTableControls } from '@/modules/leads/LeadsTableControls'
 import { listQuotes } from '@/modules/quote-tracker/queries'
 import { parseQuoteListFilters } from '@/modules/quote-tracker/list-filters'
 import { QuoteTableControls } from '@/modules/quote-tracker/QuoteTableControls'
+import { parseWorkOrderListFilters } from '@/modules/work-orders/list-filters'
+import { getWorkOrderFilterOptions, listWorkOrders } from '@/modules/work-orders/queries'
+import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
+import { WorkOrdersTableControls } from '@/modules/work-orders/WorkOrdersTableControls'
 import { getTableMeta, type DashboardTableKey } from './tables'
 
 type RenderArgs = {
@@ -66,8 +70,37 @@ const quotesTable: ServerTable = {
   },
 }
 
-/** Only available tables are registered here; placeholders are intentionally absent. */
+const workOrdersTable: ServerTable = {
+  async render({ searchParams, filter }) {
+    const meta = getTableMeta('work_orders')!
+    const filters = parseWorkOrderListFilters(searchParams, {
+      prefix: meta.paramPrefix,
+      defaults: filter,
+    })
+    const [{ rows, total, pageCount }, options, fields] = await Promise.all([
+      listWorkOrders(filters),
+      getWorkOrderFilterOptions(),
+      getWorkOrderSummaryConfig(),
+    ])
+
+    return (
+      <WorkOrdersTableControls
+        rows={rows}
+        filters={filters}
+        fields={fields}
+        options={options}
+        total={total}
+        pageCount={pageCount}
+        basePath="/"
+        paramPrefix={meta.paramPrefix}
+      />
+    )
+  },
+}
+
+/** Only available tables are registered here. */
 export const SERVER_TABLES: Partial<Record<DashboardTableKey, ServerTable>> = {
   leads: leadsTable,
   quotes: quotesTable,
+  work_orders: workOrdersTable,
 }
