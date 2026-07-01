@@ -14,6 +14,7 @@ export type WorkOrderSummaryFieldId =
   | 'installer'
   | 'stage'
   | 'hardware'
+  | 'maintenanceProgram'
   | 'installDate'
   | 'dateCompleted'
   | 'servicem8Status'
@@ -38,10 +39,11 @@ export const WORK_ORDER_SUMMARY_FIELD_CATALOG: WorkOrderSummaryFieldConfig[] = [
   { id: 'installer', label: 'Installer', source: 'rg', visible: true, filterable: false, order: 7 },
   { id: 'stage', label: 'Stage', source: 'rg', visible: true, filterable: true, order: 8 },
   { id: 'hardware', label: 'Hardware', source: 'rg', visible: true, filterable: true, order: 9 },
-  { id: 'installDate', label: 'Install date', source: 'rg', visible: true, filterable: false, order: 10 },
-  { id: 'dateCompleted', label: 'Date completed', source: 'rg', visible: true, filterable: false, order: 11 },
-  { id: 'servicem8Status', label: 'ServiceM8 status', source: 'servicem8', visible: false, filterable: false, order: 12 },
-  { id: 'jobDescription', label: 'Job description', source: 'servicem8', visible: false, filterable: false, order: 13 },
+  { id: 'maintenanceProgram', label: 'Maintenance Program', source: 'rg', visible: true, filterable: true, order: 10 },
+  { id: 'installDate', label: 'Install date', source: 'rg', visible: true, filterable: false, order: 11 },
+  { id: 'dateCompleted', label: 'Date completed', source: 'rg', visible: true, filterable: false, order: 12 },
+  { id: 'servicem8Status', label: 'ServiceM8 status', source: 'servicem8', visible: false, filterable: false, order: 13 },
+  { id: 'jobDescription', label: 'Job description', source: 'servicem8', visible: false, filterable: false, order: 14 },
 ]
 
 export async function getWorkOrderSummaryConfig() {

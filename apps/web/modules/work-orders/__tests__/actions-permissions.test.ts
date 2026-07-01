@@ -54,6 +54,7 @@ beforeEach(() => {
           installerId: null,
           stageOptionId: null,
           hardwareStatusOptionId: null,
+          maintenanceProgram: false,
           installDate: null,
           dateCompleted: null,
           riskLevelOverride: null,
@@ -185,6 +186,7 @@ describe('work order action permissions', () => {
     formData.set('installerId', 'installer-1')
     formData.set('stageOptionId', 'stage-1')
     formData.set('hardwareStatusOptionId', 'hardware-1')
+    formData.set('maintenanceProgram', 'yes')
     formData.set('riskLevel', 'high')
     formData.set('importance', 'medium')
     formData.set('notes', 'Call before arrival')
@@ -207,6 +209,11 @@ describe('work order action permissions', () => {
       expect.objectContaining({
         fieldName: 'importance_changed',
         newValue: 'medium',
+      }),
+      expect.objectContaining({
+        fieldName: 'maintenance_program_changed',
+        previousValue: false,
+        newValue: true,
       }),
     ]))
     expect(insertValues).not.toHaveBeenCalledWith(expect.arrayContaining([

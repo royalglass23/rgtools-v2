@@ -63,6 +63,7 @@ export default async function WorkOrderDetailPage({
           <Field label="Installer" value={detail.installerName} />
           <Field label="Stage" value={detail.stageName} />
           <Field label="Hardware" value={detail.hardwareStatusName} />
+          <Field label="Maintenance Program" value={detail.maintenanceProgram ? 'Yes' : 'No'} />
           <Field label="Install date" value={formatNullableDate(detail.installDate)} />
           <Field label="Date completed" value={formatNullableDate(detail.dateCompleted)} />
           <Field label="Risk" value={sourceLabel(detail.riskLevel, detail.riskSource)} />
@@ -77,6 +78,7 @@ export default async function WorkOrderDetailPage({
             <Select name="installerId" label="Installer" options={options.installers} />
             <Select name="stageOptionId" label="Stage" options={options.stages} />
             <Select name="hardwareStatusOptionId" label="Hardware" options={options.hardwareStatuses} />
+            <RadioGroup name="maintenanceProgram" label="Maintenance Program" value={detail.maintenanceProgram ? 'yes' : 'no'} />
             <Input name="installDate" label="Install date" type="date" />
             <Input name="dateCompleted" label="Date completed" type="date" />
             <LevelSelect name="riskLevel" label="Risk" />
@@ -231,6 +233,24 @@ function titleCase(value: string) {
 
 function formatDateTime(value: Date) {
   return new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function RadioGroup({ name, label, value }: { name: string; label: string; value: 'yes' | 'no' }) {
+  return (
+    <fieldset className="block">
+      <legend className="text-xs font-medium text-gray-600">{label}</legend>
+      <div className="mt-1 flex min-h-10 items-center gap-4 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950">
+        <label className="inline-flex items-center gap-2">
+          <input type="radio" name={name} value="yes" defaultChecked={value === 'yes'} />
+          <span>Yes</span>
+        </label>
+        <label className="inline-flex items-center gap-2">
+          <input type="radio" name={name} value="no" defaultChecked={value === 'no'} />
+          <span>No</span>
+        </label>
+      </div>
+    </fieldset>
+  )
 }
 
 function formatRelativeCooldown(value: Date | null) {

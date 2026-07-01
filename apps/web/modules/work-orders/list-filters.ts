@@ -12,6 +12,7 @@ export type WorkOrderSortKey =
   | 'installer'
   | 'stage'
   | 'hardware'
+  | 'maintenance_program'
   | 'install_date'
   | 'date_completed'
   | 'servicem8_status'
@@ -19,6 +20,7 @@ export type WorkOrderSortKey =
 export type WorkOrderSort = `${WorkOrderSortKey}_${WorkOrderSortDirection}`
 export type WorkOrderPageSize = 10 | 20 | 50 | 100
 export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
+export type WorkOrderMaintenanceProgramFilter = 'yes' | 'no' | 'all'
 
 export type WorkOrderListFilters = {
   q: string
@@ -27,6 +29,7 @@ export type WorkOrderListFilters = {
   importance: WorkOrderLevel | 'all'
   stage: WorkOrderOptionFilter
   hardware: WorkOrderOptionFilter
+  maintenanceProgram: WorkOrderMaintenanceProgramFilter
   sort: WorkOrderSort
   page: number
   size: WorkOrderPageSize
@@ -46,6 +49,7 @@ const DEFAULT_FILTERS: WorkOrderListFilters = {
   importance: 'all',
   stage: 'all',
   hardware: 'all',
+  maintenanceProgram: 'all',
   sort: 'lead_score_desc',
   page: 1,
   size: 10,
@@ -62,6 +66,7 @@ const SORT_KEYS: WorkOrderSortKey[] = [
   'installer',
   'stage',
   'hardware',
+  'maintenance_program',
   'install_date',
   'date_completed',
   'servicem8_status',
@@ -91,6 +96,7 @@ export function parseWorkOrderListFilters(
   const importance = levelValue(pick('importance'))
   const stage = optionValue(searchParams[`${prefix}stage`])
   const hardware = optionValue(searchParams[`${prefix}hardware`])
+  const maintenanceProgram = maintenanceProgramValue(searchParams[`${prefix}maintenanceProgram`])
   const sortCandidate = pick('sort')
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? DEFAULT_FILTERS.page)
   const size = Number(pick('size') ?? DEFAULT_FILTERS.size)
@@ -102,6 +108,7 @@ export function parseWorkOrderListFilters(
     importance,
     stage,
     hardware,
+    maintenanceProgram,
     sort: sortValue(sortCandidate),
     page: Number.isInteger(page) && page > 0 ? page : DEFAULT_FILTERS.page,
     size: SIZES.has(size as WorkOrderPageSize) ? size as WorkOrderPageSize : DEFAULT_FILTERS.size,
@@ -121,6 +128,11 @@ function levelValue(value: string | string[] | undefined): WorkOrderLevel | 'all
 function optionValue(value: string | string[] | undefined): string {
   const candidate = stringValue(value)?.trim()
   return candidate || 'all'
+}
+
+function maintenanceProgramValue(value: string | string[] | undefined): WorkOrderMaintenanceProgramFilter {
+  const candidate = stringValue(value)
+  return candidate === 'yes' || candidate === 'no' ? candidate : 'all'
 }
 
 function sortValue(value: string | string[] | undefined): WorkOrderSort {

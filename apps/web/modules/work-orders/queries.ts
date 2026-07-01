@@ -24,6 +24,7 @@ export type WorkOrderRow = {
   installerName: string | null
   stageName: string | null
   hardwareStatusName: string | null
+  maintenanceProgram: boolean
   installDate: string | null
   dateCompleted: string | null
   riskLevel: WorkOrderLevel | null
@@ -78,6 +79,7 @@ const workOrderRowSelection = {
   installerName: workOrderInstallers.displayName,
   stageName: workOrderStageOptions.displayName,
   hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+  maintenanceProgram: workOrders.maintenanceProgram,
   installDate: workOrders.installDate,
   dateCompleted: workOrders.dateCompleted,
   riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
@@ -194,6 +196,7 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
       installerName: workOrderInstallers.displayName,
       stageName: workOrderStageOptions.displayName,
       hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+      maintenanceProgram: workOrders.maintenanceProgram,
       installDate: workOrders.installDate,
       dateCompleted: workOrders.dateCompleted,
       riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
@@ -259,6 +262,9 @@ function listWhere(filters: WorkOrderListFilters) {
   if (filters.current === 'non_current') conditions.push(eq(workOrders.isCurrent, false))
   if (filters.stage !== 'all') conditions.push(eq(workOrders.stageOptionId, filters.stage))
   if (filters.hardware !== 'all') conditions.push(eq(workOrders.hardwareStatusOptionId, filters.hardware))
+  if (filters.maintenanceProgram !== 'all') {
+    conditions.push(eq(workOrders.maintenanceProgram, filters.maintenanceProgram === 'yes'))
+  }
   if (filters.risk !== 'all') {
     conditions.push(eq(sql`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`, filters.risk))
   }
@@ -310,6 +316,7 @@ function listOrderBy(sort: WorkOrderSort) {
   if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore)]
   if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore)]
   if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore)]
+  if (key === 'maintenance_program') return [sortNullable(workOrders.maintenanceProgram, direction), desc(workOrders.leadScore)]
   if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore)]
 
   return [

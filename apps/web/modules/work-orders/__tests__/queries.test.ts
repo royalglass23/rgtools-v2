@@ -64,6 +64,7 @@ vi.mock('@rgtools/db/schema-workorders', () => ({
     installerId: { name: 'work_orders.installer_id' },
     stageOptionId: { name: 'work_orders.stage_option_id' },
     hardwareStatusOptionId: { name: 'work_orders.hardware_status_option_id' },
+    maintenanceProgram: { name: 'work_orders.maintenance_program' },
     installDate: { name: 'work_orders.install_date' },
     dateCompleted: { name: 'work_orders.date_completed' },
     riskLevelOverride: { name: 'work_orders.risk_level_override' },
@@ -129,6 +130,7 @@ const filters: WorkOrderListFilters = {
   importance: 'all',
   stage: 'all',
   hardware: 'all',
+  maintenanceProgram: 'all',
   sort: 'lead_score_desc',
   page: 1,
   size: 10,
@@ -235,5 +237,16 @@ describe('listWorkOrders', () => {
     }))
     expect(limitCalls).toEqual([])
     expect(offsetCalls).toEqual([])
+  })
+
+  it('filters maintenance program rows when requested', async () => {
+    await listWorkOrders({ ...filters, maintenanceProgram: 'yes' })
+
+    expect(whereCalls[1]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        { type: 'eq', column: 'work_orders.maintenance_program', value: true },
+      ]),
+    }))
   })
 })

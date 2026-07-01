@@ -21,6 +21,7 @@ describe('work order detail page', () => {
       'Lead score',
       'Description',
       'Operational State',
+      'Maintenance Program',
       'Client Context',
       'Client notes',
       'Client Context Summary',
@@ -41,6 +42,9 @@ describe('work order detail page', () => {
 
     expect(source).toContain('permissions.canManage &&')
     expect(source).toContain('Manage Work Order')
+    expect(source).toContain('name="maintenanceProgram"')
+    expect(source).toContain('Yes')
+    expect(source).toContain('No')
     expect(source).toContain('Save changes')
     expect(source).toContain('Add note')
   })
