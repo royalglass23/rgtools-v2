@@ -92,6 +92,7 @@ export const workOrders = pgTable('work_orders', {
   installerId: uuid('installer_id').references(() => workOrderInstallers.id, { onDelete: 'set null' }),
   stageOptionId: uuid('stage_option_id').references(() => workOrderStageOptions.id, { onDelete: 'set null' }),
   hardwareStatusOptionId: uuid('hardware_status_option_id').references(() => workOrderHardwareStatusOptions.id, { onDelete: 'set null' }),
+  maintenanceProgram: boolean('maintenance_program').default(false).notNull(),
   installDate: date('install_date'),
   dateCompleted: date('date_completed'),
   aiRiskLevel: workOrderLevelEnum('ai_risk_level'),

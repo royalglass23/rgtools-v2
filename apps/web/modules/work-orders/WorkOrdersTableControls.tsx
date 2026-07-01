@@ -73,7 +73,7 @@ function WorkOrderFilters({
   paramPrefix: string
 }) {
   const searchParams = useSearchParams()
-  const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
+  const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
   const resetParams = new URLSearchParams(carryOver)
   resetParams.set(`${paramPrefix}size`, String(filters.size))
@@ -82,7 +82,7 @@ function WorkOrderFilters({
   const filterable = new Set(fields.filter((field) => field.filterable).map((field) => field.id))
 
   return (
-    <form action={basePath} className="grid items-end gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(320px,1.6fr)_repeat(4,minmax(150px,1fr))_minmax(180px,1fr)_auto]">
+    <form action={basePath} className="grid items-end gap-3 rounded border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(320px,1.6fr)_repeat(5,minmax(150px,1fr))_minmax(180px,1fr)_auto]">
       {carryOver.map(([key, value]) => (
         <input key={key} type="hidden" name={key} value={value} />
       ))}
@@ -106,6 +106,7 @@ function WorkOrderFilters({
       {filterable.has('risk') && <Select name={`${paramPrefix}risk`} label="Risk" value={filters.risk} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />}
       {filterable.has('stage') && <Select name={`${paramPrefix}stage`} label="Stage" value={filters.stage} options={[['all', 'All'], ...options.stages.map((option) => [option.id, option.label] as [string, string])]} />}
       {filterable.has('hardware') && <Select name={`${paramPrefix}hardware`} label="Hardware" value={filters.hardware} options={[['all', 'All'], ...options.hardwareStatuses.map((option) => [option.id, option.label] as [string, string])]} />}
+      {filterable.has('maintenanceProgram') && <Select name={`${paramPrefix}maintenanceProgram`} label="Maintenance Program" value={filters.maintenanceProgram} options={[['all', 'All'], ['yes', 'Yes'], ['no', 'No']]} />}
       <Select
         name={`${paramPrefix}sort`}
         label="Sort"
@@ -249,6 +250,7 @@ function SummaryCell({ field, row }: { field: WorkOrderSummaryFieldConfig; row: 
     installer: row.installerName,
     stage: row.stageName,
     hardware: row.hardwareStatusName,
+    maintenanceProgram: row.maintenanceProgram ? 'Yes' : 'No',
     installDate: formatNullableDate(row.installDate),
     dateCompleted: formatNullableDate(row.dateCompleted),
     servicem8Status: row.servicem8Status,
@@ -273,6 +275,7 @@ function hasActiveListFilters(filters: WorkOrderListFilters) {
     || filters.importance !== 'all'
     || filters.stage !== 'all'
     || filters.hardware !== 'all'
+    || filters.maintenanceProgram !== 'all'
 }
 
 function Select({ name, label, value, options }: { name: string; label: string; value: string; options: Array<[string, string]> }) {
@@ -349,7 +352,7 @@ function PageSizeSelect({ filters, basePath, paramPrefix }: { filters: WorkOrder
 function paramsFor(filters: WorkOrderListFilters, paramPrefix: string, searchParams?: ReturnType<typeof useSearchParams>) {
   const params = new URLSearchParams()
   if (searchParams) {
-    const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
+    const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
     for (const [key, value] of searchParams.entries()) {
       if (!owned.has(key)) params.append(key, value)
     }
@@ -360,6 +363,7 @@ function paramsFor(filters: WorkOrderListFilters, paramPrefix: string, searchPar
   params.set(`${paramPrefix}importance`, filters.importance)
   params.set(`${paramPrefix}stage`, filters.stage)
   params.set(`${paramPrefix}hardware`, filters.hardware)
+  params.set(`${paramPrefix}maintenanceProgram`, filters.maintenanceProgram)
   params.set(`${paramPrefix}sort`, filters.sort)
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}page`, String(filters.page))
@@ -377,6 +381,7 @@ function sortKeyForField(fieldId: WorkOrderSummaryFieldConfig['id']): WorkOrderS
     installer: 'installer',
     stage: 'stage',
     hardware: 'hardware',
+    maintenanceProgram: 'maintenance_program',
     installDate: 'install_date',
     dateCompleted: 'date_completed',
     servicem8Status: 'servicem8_status',
@@ -400,6 +405,7 @@ function defaultDirectionFor(key: WorkOrderSortKey): WorkOrderSortDirection {
     || key === 'installer'
     || key === 'stage'
     || key === 'hardware'
+    || key === 'maintenance_program'
     || key === 'servicem8_status'
     || key === 'job_description') {
     return 'asc'

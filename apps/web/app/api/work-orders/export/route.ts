@@ -39,6 +39,7 @@ function valueForField(row: WorkOrderRow, field: WorkOrderSummaryFieldConfig) {
     installer: row.installerName,
     stage: row.stageName,
     hardware: row.hardwareStatusName,
+    maintenanceProgram: row.maintenanceProgram ? 'Yes' : 'No',
     installDate: row.installDate,
     dateCompleted: row.dateCompleted,
     servicem8Status: row.servicem8Status,

@@ -44,6 +44,7 @@ describe('work orders server page', () => {
     expect(source).toContain('name={`${paramPrefix}importance`}')
     expect(source).toContain('name={`${paramPrefix}stage`}')
     expect(source).toContain('name={`${paramPrefix}hardware`}')
+    expect(source).toContain('name={`${paramPrefix}maintenanceProgram`}')
     expect(source).not.toContain('name={`${paramPrefix}installer`}')
     expect(source).not.toContain('name={`${paramPrefix}servicem8Status`}')
   })
@@ -85,7 +86,7 @@ describe('work orders server page', () => {
     const source = controlsSource()
 
     expect(source).toContain('event.currentTarget.form?.requestSubmit()')
-    expect(source).toContain('xl:grid-cols-[minmax(320px,1.6fr)_repeat(4,minmax(150px,1fr))_minmax(180px,1fr)_auto]')
+    expect(source).toContain('xl:grid-cols-[minmax(320px,1.6fr)_repeat(5,minmax(150px,1fr))_minmax(180px,1fr)_auto]')
     expect(source).toContain('w-full min-w-[1280px] table-auto')
     expect(source).not.toContain('Apply')
   })

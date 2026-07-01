@@ -250,6 +250,7 @@ export async function updateWorkOrderOperationalFieldsAction(workOrderId: string
       installerId: workOrders.installerId,
       stageOptionId: workOrders.stageOptionId,
       hardwareStatusOptionId: workOrders.hardwareStatusOptionId,
+      maintenanceProgram: workOrders.maintenanceProgram,
       installDate: workOrders.installDate,
       dateCompleted: workOrders.dateCompleted,
       riskLevelOverride: workOrders.riskLevelOverride,
@@ -266,6 +267,7 @@ export async function updateWorkOrderOperationalFieldsAction(workOrderId: string
     installerId: nullableString(formData.get('installerId')),
     stageOptionId: nullableString(formData.get('stageOptionId')),
     hardwareStatusOptionId: nullableString(formData.get('hardwareStatusOptionId')),
+    maintenanceProgram: maintenanceProgramValue(formData.get('maintenanceProgram')),
     installDate: nullableString(formData.get('installDate')),
     dateCompleted: nullableString(formData.get('dateCompleted')),
     riskLevelOverride: workOrderLevelValue(formData.get('riskLevel')),
@@ -445,6 +447,7 @@ function operationalEvents({
     installerId: string | null
     stageOptionId: string | null
     hardwareStatusOptionId: string | null
+    maintenanceProgram: boolean
     installDate: string | null
     dateCompleted: string | null
     riskLevelOverride: string | null
@@ -454,6 +457,7 @@ function operationalEvents({
     installerId: string | null
     stageOptionId: string | null
     hardwareStatusOptionId: string | null
+    maintenanceProgram: boolean
     installDate: string | null
     dateCompleted: string | null
     riskLevelOverride: string | null
@@ -464,13 +468,14 @@ function operationalEvents({
     eventFor('installer_changed', previous.installerId, next.installerId),
     eventFor('stage_changed', previous.stageOptionId, next.stageOptionId),
     eventFor('hardware_status_changed', previous.hardwareStatusOptionId, next.hardwareStatusOptionId),
+    eventFor('maintenance_program_changed', previous.maintenanceProgram, next.maintenanceProgram),
     eventFor('install_date_changed', previous.installDate, next.installDate),
     eventFor('date_completed_changed', previous.dateCompleted, next.dateCompleted),
     eventFor('risk_changed', previous.riskLevelOverride, next.riskLevelOverride),
     eventFor('importance_changed', previous.importanceOverride, next.importanceOverride),
   ].filter((event): event is NonNullable<typeof event> => Boolean(event))
 
-  function eventFor(fieldName: string, previousValue: string | null, newValue: string | null) {
+  function eventFor(fieldName: string, previousValue: string | boolean | null, newValue: string | boolean | null) {
     if (previousValue === newValue) return null
     return {
       workOrderId,
@@ -493,6 +498,10 @@ function workOrderLevelValue(value: FormDataEntryValue | null): WorkOrderLevel |
   return normalized === 'low' || normalized === 'medium' || normalized === 'high'
     ? normalized
     : null
+}
+
+function maintenanceProgramValue(value: FormDataEntryValue | null): boolean {
+  return nullableString(value) === 'yes'
 }
 
 function buildWorkOrderAiSuggestion(input: {

@@ -16,6 +16,13 @@ function editorSource() {
   )
 }
 
+function summaryConfigSource() {
+  return readFileSync(
+    join(process.cwd(), 'modules/work-orders/summary-config.ts'),
+    'utf8',
+  )
+}
+
 describe('work order admin page', () => {
   it('lets admins deactivate controlled options instead of deleting them', () => {
     const source = pageSource()
@@ -28,9 +35,10 @@ describe('work order admin page', () => {
   })
 
   it('surfaces global summary configuration controls', () => {
-    const source = `${pageSource()}\n${editorSource()}`
+    const source = `${pageSource()}\n${editorSource()}\n${summaryConfigSource()}`
 
     expect(source).toContain('Work Order Summary Fields')
+    expect(source).toContain('Maintenance Program')
     expect(source).toContain('Visible')
     expect(source).toContain('Filterable')
     expect(source).not.toContain('Display order')
