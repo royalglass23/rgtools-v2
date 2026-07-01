@@ -66,7 +66,6 @@ export const psOptionValues = pgTable('ps_option_values', {
   id: uuid('id').primaryKey().defaultRandom(),
   configVersionId: uuid('config_version_id').references(() => psConfigVersions.id, { onDelete: 'set null' }),
   categoryId: uuid('category_id').notNull().references(() => psOptionCategories.id, { onDelete: 'cascade' }),
-  configVersionId: uuid('config_version_id').references(() => psConfigVersions.id, { onDelete: 'set null' }),
   slug: text('slug').notNull(),
   label: text('label').notNull(),
   sortOrder: integer('sort_order').default(0).notNull(),
