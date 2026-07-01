@@ -1,14 +1,15 @@
 import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, leads } from '@rgtools/db/schema-leads'
+import { clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import {
   workOrderHardwareStatusOptions,
+  workOrderEvents,
   workOrderInstallers,
   workOrders,
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
 import type { WorkOrderLevel } from './domain'
-import type { WorkOrderListFilters, WorkOrderSort } from './list-filters'
+import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection } from './list-filters'
 
 export type WorkOrderRow = {
   id: string
@@ -28,9 +29,64 @@ export type WorkOrderRow = {
   riskLevel: WorkOrderLevel | null
   importance: WorkOrderLevel | null
   aiSuggestion: string | null
+  aiSuggestionAt: Date | null
   clientContextSummary: string | null
   clientApproachNote: string | null
   updatedAt: Date
+}
+
+export type WorkOrderDetail = WorkOrderRow & {
+  servicem8JobUuid: string | null
+  servicem8Active: boolean
+  clientId: string | null
+  clientNotes: string | null
+  leadId: string | null
+  quoteId: string | null
+  rawServiceM8Snapshot: unknown
+  riskSource: 'manual' | 'ai' | null
+  importanceSource: 'manual' | 'ai' | null
+  contacts: Array<{
+    id: string
+    name: string | null
+    phone: string | null
+    email: string | null
+    isJobContact: boolean
+  }>
+  timeline: Array<{
+    id: string
+    fieldName: string
+    previousValue: unknown
+    newValue: unknown
+    note: string | null
+    isClientVisibleCandidate: boolean
+    portalTitle: string | null
+    portalMessage: string | null
+    createdAt: Date
+  }>
+}
+
+const workOrderRowSelection = {
+  id: workOrders.id,
+  servicem8Status: workOrders.servicem8Status,
+  isCurrent: workOrders.isCurrent,
+  jobNumber: workOrders.jobNumber,
+  jobAddress: workOrders.jobAddress,
+  jobDescription: workOrders.jobDescription,
+  clientName: workOrders.clientName,
+  companyName: workOrders.companyName,
+  leadScore: workOrders.leadScore,
+  installerName: workOrderInstallers.displayName,
+  stageName: workOrderStageOptions.displayName,
+  hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+  installDate: workOrders.installDate,
+  dateCompleted: workOrders.dateCompleted,
+  riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
+  importance: sql<WorkOrderLevel | null>`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`,
+  aiSuggestion: workOrders.aiSuggestion,
+  aiSuggestionAt: workOrders.aiSuggestionAt,
+  clientContextSummary: workOrders.clientContextSummary,
+  clientApproachNote: workOrders.clientApproachNote,
+  updatedAt: workOrders.updatedAt,
 }
 
 export async function listWorkOrders(filters: WorkOrderListFilters) {
@@ -46,28 +102,7 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
     .where(where)
 
   const rows = await db
-    .select({
-      id: workOrders.id,
-      servicem8Status: workOrders.servicem8Status,
-      isCurrent: workOrders.isCurrent,
-      jobNumber: workOrders.jobNumber,
-      jobAddress: workOrders.jobAddress,
-      jobDescription: workOrders.jobDescription,
-      clientName: workOrders.clientName,
-      companyName: workOrders.companyName,
-      leadScore: workOrders.leadScore,
-      installerName: workOrderInstallers.displayName,
-      stageName: workOrderStageOptions.displayName,
-      hardwareStatusName: workOrderHardwareStatusOptions.displayName,
-      installDate: workOrders.installDate,
-      dateCompleted: workOrders.dateCompleted,
-      riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
-      importance: sql<WorkOrderLevel | null>`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`,
-      aiSuggestion: workOrders.aiSuggestion,
-      clientContextSummary: workOrders.clientContextSummary,
-      clientApproachNote: workOrders.clientApproachNote,
-      updatedAt: workOrders.updatedAt,
-    })
+    .select(workOrderRowSelection)
     .from(workOrders)
     .leftJoin(workOrderInstallers, eq(workOrders.installerId, workOrderInstallers.id))
     .leftJoin(workOrderStageOptions, eq(workOrders.stageOptionId, workOrderStageOptions.id))
@@ -83,6 +118,17 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
     total,
     pageCount: Math.max(1, Math.ceil(total / filters.size)),
   }
+}
+
+export async function listWorkOrdersForExport(filters: WorkOrderListFilters) {
+  return db
+    .select(workOrderRowSelection)
+    .from(workOrders)
+    .leftJoin(workOrderInstallers, eq(workOrders.installerId, workOrderInstallers.id))
+    .leftJoin(workOrderStageOptions, eq(workOrders.stageOptionId, workOrderStageOptions.id))
+    .leftJoin(workOrderHardwareStatusOptions, eq(workOrders.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
+    .where(listWhere(filters))
+    .orderBy(...listOrderBy(filters.sort))
 }
 
 export async function getWorkOrderFilterOptions() {
@@ -127,6 +173,85 @@ export async function getWorkOrderConfigLists() {
   return { installers, stages, hardwareStatuses }
 }
 
+export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrderDetail | null> {
+  const [row] = await db
+    .select({
+      id: workOrders.id,
+      servicem8Status: workOrders.servicem8Status,
+      servicem8Active: workOrders.servicem8Active,
+      servicem8JobUuid: workOrders.servicem8JobUuid,
+      isCurrent: workOrders.isCurrent,
+      jobNumber: workOrders.jobNumber,
+      jobAddress: workOrders.jobAddress,
+      jobDescription: workOrders.jobDescription,
+      clientName: workOrders.clientName,
+      companyName: workOrders.companyName,
+      clientId: workOrders.clientId,
+      clientNotes: clients.notes,
+      leadId: workOrders.leadId,
+      quoteId: workOrders.quoteId,
+      leadScore: workOrders.leadScore,
+      installerName: workOrderInstallers.displayName,
+      stageName: workOrderStageOptions.displayName,
+      hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+      installDate: workOrders.installDate,
+      dateCompleted: workOrders.dateCompleted,
+      riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
+      importance: sql<WorkOrderLevel | null>`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`,
+      riskSource: sql<'manual' | 'ai' | null>`case when ${workOrders.riskLevelOverride} is not null then 'manual' when ${workOrders.aiRiskLevel} is not null then 'ai' else null end`,
+      importanceSource: sql<'manual' | 'ai' | null>`case when ${workOrders.importanceOverride} is not null then 'manual' when ${workOrders.aiImportance} is not null then 'ai' else null end`,
+      aiSuggestion: workOrders.aiSuggestion,
+      aiSuggestionAt: workOrders.aiSuggestionAt,
+      clientContextSummary: workOrders.clientContextSummary,
+      clientApproachNote: workOrders.clientApproachNote,
+      rawServiceM8Snapshot: workOrders.rawServiceM8Snapshot,
+      updatedAt: workOrders.updatedAt,
+    })
+    .from(workOrders)
+    .leftJoin(clients, eq(workOrders.clientId, clients.id))
+    .leftJoin(workOrderInstallers, eq(workOrders.installerId, workOrderInstallers.id))
+    .leftJoin(workOrderStageOptions, eq(workOrders.stageOptionId, workOrderStageOptions.id))
+    .leftJoin(workOrderHardwareStatusOptions, eq(workOrders.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
+    .where(eq(workOrders.id, workOrderId))
+    .limit(1)
+
+  if (!row) return null
+
+  const [contacts, timeline] = await Promise.all([
+    row.clientId
+      ? db
+        .select({
+          id: clientContacts.id,
+          name: clientContacts.name,
+          phone: clientContacts.phone,
+          email: clientContacts.email,
+          isJobContact: sql<boolean>`${clientContacts.id} = ${leads.contactId}`,
+        })
+        .from(clientContacts)
+        .leftJoin(leads, eq(leads.id, row.leadId ?? ''))
+        .where(eq(clientContacts.clientId, row.clientId))
+        .orderBy(asc(clientContacts.name), asc(clientContacts.email))
+      : Promise.resolve([]),
+    db
+      .select({
+        id: workOrderEvents.id,
+        fieldName: workOrderEvents.fieldName,
+        previousValue: workOrderEvents.previousValue,
+        newValue: workOrderEvents.newValue,
+        note: workOrderEvents.note,
+        isClientVisibleCandidate: workOrderEvents.isClientVisibleCandidate,
+        portalTitle: workOrderEvents.portalTitle,
+        portalMessage: workOrderEvents.portalMessage,
+        createdAt: workOrderEvents.createdAt,
+      })
+      .from(workOrderEvents)
+      .where(eq(workOrderEvents.workOrderId, workOrderId))
+      .orderBy(desc(workOrderEvents.createdAt)),
+  ])
+
+  return { ...row, contacts, timeline }
+}
+
 function listWhere(filters: WorkOrderListFilters) {
   const conditions = []
 
@@ -155,11 +280,37 @@ function listWhere(filters: WorkOrderListFilters) {
 }
 
 function listOrderBy(sort: WorkOrderSort) {
-  if (sort === 'importance') return [desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)), desc(workOrders.leadScore)]
-  if (sort === 'risk') return [desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)), desc(workOrders.leadScore)]
-  if (sort === 'install_date') return [sql`${workOrders.installDate} asc nulls last`, desc(workOrders.leadScore)]
-  if (sort === 'client_asc') return [asc(workOrders.clientName), desc(workOrders.leadScore)]
-  if (sort === 'job_number') return [asc(workOrders.jobNumber), desc(workOrders.leadScore)]
+  if (sort === 'lead_score_desc') {
+    return [
+      sql`${workOrders.leadScore} desc nulls last`,
+      desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
+      desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
+      sql`${workOrders.installDate} asc nulls last`,
+      asc(workOrders.updatedAt),
+    ]
+  }
+  if (sort === 'lead_score_asc') {
+    return [
+      sql`${workOrders.leadScore} asc nulls last`,
+      asc(workOrders.clientName),
+      asc(workOrders.updatedAt),
+    ]
+  }
+
+  const [key, direction] = splitSort(sort)
+
+  if (key === 'importance') return [sortLevel(levelRank(workOrders.importanceOverride, workOrders.aiImportance), direction), desc(workOrders.leadScore)]
+  if (key === 'risk') return [sortLevel(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel), direction), desc(workOrders.leadScore)]
+  if (key === 'install_date') return [sortNullable(workOrders.installDate, direction), desc(workOrders.leadScore)]
+  if (key === 'date_completed') return [sortNullable(workOrders.dateCompleted, direction), desc(workOrders.leadScore)]
+  if (key === 'client') return [sortText(workOrders.clientName, direction), desc(workOrders.leadScore)]
+  if (key === 'job_number') return [sortText(workOrders.jobNumber, direction), desc(workOrders.leadScore)]
+  if (key === 'job_address') return [sortText(workOrders.jobAddress, direction), desc(workOrders.leadScore)]
+  if (key === 'job_description') return [sortText(workOrders.jobDescription, direction), desc(workOrders.leadScore)]
+  if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore)]
+  if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore)]
+  if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore)]
+  if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore)]
 
   return [
     sql`${workOrders.leadScore} desc nulls last`,
@@ -168,6 +319,23 @@ function listOrderBy(sort: WorkOrderSort) {
     sql`${workOrders.installDate} asc nulls last`,
     asc(workOrders.updatedAt),
   ]
+}
+
+function splitSort(sort: WorkOrderSort): [string, WorkOrderSortDirection] {
+  const direction = sort.endsWith('_asc') ? 'asc' : 'desc'
+  return [sort.slice(0, -`_${direction}`.length), direction]
+}
+
+function sortNullable(column: unknown, direction: WorkOrderSortDirection) {
+  return direction === 'asc' ? sql`${column} asc nulls last` : sql`${column} desc nulls last`
+}
+
+function sortText(column: unknown, direction: WorkOrderSortDirection) {
+  return direction === 'asc' ? sql`lower(${column}) asc nulls last` : sql`lower(${column}) desc nulls last`
+}
+
+function sortLevel(column: unknown, direction: WorkOrderSortDirection) {
+  return direction === 'asc' ? sql`${column} asc` : sql`${column} desc`
 }
 
 function levelRank(overrideColumn: unknown, aiColumn: unknown) {

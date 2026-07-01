@@ -99,6 +99,7 @@ export const workOrders = pgTable('work_orders', {
   aiImportance: workOrderLevelEnum('ai_importance'),
   importanceOverride: workOrderLevelEnum('importance_override'),
   aiSuggestion: text('ai_suggestion'),
+  aiSuggestionAt: timestamp('ai_suggestion_at', { withTimezone: true }),
   clientContextSummary: text('client_context_summary'),
   clientContextSummaryAt: timestamp('client_context_summary_at', { withTimezone: true }),
   clientApproachNote: text('client_approach_note'),
@@ -134,9 +135,15 @@ export const workOrderEvents = pgTable('work_order_events', {
   previousValue: jsonb('previous_value'),
   newValue: jsonb('new_value'),
   note: text('note'),
+  isClientVisibleCandidate: boolean('is_client_visible_candidate').default(false).notNull(),
+  portalTitle: text('portal_title'),
+  portalMessage: text('portal_message'),
+  portalMarkedBy: uuid('portal_marked_by').references(() => users.id, { onDelete: 'set null' }),
+  portalMarkedAt: timestamp('portal_marked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('work_order_events_work_order_idx').on(table.workOrderId),
   index('work_order_events_actor_idx').on(table.actorId),
+  index('work_order_events_client_visible_idx').on(table.isClientVisibleCandidate),
   index('work_order_events_created_at_idx').on(table.createdAt),
 ])

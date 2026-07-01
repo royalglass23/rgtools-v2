@@ -24,6 +24,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 ### Added
 - **PS Generator foundation** - `ps-generator` module routes, navigation, generate API, published configuration read model, seed data, PDF filling engine, and tests for PS1/PS3 package generation.
 - **PS Generator configuration schema** - migration 0026 adds systems, option categories/values, system option rules, template variants, field mappings, description templates, generation records, generated PDF object records, audit entries, and migration records.
+- **Work Orders portal-safe timeline candidates** - Work Order timeline events now default to internal visibility, while manage users can store separate customer-safe title/message copy for future client portal updates.
 - **Catalog app placeholder** - `apps/catalog` is now a workspace app ready for the future public catalog.
 - **Quote Tracker dashboard** - the `quote-tracker` module is now a full staff-facing feature. Includes:
   - List page at `/quote-tracker` with KPI cards, status/search filters, and a **Track Quote** button in the page header.

@@ -9,6 +9,13 @@ function pageSource() {
   )
 }
 
+function controlsSource() {
+  return readFileSync(
+    join(process.cwd(), 'modules/work-orders/WorkOrdersTableControls.tsx'),
+    'utf8',
+  )
+}
+
 describe('work orders server page', () => {
   it('does not pass browser event handlers from the server component tree', () => {
     const source = pageSource()
@@ -18,23 +25,10 @@ describe('work orders server page', () => {
   })
 
   it('uses the v1 default summary columns without internal AI or ServiceM8 fields', () => {
-    const source = pageSource()
+    const source = `${pageSource()}\n${controlsSource()}`
 
-    for (const heading of [
-      'Client',
-      'Job number',
-      'Address',
-      'Score',
-      'Importance',
-      'Risk',
-      'Installer',
-      'Stage',
-      'Hardware',
-      'Install date',
-      'Date completed',
-    ]) {
-      expect(source).toContain(`>${heading}<`)
-    }
+    expect(source).toContain('getWorkOrderSummaryConfig')
+    expect(source).toContain('visibleFields.map')
 
     expect(source).not.toContain('>Created<')
     expect(source).not.toContain('>AI suggestion<')
@@ -43,19 +37,19 @@ describe('work orders server page', () => {
   })
 
   it('keeps installer visible but out of the default filter bar', () => {
-    const source = pageSource()
+    const source = controlsSource()
 
-    expect(source).toContain('name="q"')
-    expect(source).toContain('name="risk"')
-    expect(source).toContain('name="importance"')
-    expect(source).toContain('name="stage"')
-    expect(source).toContain('name="hardware"')
-    expect(source).not.toContain('name="installer"')
-    expect(source).not.toContain('name="servicem8Status"')
+    expect(source).toContain('name={`${paramPrefix}q`}')
+    expect(source).toContain('name={`${paramPrefix}risk`}')
+    expect(source).toContain('name={`${paramPrefix}importance`}')
+    expect(source).toContain('name={`${paramPrefix}stage`}')
+    expect(source).toContain('name={`${paramPrefix}hardware`}')
+    expect(source).not.toContain('name={`${paramPrefix}installer`}')
+    expect(source).not.toContain('name={`${paramPrefix}servicem8Status`}')
   })
 
   it('has distinct empty and no-results copy for the summary table', () => {
-    const source = pageSource()
+    const source = `${pageSource()}\n${controlsSource()}`
 
     expect(source).toContain('No current Work Orders yet.')
     expect(source).toContain('No Work Orders match these filters.')
@@ -68,5 +62,31 @@ describe('work orders server page', () => {
     expect(source).toContain('getCurrentWorkOrderPermissions')
     expect(source).toContain('permissions.canManage &&')
     expect(source).toContain('Refresh from ServiceM8')
+  })
+
+  it('offers filtered CSV export without carrying page-only params', () => {
+    const source = pageSource()
+
+    expect(source).toContain('/api/work-orders/export?')
+    expect(source).toContain('Export CSV')
+    expect(source).toContain("if (key === 'page' || key === 'refreshError') continue")
+  })
+
+  it('links each summary cell to the Work Order detail page without showing a separate open column', () => {
+    const source = controlsSource()
+
+    expect(source).toContain('const href = `/work-orders/${row.id}`')
+    expect(source).toContain('<LinkedCell href={href}>')
+    expect(source).not.toContain('<th className="px-4 py-3">Open</th>')
+    expect(source).not.toContain('>AI suggestion<')
+  })
+
+  it('uses auto-applying filters with reset aligned inline and a full-width table', () => {
+    const source = controlsSource()
+
+    expect(source).toContain('event.currentTarget.form?.requestSubmit()')
+    expect(source).toContain('xl:grid-cols-[minmax(320px,1.6fr)_repeat(4,minmax(150px,1fr))_minmax(180px,1fr)_auto]')
+    expect(source).toContain('w-full min-w-[1280px] table-auto')
+    expect(source).not.toContain('Apply')
   })
 })

@@ -1,7 +1,22 @@
 import type { WorkOrderLevel } from './domain'
 
 export type WorkOrderOptionFilter = string
-export type WorkOrderSort = 'lead_score' | 'importance' | 'risk' | 'install_date' | 'client_asc' | 'job_number'
+export type WorkOrderSortDirection = 'asc' | 'desc'
+export type WorkOrderSortKey =
+  | 'client'
+  | 'job_number'
+  | 'job_address'
+  | 'lead_score'
+  | 'importance'
+  | 'risk'
+  | 'installer'
+  | 'stage'
+  | 'hardware'
+  | 'install_date'
+  | 'date_completed'
+  | 'servicem8_status'
+  | 'job_description'
+export type WorkOrderSort = `${WorkOrderSortKey}_${WorkOrderSortDirection}`
 export type WorkOrderPageSize = 10 | 20 | 50 | 100
 export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
 
@@ -17,6 +32,13 @@ export type WorkOrderListFilters = {
   size: WorkOrderPageSize
 }
 
+export type ParseWorkOrderListFiltersOptions = {
+  /** Prefix applied to every param name when embedded on the shared dashboard URL. */
+  prefix?: string
+  /** Admin-set default values used when a param is absent from the URL. */
+  defaults?: Partial<Record<'current' | 'risk' | 'importance' | 'sort' | 'size', string>>
+}
+
 const DEFAULT_FILTERS: WorkOrderListFilters = {
   q: '',
   current: 'current',
@@ -24,27 +46,54 @@ const DEFAULT_FILTERS: WorkOrderListFilters = {
   importance: 'all',
   stage: 'all',
   hardware: 'all',
-  sort: 'lead_score',
+  sort: 'lead_score_desc',
   page: 1,
   size: 10,
 }
 
 const LEVELS = new Set(['low', 'medium', 'high'])
-const SORTS = new Set<WorkOrderSort>(['lead_score', 'importance', 'risk', 'install_date', 'client_asc', 'job_number'])
+const SORT_KEYS: WorkOrderSortKey[] = [
+  'client',
+  'job_number',
+  'job_address',
+  'lead_score',
+  'importance',
+  'risk',
+  'installer',
+  'stage',
+  'hardware',
+  'install_date',
+  'date_completed',
+  'servicem8_status',
+  'job_description',
+]
+const SORTS = new Set<WorkOrderSort>(SORT_KEYS.flatMap((key) => [`${key}_asc`, `${key}_desc`] as WorkOrderSort[]))
+const LEGACY_SORTS: Record<string, WorkOrderSort> = {
+  lead_score: 'lead_score_desc',
+  importance: 'importance_desc',
+  risk: 'risk_desc',
+  install_date: 'install_date_asc',
+  job_number: 'job_number_asc',
+}
 const SIZES = new Set<WorkOrderPageSize>([10, 20, 50, 100])
 
 export function parseWorkOrderListFilters(
   searchParams: Record<string, string | string[] | undefined>,
+  options: ParseWorkOrderListFiltersOptions = {},
 ): WorkOrderListFilters {
-  const q = stringValue(searchParams.q)?.trim() ?? DEFAULT_FILTERS.q
-  const current = currentValue(searchParams.current)
-  const risk = levelValue(searchParams.risk)
-  const importance = levelValue(searchParams.importance)
-  const stage = optionValue(searchParams.stage)
-  const hardware = optionValue(searchParams.hardware)
-  const sortCandidate = stringValue(searchParams.sort) as WorkOrderSort | undefined
-  const page = Number(stringValue(searchParams.page) ?? DEFAULT_FILTERS.page)
-  const size = Number(stringValue(searchParams.size) ?? DEFAULT_FILTERS.size)
+  const { prefix = '', defaults = {} } = options
+  const pick = (name: 'current' | 'risk' | 'importance' | 'sort' | 'size') =>
+    stringValue(searchParams[`${prefix}${name}`]) ?? defaults[name]
+
+  const q = stringValue(searchParams[`${prefix}q`])?.trim() ?? DEFAULT_FILTERS.q
+  const current = currentValue(pick('current'))
+  const risk = levelValue(pick('risk'))
+  const importance = levelValue(pick('importance'))
+  const stage = optionValue(searchParams[`${prefix}stage`])
+  const hardware = optionValue(searchParams[`${prefix}hardware`])
+  const sortCandidate = pick('sort')
+  const page = Number(stringValue(searchParams[`${prefix}page`]) ?? DEFAULT_FILTERS.page)
+  const size = Number(pick('size') ?? DEFAULT_FILTERS.size)
 
   return {
     q,
@@ -53,7 +102,7 @@ export function parseWorkOrderListFilters(
     importance,
     stage,
     hardware,
-    sort: sortCandidate && SORTS.has(sortCandidate) ? sortCandidate : DEFAULT_FILTERS.sort,
+    sort: sortValue(sortCandidate),
     page: Number.isInteger(page) && page > 0 ? page : DEFAULT_FILTERS.page,
     size: SIZES.has(size as WorkOrderPageSize) ? size as WorkOrderPageSize : DEFAULT_FILTERS.size,
   }
@@ -72,6 +121,13 @@ function levelValue(value: string | string[] | undefined): WorkOrderLevel | 'all
 function optionValue(value: string | string[] | undefined): string {
   const candidate = stringValue(value)?.trim()
   return candidate || 'all'
+}
+
+function sortValue(value: string | string[] | undefined): WorkOrderSort {
+  const candidate = stringValue(value)
+  if (!candidate) return DEFAULT_FILTERS.sort
+  if (candidate in LEGACY_SORTS) return LEGACY_SORTS[candidate]
+  return SORTS.has(candidate as WorkOrderSort) ? candidate as WorkOrderSort : DEFAULT_FILTERS.sort
 }
 
 function stringValue(value: string | string[] | undefined) {

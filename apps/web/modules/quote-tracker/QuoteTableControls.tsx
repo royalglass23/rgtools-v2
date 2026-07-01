@@ -171,7 +171,7 @@ function FilterBar({ filters, basePath, paramPrefix }: { filters: QuoteListFilte
             type="submit"
             className="rounded bg-[#142B3A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]"
           >
-            Search
+            Apply
           </button>
         </div>
       </label>
@@ -230,6 +230,7 @@ function Select({ name, label, value, options }: { name: string; label: string; 
     <label className="block">
       <span className="text-xs font-medium text-gray-600">{label}</span>
       <select
+        aria-label={label}
         name={name}
         defaultValue={value}
         onChange={(event) => event.currentTarget.form?.requestSubmit()}

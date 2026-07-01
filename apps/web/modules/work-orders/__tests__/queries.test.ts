@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const orderByCalls = vi.hoisted(() => [] as unknown[][])
 const whereCalls = vi.hoisted(() => [] as unknown[])
+const limitCalls = vi.hoisted(() => [] as unknown[])
+const offsetCalls = vi.hoisted(() => [] as unknown[])
 
 vi.mock('drizzle-orm', () => {
   function columnName(column: { name?: string }) {
@@ -12,7 +14,7 @@ vi.mock('drizzle-orm', () => {
 
   return {
     and: vi.fn((...conditions: unknown[]) => ({ type: 'and', conditions })),
-    asc: vi.fn((column: { name?: string }) => ({ direction: 'asc', column: columnName(column) })),
+    asc: vi.fn((column: unknown) => ({ direction: 'asc', column: columnName(column as { name?: string }) ?? column })),
     count: vi.fn(() => 'count'),
     desc: vi.fn((column: unknown) => ({ direction: 'desc', column })),
     eq: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'eq', column: columnName(column), value })),
@@ -27,7 +29,7 @@ vi.mock('drizzle-orm', () => {
 })
 
 vi.mock('@rgtools/db/schema-leads', () => ({
-  clients: { id: { name: 'clients.id' }, name: { name: 'clients.name' }, companyName: { name: 'clients.company_name' } },
+  clients: { id: { name: 'clients.id' }, name: { name: 'clients.name' }, companyName: { name: 'clients.company_name' }, notes: { name: 'clients.notes' } },
   leads: {
     id: { name: 'leads.id' },
     clientId: { name: 'leads.client_id' },
@@ -69,6 +71,7 @@ vi.mock('@rgtools/db/schema-workorders', () => ({
     importanceOverride: { name: 'work_orders.importance_override' },
     aiImportance: { name: 'work_orders.ai_importance' },
     aiSuggestion: { name: 'work_orders.ai_suggestion' },
+    aiSuggestionAt: { name: 'work_orders.ai_suggestion_at' },
     clientContextSummary: { name: 'work_orders.client_context_summary' },
     clientApproachNote: { name: 'work_orders.client_approach_note' },
     updatedAt: { name: 'work_orders.updated_at' },
@@ -96,7 +99,14 @@ function queryBuilder(result: unknown) {
     return builder
   })
   builder.limit = vi.fn(() => builder)
-  builder.offset = vi.fn(async () => result)
+  builder.limit = vi.fn((value: unknown) => {
+    limitCalls.push(value)
+    return builder
+  })
+  builder.offset = vi.fn(async (value: unknown) => {
+    offsetCalls.push(value)
+    return result
+  })
   builder.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve)
   return builder
 }
@@ -109,7 +119,7 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { listWorkOrders } from '../queries'
+import { listWorkOrders, listWorkOrdersForExport } from '../queries'
 import type { WorkOrderListFilters } from '../list-filters'
 
 const filters: WorkOrderListFilters = {
@@ -119,7 +129,7 @@ const filters: WorkOrderListFilters = {
   importance: 'all',
   stage: 'all',
   hardware: 'all',
-  sort: 'lead_score',
+  sort: 'lead_score_desc',
   page: 1,
   size: 10,
 }
@@ -128,6 +138,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   orderByCalls.length = 0
   whereCalls.length = 0
+  limitCalls.length = 0
+  offsetCalls.length = 0
 })
 
 describe('listWorkOrders', () => {
@@ -173,5 +185,55 @@ describe('listWorkOrders', () => {
       text: '? asc nulls last',
     }))
     expect(orderByCalls[0][4]).toEqual({ direction: 'asc', column: 'work_orders.updated_at' })
+  })
+
+  it('sorts text columns in either direction', async () => {
+    await listWorkOrders({ ...filters, sort: 'client_asc' })
+    await listWorkOrders({ ...filters, sort: 'client_desc' })
+
+    expect(orderByCalls[0][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: 'lower(?) asc nulls last',
+    }))
+    expect(orderByCalls[1][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: 'lower(?) desc nulls last',
+    }))
+  })
+
+  it('sorts date and number columns with explicit directions', async () => {
+    await listWorkOrders({ ...filters, sort: 'install_date_asc' })
+    await listWorkOrders({ ...filters, sort: 'date_completed_desc' })
+    await listWorkOrders({ ...filters, sort: 'lead_score_asc' })
+
+    expect(orderByCalls[0][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: '? asc nulls last',
+    }))
+    expect(orderByCalls[1][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: '? desc nulls last',
+    }))
+    expect(orderByCalls[2][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: '? asc nulls last',
+    }))
+  })
+
+  it('exports the filtered and sorted rows without pagination', async () => {
+    await listWorkOrdersForExport({ ...filters, q: 'R260210', sort: 'client_asc' })
+
+    expect(whereCalls[0]).toEqual(expect.objectContaining({
+      type: 'and',
+      conditions: expect.arrayContaining([
+        expect.objectContaining({ type: 'or' }),
+      ]),
+    }))
+    expect(orderByCalls[0][0]).toEqual(expect.objectContaining({
+      type: 'sql',
+      text: 'lower(?) asc nulls last',
+    }))
+    expect(limitCalls).toEqual([])
+    expect(offsetCalls).toEqual([])
   })
 })

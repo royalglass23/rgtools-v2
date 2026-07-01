@@ -12,16 +12,16 @@ async function seed() {
 
   // Upsert rgadmin user
   const existing = await db.select().from(users).where(eq(users.username, username))
+  const passwordHash = await bcrypt.default.hash(password, 12)
   if (existing.length > 0) {
-    // User exists; update isProtected and role
+    // User exists; keep the documented local credentials deterministic for tests.
     await db
       .update(users)
-      .set({ role: 'admin', isProtected: true })
+      .set({ passwordHash, role: 'admin', isProtected: true })
       .where(eq(users.username, username))
     console.log(`Updated user '${username}' to role=admin, isProtected=true`)
   } else {
     // User does not exist; create with role=admin and isProtected=true
-    const passwordHash = await bcrypt.default.hash(password, 12)
     await db.insert(users).values({
       username,
       passwordHash,

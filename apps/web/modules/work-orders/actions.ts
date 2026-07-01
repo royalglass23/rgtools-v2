@@ -6,21 +6,23 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { createServiceM8RequestFromEnv, type ServiceM8FetchRequest } from '@/lib/servicem8/client'
-import { quotes } from '@rgtools/db/schema'
+import { quotes, settings } from '@rgtools/db/schema'
 import {
   workOrderHardwareStatusOptions,
   workOrderInstallers,
+  workOrderEvents,
   workOrderRefreshRuns,
   workOrders,
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
-import { normalizeConfigName } from './domain'
+import { normalizeConfigName, WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS, type WorkOrderLevel } from './domain'
 import {
   assertCurrentUserCanConfigureWorkOrders,
   assertCurrentUserCanManageWorkOrders,
 } from './permissions'
 import { findLinkedLeadAndClient } from './queries'
 import { mapServiceM8JobsToWorkOrderInputs, type ServiceM8WorkOrderJob } from './servicem8-sync'
+import { serializeSummaryConfig, WORK_ORDER_SUMMARY_FIELD_CATALOG, WORK_ORDER_SUMMARY_CONFIG_KEY } from './summary-config'
 
 type ServiceM8Company = {
   uuid?: string | null
@@ -195,26 +197,187 @@ export async function createWorkOrderHardwareStatusAction(formData: FormData) {
   })
 }
 
+export async function deactivateWorkOrderInstallerAction(optionId: string) {
+  await deactivateConfigOption(optionId, workOrderInstallers)
+}
+
+export async function deactivateWorkOrderStageAction(optionId: string) {
+  await deactivateConfigOption(optionId, workOrderStageOptions)
+}
+
+export async function deactivateWorkOrderHardwareStatusAction(optionId: string) {
+  await deactivateConfigOption(optionId, workOrderHardwareStatusOptions)
+}
+
+export async function saveWorkOrderSummaryConfigAction(formData: FormData) {
+  await assertCurrentUserCanConfigureWorkOrders()
+  const session = await auth()
+
+  const fields = WORK_ORDER_SUMMARY_FIELD_CATALOG.map((field) => ({
+    ...field,
+    visible: formData.get(`visible:${field.id}`) === 'on',
+    filterable: formData.get(`filterable:${field.id}`) === 'on',
+    order: Number(formData.get(`order:${field.id}`) ?? field.order) || field.order,
+  })).sort((a, b) => a.order - b.order)
+
+  await db
+    .insert(settings)
+    .values({
+      key: WORK_ORDER_SUMMARY_CONFIG_KEY,
+      value: serializeSummaryConfig(fields),
+      updatedBy: session?.user?.id ?? null,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: {
+        value: serializeSummaryConfig(fields),
+        updatedBy: session?.user?.id ?? null,
+        updatedAt: new Date(),
+      },
+    })
+
+  revalidatePath('/admin/work-orders')
+  revalidatePath('/work-orders')
+}
+
 export async function updateWorkOrderOperationalFieldsAction(workOrderId: string, formData: FormData) {
   await assertCurrentUserCanManageWorkOrders()
+  const session = await auth()
+
+  const [current] = await db
+    .select({
+      installerId: workOrders.installerId,
+      stageOptionId: workOrders.stageOptionId,
+      hardwareStatusOptionId: workOrders.hardwareStatusOptionId,
+      installDate: workOrders.installDate,
+      dateCompleted: workOrders.dateCompleted,
+      riskLevelOverride: workOrders.riskLevelOverride,
+      importanceOverride: workOrders.importanceOverride,
+    })
+    .from(workOrders)
+    .where(eq(workOrders.id, workOrderId))
+    .limit(1)
+
+  if (!current) throw new Error('Work Order not found.')
 
   const now = new Date()
+  const next = {
+    installerId: nullableString(formData.get('installerId')),
+    stageOptionId: nullableString(formData.get('stageOptionId')),
+    hardwareStatusOptionId: nullableString(formData.get('hardwareStatusOptionId')),
+    installDate: nullableString(formData.get('installDate')),
+    dateCompleted: nullableString(formData.get('dateCompleted')),
+    riskLevelOverride: workOrderLevelValue(formData.get('riskLevel')),
+    importanceOverride: workOrderLevelValue(formData.get('importance')),
+  }
+
   await db
     .update(workOrders)
     .set({
-      installerId: nullableString(formData.get('installerId')),
-      stageOptionId: nullableString(formData.get('stageOptionId')),
-      hardwareStatusOptionId: nullableString(formData.get('hardwareStatusOptionId')),
-      installDate: nullableString(formData.get('installDate')),
-      dateCompleted: nullableString(formData.get('dateCompleted')),
-      riskLevelOverride: workOrderLevelValue(formData.get('riskLevel')),
-      importanceOverride: workOrderLevelValue(formData.get('importance')),
-      clientApproachNote: nullableString(formData.get('notes')),
+      ...next,
       updatedAt: now,
     })
     .where(eq(workOrders.id, workOrderId))
 
+  const events = operationalEvents({
+    workOrderId,
+    actorId: session?.user?.id ?? null,
+    previous: current,
+    next,
+  })
+  if (events.length > 0) {
+    await db.insert(workOrderEvents).values(events)
+  }
+
   revalidatePath('/work-orders')
+  revalidatePath(`/work-orders/${workOrderId}`)
+}
+
+export async function markWorkOrderEventClientVisibleCandidateAction(eventId: string, formData: FormData) {
+  await assertCurrentUserCanManageWorkOrders()
+
+  const portalTitle = nullableString(formData.get('portalTitle'))
+  const portalMessage = nullableString(formData.get('portalMessage'))
+  if (!portalTitle || !portalMessage) {
+    throw new Error('Client-visible timeline updates need a customer-safe title and message.')
+  }
+
+  const session = await auth()
+  await db
+    .update(workOrderEvents)
+    .set({
+      isClientVisibleCandidate: true,
+      portalTitle,
+      portalMessage,
+      portalMarkedBy: session?.user?.id ?? null,
+      portalMarkedAt: new Date(),
+    })
+    .where(eq(workOrderEvents.id, eventId))
+
+  revalidatePath('/work-orders')
+}
+
+export async function addWorkOrderTimelineNoteAction(workOrderId: string, formData: FormData) {
+  await assertCurrentUserCanManageWorkOrders()
+  const note = nullableString(formData.get('note'))
+  if (!note) throw new Error('Timeline note is required.')
+
+  const session = await auth()
+  await db.insert(workOrderEvents).values({
+    workOrderId,
+    actorId: session?.user?.id ?? null,
+    fieldName: 'timeline_note_added',
+    previousValue: null,
+    newValue: note,
+    note,
+    isClientVisibleCandidate: false,
+  })
+
+  revalidatePath('/work-orders')
+  revalidatePath(`/work-orders/${workOrderId}`)
+}
+
+export async function generateWorkOrderAiSuggestionAction(workOrderId: string) {
+  await assertCurrentUserCanManageWorkOrders()
+
+  const [detail] = await db
+    .select({
+      clientName: workOrders.clientName,
+      jobNumber: workOrders.jobNumber,
+      stageName: workOrderStageOptions.displayName,
+      hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+      riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`,
+      importance: sql<WorkOrderLevel | null>`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`,
+      clientContextSummary: workOrders.clientContextSummary,
+      aiSuggestionAt: workOrders.aiSuggestionAt,
+    })
+    .from(workOrders)
+    .leftJoin(workOrderStageOptions, eq(workOrders.stageOptionId, workOrderStageOptions.id))
+    .leftJoin(workOrderHardwareStatusOptions, eq(workOrders.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
+    .where(eq(workOrders.id, workOrderId))
+    .limit(1)
+
+  if (!detail) throw new Error('Work Order not found.')
+  const now = new Date()
+  const cooldownUntil = detail.aiSuggestionAt
+    ? new Date(detail.aiSuggestionAt.getTime() + WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS)
+    : null
+
+  if (cooldownUntil && cooldownUntil > now) {
+    return redirect(`/work-orders/${workOrderId}?aiRefreshCooldownUntil=${encodeURIComponent(cooldownUntil.toISOString())}`)
+  }
+
+  await db
+    .update(workOrders)
+    .set({
+      aiSuggestion: buildWorkOrderAiSuggestion(detail),
+      aiSuggestionAt: now,
+      updatedAt: now,
+    })
+    .where(eq(workOrders.id, workOrderId))
+
+  revalidatePath(`/work-orders/${workOrderId}`)
 }
 
 async function createConfigOption({
@@ -242,17 +405,82 @@ async function createConfigOption({
       createdBy: session?.user?.id ?? null,
       updatedAt: now,
     })
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: table.normalizedName,
-      set: {
-        displayName,
-        isActive: true,
-        archivedAt: null,
-        updatedAt: now,
-      },
     })
 
   revalidatePath('/admin/work-orders')
+  revalidatePath('/work-orders')
+}
+
+async function deactivateConfigOption(
+  optionId: string,
+  table: typeof workOrderInstallers | typeof workOrderStageOptions | typeof workOrderHardwareStatusOptions,
+) {
+  await assertCurrentUserCanConfigureWorkOrders()
+  const now = new Date()
+
+  await db
+    .update(table)
+    .set({
+      isActive: false,
+      archivedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(table.id, optionId))
+
+  revalidatePath('/admin/work-orders')
+  revalidatePath('/work-orders')
+}
+
+function operationalEvents({
+  workOrderId,
+  actorId,
+  previous,
+  next,
+}: {
+  workOrderId: string
+  actorId: string | null
+  previous: {
+    installerId: string | null
+    stageOptionId: string | null
+    hardwareStatusOptionId: string | null
+    installDate: string | null
+    dateCompleted: string | null
+    riskLevelOverride: string | null
+    importanceOverride: string | null
+  }
+  next: {
+    installerId: string | null
+    stageOptionId: string | null
+    hardwareStatusOptionId: string | null
+    installDate: string | null
+    dateCompleted: string | null
+    riskLevelOverride: string | null
+    importanceOverride: string | null
+  }
+}) {
+  return [
+    eventFor('installer_changed', previous.installerId, next.installerId),
+    eventFor('stage_changed', previous.stageOptionId, next.stageOptionId),
+    eventFor('hardware_status_changed', previous.hardwareStatusOptionId, next.hardwareStatusOptionId),
+    eventFor('install_date_changed', previous.installDate, next.installDate),
+    eventFor('date_completed_changed', previous.dateCompleted, next.dateCompleted),
+    eventFor('risk_changed', previous.riskLevelOverride, next.riskLevelOverride),
+    eventFor('importance_changed', previous.importanceOverride, next.importanceOverride),
+  ].filter((event): event is NonNullable<typeof event> => Boolean(event))
+
+  function eventFor(fieldName: string, previousValue: string | null, newValue: string | null) {
+    if (previousValue === newValue) return null
+    return {
+      workOrderId,
+      actorId,
+      fieldName,
+      previousValue,
+      newValue,
+      isClientVisibleCandidate: false,
+    }
+  }
 }
 
 function nullableString(value: FormDataEntryValue | null) {
@@ -260,11 +488,35 @@ function nullableString(value: FormDataEntryValue | null) {
   return normalized || null
 }
 
-function workOrderLevelValue(value: FormDataEntryValue | null) {
+function workOrderLevelValue(value: FormDataEntryValue | null): WorkOrderLevel | null {
   const normalized = nullableString(value)
   return normalized === 'low' || normalized === 'medium' || normalized === 'high'
     ? normalized
     : null
+}
+
+function buildWorkOrderAiSuggestion(input: {
+  clientName: string
+  jobNumber: string | null
+  stageName: string | null
+  hardwareStatusName: string | null
+  riskLevel: WorkOrderLevel | null
+  importance: WorkOrderLevel | null
+  clientContextSummary: string | null
+}) {
+  const attention = [
+    input.riskLevel ? `${input.riskLevel} risk` : null,
+    input.importance ? `${input.importance} importance` : null,
+    input.stageName ? `stage: ${input.stageName}` : null,
+    input.hardwareStatusName ? `hardware: ${input.hardwareStatusName}` : null,
+  ].filter(Boolean).join(', ')
+
+  const context = input.clientContextSummary?.trim()
+  return [
+    `Next action for ${input.clientName}${input.jobNumber ? ` (${input.jobNumber})` : ''}: review the current work order state and confirm the next delivery step with the responsible staff member.`,
+    attention ? `Attention signals: ${attention}.` : null,
+    context ? `Context: ${context}` : null,
+  ].filter(Boolean).join('\n')
 }
 
 async function findLinkedQuote(input: {

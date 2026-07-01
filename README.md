@@ -20,6 +20,7 @@ This repo is a pnpm workspace:
 | **Leads** | Paginated lead list and detail view with tier, ServiceM8, table, and date filters |
 | **Clients** | Canonical client records, linked lead/job context, and merge review tooling |
 | **Quote Tracker** | Pull a ServiceM8 quote into a tracked short link, share it, inspect client engagement, and generate AI follow-up guidance |
+| **Work Orders** | Staff summary for active installation work orders from ServiceM8, including operational fields and portal-safe timeline candidates |
 | **PS Generator** | Generate PS1 and PS3 Producer Statement PDF packages from published system, option, template, mapping, and wording configuration |
 | **Admin** | User/module access, scoring/pricing/tracking settings, lead import, dashboard tables, audit/error exports, and client merge review |
 

@@ -1,5 +1,7 @@
 export type WorkOrderLevel = 'low' | 'medium' | 'high'
 
+export const WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS = 5 * 60 * 1000
+
 export type WorkOrderIdentityInput = {
   servicem8JobUuid: string | null
   jobNumber: string | null
