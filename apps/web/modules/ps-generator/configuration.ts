@@ -19,6 +19,9 @@ interface VersionRow {
   versionLabel: string
   state: PsConfigState
   publishedAt?: MaybeDate
+  publishedBy?: string | null
+  createdBy?: string | null
+  createdAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -31,6 +34,8 @@ interface SystemRow {
   sortOrder: number
   heightRules: unknown
   metadata: unknown
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -50,6 +55,8 @@ interface OptionValueRow {
   label: string
   sortOrder: number
   isActive: boolean
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -58,6 +65,8 @@ interface SystemOptionRuleRow {
   systemId: string
   optionValueId: string
   isAllowed: boolean
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
 }
 
 interface TemplateVariantRow {
@@ -71,6 +80,8 @@ interface TemplateVariantRow {
   originalFilename: string | null
   fieldDiscovery: unknown
   state: PsConfigState
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -84,6 +95,8 @@ interface FieldMappingRow {
   fixedValue: string | null
   checkboxValue: boolean | null
   sortOrder: number
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -94,6 +107,8 @@ interface DescriptionTemplateRow {
   label: string
   pattern: string
   state: PsConfigState
+  createdAt?: MaybeDate
+  updatedAt?: MaybeDate
   archivedAt?: MaybeDate
 }
 
@@ -106,6 +121,16 @@ export interface PsConfigurationRows {
   templateVariants: TemplateVariantRow[]
   fieldMappings: FieldMappingRow[]
   descriptionTemplates: DescriptionTemplateRow[]
+  auditEntries?: Array<{
+    actorId: string
+    entityType: string
+    entityId: string | null
+    action: string
+    configVersionId: string | null
+    before: unknown
+    after: unknown
+    createdAt: Date
+  }>
 }
 
 export interface PublishedPsOptionValue {
@@ -120,6 +145,7 @@ export interface PublishedPsOptionCategory {
 }
 
 export interface PublishedPsSystem {
+  id?: string
   slug: string
   displayName: string
   heightRules: unknown
@@ -153,6 +179,7 @@ export interface PublishedPsDescriptionTemplate {
 }
 
 export interface PublishedPsConfiguration {
+  versionId?: string
   versionLabel: string | null
   systems: PublishedPsSystem[]
   optionCategories: PublishedPsOptionCategory[]
@@ -267,17 +294,32 @@ export function createPsGeneratorSeedRows(): PsConfigurationRows {
 export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows): PublishedPsConfiguration {
   const version = rows.versions.find((row) => row.state === 'published' && !row.archivedAt)
   if (!version) return EMPTY_CONFIGURATION
+  return buildConfigurationReadModel(rows, version.id, 'published')
+}
+
+export function buildConfigurationReadModel(
+  rows: PsConfigurationRows,
+  configVersionId: string,
+  state: PsConfigState,
+): PublishedPsConfiguration {
+  const version = rows.versions.find((row) => row.id === configVersionId && row.state === state && !row.archivedAt)
+  if (!version) return EMPTY_CONFIGURATION
 
   const categories = rows.optionCategories
     .filter((category) => category.isActive && PS_GENERATOR_OPTION_CATEGORIES.includes(category.slug as never))
     .sort(sortByOrder)
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const values = rows.optionValues
-    .filter((value) => value.configVersionId === version.id && value.isActive && !value.archivedAt && categoryById.has(value.categoryId))
+    .filter((value) => (
+      value.configVersionId === configVersionId
+      && value.isActive
+      && !value.archivedAt
+      && categoryById.has(value.categoryId)
+    ))
     .sort(sortByOrder)
   const valueById = new Map(values.map((value) => [value.id, value]))
   const systemRows = rows.systems
-    .filter((system) => system.configVersionId === version.id && system.state === 'published' && !system.archivedAt)
+    .filter((system) => system.configVersionId === configVersionId && system.state === state && !system.archivedAt)
     .sort(sortByOrder)
   const systemById = new Map(systemRows.map((system) => [system.id, system]))
 
@@ -303,6 +345,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
     }
 
     return {
+      id: system.id,
       slug: system.slug,
       displayName: system.displayName,
       heightRules: system.heightRules,
@@ -313,8 +356,8 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
 
   const templateRows = rows.templateVariants
     .filter((variant) => (
-      variant.configVersionId === version.id
-      && variant.state === 'published'
+      variant.configVersionId === configVersionId
+      && variant.state === state
       && !variant.archivedAt
       && (!variant.systemId || systemById.has(variant.systemId))
     ))
@@ -344,7 +387,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
   }))
 
   const descriptionTemplates = rows.descriptionTemplates
-    .filter((template) => template.configVersionId === version.id && template.state === 'published' && !template.archivedAt)
+    .filter((template) => template.configVersionId === configVersionId && template.state === state && !template.archivedAt)
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((template) => ({
       slug: template.slug,
@@ -353,6 +396,7 @@ export function buildPublishedPsConfigurationReadModel(rows: PsConfigurationRows
     }))
 
   return {
+    versionId: version.id,
     versionLabel: version.versionLabel,
     systems,
     optionCategories,

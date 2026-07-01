@@ -40,9 +40,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {leadIntakeItems.length > 0 && (
                 <DropdownMenu label="Lead Intake" items={leadIntakeItems} />
               )}
-              {psGeneratorItems.length > 0 && (
-                <DropdownMenu label="PS Generator" items={psGeneratorItems} />
-              )}
               {workOrderItems.length > 0 && (
                 <DropdownMenu label="Work Order" items={workOrderItems} />
               )}
@@ -55,6 +52,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   {mod.name}
                 </Link>
               ))}
+              {psGeneratorItems.length > 0 && (
+                <DropdownMenu label="PS Generator" items={psGeneratorItems} />
+              )}
               {adminItems.length > 0 && (
                 <DropdownMenu label="Admin" items={adminItems} />
               )}

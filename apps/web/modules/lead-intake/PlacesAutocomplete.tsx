@@ -7,6 +7,9 @@ type AddressComponent = { types: string[]; short_name: string }
 type Props = {
   value: string
   onChange: (address: string, suburb: string) => void
+  label?: string
+  required?: boolean
+  updateOnInput?: boolean
 }
 
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
@@ -21,14 +24,20 @@ export function extractSuburb(components: AddressComponent[]): string {
   return ''
 }
 
-export function PlacesAutocomplete({ value, onChange }: Props) {
+export function PlacesAutocomplete({
+  value,
+  onChange,
+  label = 'Job Address',
+  required = true,
+  updateOnInput = false,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange })
 
   useEffect(() => {
-    if (inputRef.current) inputRef.current.value = value
-  }, [value])
+    if (!updateOnInput && inputRef.current) inputRef.current.value = value
+  }, [updateOnInput, value])
 
   useEffect(() => {
     if (!apiKey || !inputRef.current) return
@@ -64,18 +73,27 @@ export function PlacesAutocomplete({ value, onChange }: Props) {
     }
   }, [])
 
+  function handleManualInput(nextValue: string) {
+    if (updateOnInput || !nextValue) {
+      onChangeRef.current(nextValue, '')
+    }
+  }
+
   return (
     <label className="block">
-      <span className="text-xs font-medium text-gray-600">Job Address *</span>
+      <span className="flex items-center gap-2 text-xs font-medium text-gray-600">
+        {label}
+        {required ? <span aria-hidden="true" className="text-red-600">*</span> : null}
+      </span>
       <input
         ref={inputRef}
         type="text"
-        defaultValue={value}
-        onInput={(e) => {
-          if (!(e.target as HTMLInputElement).value) {
-            onChangeRef.current('', '')
-          }
-        }}
+        aria-label={label}
+        value={updateOnInput ? value : undefined}
+        defaultValue={updateOnInput ? undefined : value}
+        required={required}
+        onChange={(event) => handleManualInput(event.target.value)}
+        autoComplete="off"
         className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Start typing an address..."
       />

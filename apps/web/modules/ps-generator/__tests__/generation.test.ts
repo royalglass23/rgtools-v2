@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 
 import {
@@ -10,9 +10,12 @@ import { generateProducerStatementPackage } from '../generation'
 import type { QuoteStorage } from '@/lib/storage/types'
 
 class MemoryStorage implements QuoteStorage {
+  readonly puts: Array<{ key: string; bytes: Buffer; contentType?: string }> = []
+
   constructor(private readonly objects: Record<string, Buffer>) {}
 
-  async put(key: string, bytes: Buffer): Promise<void> {
+  async put(key: string, bytes: Buffer, contentType?: string): Promise<void> {
+    this.puts.push({ key, bytes, contentType })
     this.objects[key] = bytes
   }
 
@@ -219,6 +222,93 @@ describe('Producer Statement generation', () => {
       name: 'PsGenerationError',
       code: 'template_pdf_missing',
     })
+  })
+
+  it('persists generated outputs and one generation record with readable snapshots', async () => {
+    const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
+        { name: 'client_name', type: 'text' },
+        { name: 'job_address', type: 'text' },
+        { name: 'bc_number', type: 'text' },
+        { name: 'description', type: 'text' },
+      ]),
+      'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf([
+        { name: 'completion_date', type: 'text' },
+        { name: 'description', type: 'text' },
+      ]),
+    }
+    const storage = new MemoryStorage(objects)
+    const database = {
+      insert: vi.fn(),
+    }
+    const insertedEvents: unknown[] = []
+    const insertedObjects: unknown[] = []
+    database.insert.mockImplementation(() => ({
+      values: vi.fn((values) => {
+        if (insertedEvents.length === 0) {
+          insertedEvents.push(values)
+          return { returning: vi.fn(async () => [{ id: 'generation-event-1' }]) }
+        }
+        insertedObjects.push(values)
+        return { returning: vi.fn(async () => []) }
+      }),
+    }))
+
+    const result = await generateProducerStatementPackage(defaultInput('both'), {
+      configuration,
+      storage,
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      operationId: 'operation-1',
+      persistGeneratedOutputs: true,
+      actor: { id: 'user-1', label: 'Jane Staff' },
+      database,
+    })
+
+    expect(result.outputs.map((output) => output.r2ObjectKey)).toEqual([
+      'ps-generator/generated/operation-1/PS1-Jane-Customer.pdf',
+      'ps-generator/generated/operation-1/PS3-Jane-Customer.pdf',
+    ])
+    expect(storage.puts.map((put) => ({ key: put.key, contentType: put.contentType }))).toEqual([
+      { key: 'ps-generator/generated/operation-1/PS1-Jane-Customer.pdf', contentType: 'application/pdf' },
+      { key: 'ps-generator/generated/operation-1/PS3-Jane-Customer.pdf', contentType: 'application/pdf' },
+    ])
+    expect(insertedEvents).toHaveLength(1)
+    expect(insertedEvents[0]).toMatchObject({
+      actorId: 'user-1',
+      actorLabel: 'Jane Staff',
+      generationMode: 'both',
+      jobNumber: null,
+      clientName: 'Jane Customer',
+      jobAddress: '12 Glass Lane',
+      selectionsSnapshot: {
+        system: { slug: 'double-disc', label: 'Double Disc' },
+        options: expect.objectContaining({
+          structure_material: expect.objectContaining({ slug: 'timber', label: 'Timber' }),
+          thickness: expect.objectContaining({ slug: '12mm', label: '12mm' }),
+        }),
+      },
+      descriptionSnapshot: {
+        templates: expect.arrayContaining([
+          expect.objectContaining({ documentKind: 'ps1', templateLabel: 'Double Disc PS1' }),
+          expect.objectContaining({ documentKind: 'ps3', templateLabel: 'Double Disc PS3' }),
+        ]),
+      },
+    })
+    expect(insertedObjects).toEqual([[
+      expect.objectContaining({
+        generationEventId: 'generation-event-1',
+        documentKind: 'ps1',
+        r2ObjectKey: 'ps-generator/generated/operation-1/PS1-Jane-Customer.pdf',
+        retainedUntil: new Date('2026-09-24T00:00:00.000Z'),
+      }),
+      expect.objectContaining({
+        generationEventId: 'generation-event-1',
+        documentKind: 'ps3',
+        r2ObjectKey: 'ps-generator/generated/operation-1/PS3-Jane-Customer.pdf',
+        retainedUntil: new Date('2026-09-24T00:00:00.000Z'),
+      }),
+    ]])
   })
 })
 

@@ -31,7 +31,7 @@ describe('POST /api/ps-generator/generate', () => {
   })
 
   it('returns generated PDF outputs as base64 for authorized PS Generator users', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user-1' } })
+    authMock.mockResolvedValue({ user: { id: 'user-1', name: 'Jane Staff', email: 'jane@royalglass.co.nz' } })
     userCanAccessSlugMock.mockResolvedValue(true)
     generateProducerStatementPackageMock.mockResolvedValue({
       operationId: 'operation-1',
@@ -52,18 +52,27 @@ describe('POST /api/ps-generator/generate', () => {
     const body = await response.json()
 
     expect(response.status).toBe(200)
-    expect(generateProducerStatementPackageMock).toHaveBeenCalledWith({
-      mode: 'both',
-      projectDetails: {
-        clientName: 'Jane Customer',
-        jobAddress: '12 Glass Lane',
-        bcNumber: 'BC-123',
+    expect(generateProducerStatementPackageMock).toHaveBeenCalledWith(
+      {
+        mode: 'both',
+        projectDetails: {
+          clientName: 'Jane Customer',
+          jobAddress: '12 Glass Lane',
+          bcNumber: 'BC-123',
+        },
+        selections: {
+          system: 'double-disc',
+          structure_material: 'timber',
+        },
       },
-      selections: {
-        system: 'double-disc',
-        structure_material: 'timber',
+      {
+        persistGeneratedOutputs: true,
+        actor: {
+          id: 'user-1',
+          label: 'Jane Staff',
+        },
       },
-    })
+    )
     expect(body).toEqual({
       ok: true,
       operationId: 'operation-1',
