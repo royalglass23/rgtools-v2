@@ -15,6 +15,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     isAdmin: session.user.role === 'admin',
     showWorkOrderNavigation: true,
   })
+  const quoteTrackerModule = primaryModules.find((mod) => mod.slug === 'quote-tracker')
+  const clientsModule = primaryModules.find((mod) => mod.slug === 'clients')
+  const remainingPrimaryModules = primaryModules.filter((mod) => !['quote-tracker', 'clients'].includes(mod.slug))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -40,21 +43,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {leadIntakeItems.length > 0 && (
                 <DropdownMenu label="Lead Intake" items={leadIntakeItems} />
               )}
+              {quoteTrackerModule && (
+                <PrimaryModuleLink module={quoteTrackerModule} />
+              )}
               {workOrderItems.length > 0 && (
                 <DropdownMenu label="Work Order" items={workOrderItems} />
               )}
-              {primaryModules.map((mod) => (
-                <Link
-                  key={mod.id}
-                  href={`/${mod.slug}`}
-                  className="text-sm text-slate-100/85 transition-colors hover:text-white"
-                >
-                  {mod.name}
-                </Link>
-              ))}
               {psGeneratorItems.length > 0 && (
                 <DropdownMenu label="PS Generator" items={psGeneratorItems} />
               )}
+              {clientsModule && (
+                <PrimaryModuleLink module={clientsModule} />
+              )}
+              {remainingPrimaryModules.map((mod) => (
+                <PrimaryModuleLink key={mod.id} module={mod} />
+              ))}
               {adminItems.length > 0 && (
                 <DropdownMenu label="Admin" items={adminItems} />
               )}
@@ -77,6 +80,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </nav>
       <main className="p-6">{children}</main>
     </div>
+  )
+}
+
+function PrimaryModuleLink({
+  module,
+}: {
+  module: { id: string; slug: string; name: string }
+}) {
+  return (
+    <Link
+      key={module.id}
+      href={`/${module.slug}`}
+      className="text-sm text-slate-100/85 transition-colors hover:text-white"
+    >
+      {module.name}
+    </Link>
   )
 }
 
