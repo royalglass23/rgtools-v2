@@ -19,6 +19,17 @@ export interface AccessModule {
   isActive: boolean
 }
 
+const TEMP_PROTECTED_ADMIN_ONLY_MODULE_SLUGS = new Set([
+  'clients',
+  'ps-generator',
+  'ps-generator/history',
+  'ps-generator/configuration',
+  'ps-generator/configuration/publish',
+  'work-orders',
+  'work-orders/manage',
+  'admin/work-orders',
+])
+
 // ── canAccessModule ───────────────────────────────────────────────────────────
 
 /**
@@ -39,6 +50,12 @@ export function canAccessModule(
   grantSet: Set<string>,
 ): boolean {
   if (!module.isActive) return false
+
+  // Temporary main-release lock: keep in-progress dev modules visible only to
+  // the protected admin account while dev is merged forward.
+  if (TEMP_PROTECTED_ADMIN_ONLY_MODULE_SLUGS.has(module.slug)) {
+    return user.role === 'admin' && user.isProtected
+  }
 
   if (module.adminOnly) {
     return user.role === 'admin'

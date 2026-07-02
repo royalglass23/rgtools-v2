@@ -11,6 +11,7 @@ const protectedStaff = { id: 'u3', username: 'pstaff', role: 'staff' as const, i
 
 const adminOnlyModule = { id: 'm1', slug: 'admin-panel', adminOnly: true,  isActive: true }
 const normalModule    = { id: 'm2', slug: 'quotes',      adminOnly: false, isActive: true }
+const temporaryLockedModule = { id: 'm3', slug: 'work-orders', adminOnly: false, isActive: true }
 
 // ── canAccessModule ────────────────────────────────────────────────────────────
 
@@ -34,6 +35,19 @@ describe('canAccessModule', () => {
 
   it('staff + normal module WITHOUT grant → false', () => {
     expect(canAccessModule(staff, normalModule, new Set())).toBe(false)
+  })
+
+  it('staff + temporary locked module WITH grant -> false', () => {
+    const grantSet = new Set([temporaryLockedModule.id])
+    expect(canAccessModule(staff, temporaryLockedModule, grantSet)).toBe(false)
+  })
+
+  it('regular admin + temporary locked module -> false', () => {
+    expect(canAccessModule(admin, temporaryLockedModule, new Set())).toBe(false)
+  })
+
+  it('protected admin + temporary locked module -> true', () => {
+    expect(canAccessModule(superAdmin, temporaryLockedModule, new Set())).toBe(true)
   })
 })
 
