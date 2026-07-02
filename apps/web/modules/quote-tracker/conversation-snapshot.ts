@@ -8,6 +8,7 @@ import {
   type LeadServiceM8History,
 } from '@/lib/servicem8/client'
 import { quoteAiGenerationFailures, quoteConversationSnapshots, quotes } from '@rgtools/db/schema'
+import { AI_GUIDANCE_TIMEOUT_MESSAGE, fetchAiGuidanceOpenAi, isAiGuidanceTimeoutError } from './ai-timeout'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -320,7 +321,7 @@ async function generateConversationSnapshotSummary(input: {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured')
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchAiGuidanceOpenAi('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -391,6 +392,7 @@ function collectSafeErrors(status: ConversationSnapshotHistory['sourceStatus']):
 }
 
 function safeErrorMessage(error: unknown): string {
+  if (isAiGuidanceTimeoutError(error)) return AI_GUIDANCE_TIMEOUT_MESSAGE
   if (error instanceof Error && error.message) return error.message.slice(0, 300)
   return 'Conversation Snapshot generation failed.'
 }

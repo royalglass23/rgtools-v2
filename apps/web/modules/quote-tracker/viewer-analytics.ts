@@ -83,7 +83,7 @@ export function rollupDeviceSessions(events: AnalyticsEvent[]): DeviceSession[] 
     session.totalTimeMs += event.eventType === 'close' ? event.durationMs ?? 0 : 0
     session.maxScrollDepth = Math.max(session.maxScrollDepth, event.scrollDepth ?? 0)
     session.hasDownload = session.hasDownload || event.eventType === 'download'
-    session.hasCta = session.hasCta || event.eventType === 'cta'
+    session.hasCta = session.hasCta || event.eventType === 'cta' || event.eventType === 'download'
     session.firstSeenAt = session.firstSeenAt < event.createdAt ? session.firstSeenAt : event.createdAt
     session.lastSeenAt = session.lastSeenAt > event.createdAt ? session.lastSeenAt : event.createdAt
 
