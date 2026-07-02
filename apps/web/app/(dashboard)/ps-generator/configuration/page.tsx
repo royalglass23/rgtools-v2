@@ -6,13 +6,18 @@ import {
   psConfigVersions,
   psOptionCategories,
   psOptionValues,
+  psSystems,
+  psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
 import {
+  createPsConfigurationSystemAction,
   createPsConfigurationDraftAction,
   publishPsConfigurationDraftAction,
+  updatePsConfigurationSystemAction,
   updatePsConfigurationOptionsAction,
 } from './actions'
 import { PsConfigurationOptionsEditor } from './PsConfigurationOptionsEditor'
+import { PsConfigurationSystemsEditor, type PsConfigurationSystemRow } from './PsConfigurationSystemsEditor'
 
 const visibleOptionCategorySlugs = new Set([
   'system',
@@ -83,6 +88,49 @@ export default async function PsConfigurationPage() {
     : []
 
   const visibleCategories = categories.filter((category) => visibleOptionCategorySlugs.has(category.slug))
+  const systemCategory = visibleCategories.find((category) => category.slug === 'system')
+  const optionCategories = visibleCategories.filter((category) => category.slug !== 'system')
+
+  const systems = version ? await db
+    .select({
+      id: psSystems.id,
+      slug: psSystems.slug,
+      displayName: psSystems.displayName,
+      sortOrder: psSystems.sortOrder,
+      archivedAt: psSystems.archivedAt,
+    })
+    .from(psSystems)
+    .where(eq(psSystems.configVersionId, version.id))
+    .orderBy(asc(psSystems.sortOrder), asc(psSystems.slug))
+    : []
+
+  const templateVariants = version ? await db
+    .select({
+      id: psTemplateVariants.id,
+      systemId: psTemplateVariants.systemId,
+      variantKind: psTemplateVariants.variantKind,
+      label: psTemplateVariants.label,
+      originalFilename: psTemplateVariants.originalFilename,
+      r2ObjectKey: psTemplateVariants.r2ObjectKey,
+      archivedAt: psTemplateVariants.archivedAt,
+    })
+    .from(psTemplateVariants)
+    .where(eq(psTemplateVariants.configVersionId, version.id))
+    : []
+
+  const systemRows: PsConfigurationSystemRow[] = systems
+    .filter((system) => !system.archivedAt)
+    .map((system) => {
+      const systemTemplates = templateVariants.filter((template) => template.systemId === system.id && !template.archivedAt)
+      return {
+        id: system.id,
+        slug: system.slug,
+        displayName: system.displayName,
+        isActive: !system.archivedAt,
+        standardPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'standard_ps1')),
+        poolPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'pool_ps1')),
+      }
+    })
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -125,10 +173,20 @@ export default async function PsConfigurationPage() {
             </div>
           </div>
 
+          {systemCategory ? (
+            <PsConfigurationSystemsEditor
+              configVersionId={version.id}
+              systems={systemRows}
+              isDraft={isDraft}
+              createAction={createPsConfigurationSystemAction}
+              updateAction={updatePsConfigurationSystemAction}
+            />
+          ) : null}
+
           <form action={updatePsConfigurationOptionsAction} className="space-y-4">
             <input type="hidden" name="configVersionId" value={version.id} />
             <PsConfigurationOptionsEditor
-              categories={visibleCategories.map((category) => ({
+              categories={optionCategories.map((category) => ({
                 ...category,
                 values: values.filter((value) => value.categoryId === category.id && !value.archivedAt),
               }))}
@@ -141,7 +199,7 @@ export default async function PsConfigurationPage() {
                   Category
                   <select name="newOptionCategoryId" disabled={!isDraft} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm">
                     <option value="">Choose</option>
-                    {visibleCategories.map((category) => (
+                    {optionCategories.map((category) => (
                       <option key={category.id} value={category.id}>{category.label}</option>
                     ))}
                   </select>
@@ -166,4 +224,19 @@ export default async function PsConfigurationPage() {
       )}
     </div>
   )
+}
+
+function templateSummary(template: {
+  id: string
+  label: string
+  originalFilename: string | null
+  r2ObjectKey: string
+} | undefined) {
+  if (!template) return null
+  return {
+    id: template.id,
+    label: template.label,
+    originalFilename: template.originalFilename,
+    r2ObjectKey: template.r2ObjectKey,
+  }
 }

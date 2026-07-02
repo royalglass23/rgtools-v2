@@ -2,7 +2,7 @@ import { PS_GENERATOR_OPTION_CATEGORIES } from './config'
 
 export type PsConfigState = 'draft' | 'published' | 'archived'
 export type PsDocumentKind = 'ps1' | 'ps3'
-export type PsTemplateVariantKind = 'standard_ps1' | 'pool_ps1' | 'gate_ps1' | 'ps3' | 'other'
+export type PsTemplateVariantKind = 'standard_ps1' | 'pool_ps1' | 'ps3' | 'other'
 export type PsFieldType = 'text' | 'checkbox'
 export type PsFieldSourceType =
   | 'project_value'
@@ -231,17 +231,6 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
       fieldDiscovery: { fields: ['client_name', 'job_address', 'bc_number', 'description'] },
     },
     {
-      key: 'double-disc-gate-ps1',
-      systemSlug: 'double-disc',
-      documentKind: 'ps1',
-      variantKind: 'gate_ps1',
-      label: 'Double Disc PS1 - Gate',
-      r2ObjectKey: 'templates/ps-generator/wordpress/double-disc/ps1-gate.pdf',
-      originalFilename: 'Double Disc PS1 Gate.pdf',
-      state: 'published',
-      fieldDiscovery: { fields: ['client_name', 'job_address', 'bc_number', 'gate_required', 'description'] },
-    },
-    {
       key: 'double-disc-ps3',
       systemSlug: 'double-disc',
       documentKind: 'ps3',
@@ -269,8 +258,6 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
     { templateKey: 'double-disc-standard-ps1', fieldName: 'job_address', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 },
     { templateKey: 'double-disc-standard-ps1', fieldName: 'bc_number', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber', sortOrder: 30 },
     { templateKey: 'double-disc-standard-ps1', fieldName: 'description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 40 },
-    { templateKey: 'double-disc-gate-ps1', fieldName: 'gate_required', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'gate_required.yes', checkboxValue: true, sortOrder: 10 },
-    { templateKey: 'double-disc-gate-ps1', fieldName: 'description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'gate-balustrade', sortOrder: 20 },
     { templateKey: 'double-disc-ps3', fieldName: 'completion_date', fieldType: 'text', sourceType: 'date', sourceKey: 'today', sortOrder: 10 },
     { templateKey: 'double-disc-ps3', fieldName: 'description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 20 },
   ],
