@@ -27,6 +27,7 @@ apps/web (Vercel)
   Leads
   Clients
   Quote Tracker
+  Work Orders
   PS Generator
        |
        v
@@ -62,6 +63,7 @@ Schema files live in `packages/db/src`:
 | `schema.ts` | Auth, modules, quote tracking, settings, audit, and error-log tables |
 | `schema-leads.ts` | Clients, leads, lead scoring, lead email, calculator submit, and lead outcome tables |
 | `schema-ps-generator.ts` | PS Generator configuration, generation events, generated PDF objects, audit, and migration records |
+| `schema-workorders.ts` | Work Order records, operational option lists, refresh runs, and timeline events |
 | `client.ts` | Neon pool + Drizzle client that loads all schemas |
 
 Migrations are generated and applied from the repo root into `drizzle/migrations/`.
@@ -118,6 +120,14 @@ Key files:
 | `ai-guidance.ts` | Latest AI guidance read model for the quote detail page |
 
 Quote detail pages show engagement, viewer analytics, email gate settings, manual status controls, and AI Guidance when configured. AI guidance is staff-facing only; it does not change quote state or send messages automatically.
+
+### Work Orders
+
+Source path: `apps/web/modules/work-orders`.
+
+The Work Orders module imports active installation work orders from ServiceM8 into RG Tools, reconciles current/non-current records, and lets staff manage internal operational fields such as installer, stage, hardware status, install date, risk, importance, and approach notes.
+
+Timeline events are internal by default. Manage users can mark deliberate timeline entries as future client-visible candidates by storing a separate customer-safe title and message on the event; raw audit fields remain staff-facing and are not published or written back to ServiceM8.
 
 ### PS Generator
 

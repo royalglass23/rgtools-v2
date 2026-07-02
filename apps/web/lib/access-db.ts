@@ -14,7 +14,7 @@ type ModuleRow = typeof modules.$inferSelect
 /**
  * Returns all active modules the user is allowed to access.
  *
- * - Admin  → every active module (including adminOnly ones)
+ * - Admin  → active modules allowed by the shared access rules
  * - Staff  → active, non-adminOnly modules where a grant row exists
  */
 export async function getAccessibleModules(userId: string): Promise<ModuleRow[]> {
@@ -31,20 +31,17 @@ export async function getAccessibleModules(userId: string): Promise<ModuleRow[]>
     isProtected: user.isProtected,
   }
 
-  if (accessUser.role === 'admin') {
-    // Admins see all active modules
-    return db.query.modules.findMany({
-      where: eq(modules.isActive, true),
-    })
+  const grantSet = new Set<string>()
+  if (accessUser.role !== 'admin') {
+    const grants = await db
+      .select()
+      .from(userModuleAccess)
+      .where(eq(userModuleAccess.userId, userId))
+
+    for (const grant of grants) {
+      grantSet.add(grant.moduleId)
+    }
   }
-
-  // Staff: fetch grant rows, build grantSet, then filter
-  const grants = await db
-    .select()
-    .from(userModuleAccess)
-    .where(eq(userModuleAccess.userId, userId))
-
-  const grantSet = new Set(grants.map((g) => g.moduleId))
 
   const activeModules = await db.query.modules.findMany({
     where: eq(modules.isActive, true),

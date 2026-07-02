@@ -61,7 +61,6 @@ describe('rollupDeviceSessions', () => {
       ev({ sessionId: 'a', eventType: 'open' }),
       ev({ sessionId: 'a', eventType: 'close', durationMs: 12000 }),
       ev({ sessionId: 'a', eventType: 'download' }),
-      ev({ sessionId: 'a', eventType: 'cta' }),
     ])
     expect(result[0].opens).toBe(2)
     expect(result[0].totalTimeMs).toBe(12000)

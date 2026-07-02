@@ -27,6 +27,7 @@ describe('ps generator module shell', () => {
     expect(nav.primaryModules).toEqual([])
     expect(nav.psGeneratorItems).toEqual([
       { id: 'ps-generator-generate', slug: 'ps-generator', name: 'Generate PS', href: '/ps-generator' },
+      { id: 'ps-generator-history', slug: 'ps-generator/history', name: 'History', href: '/ps-generator/history' },
       {
         id: 'ps-generator-configuration',
         slug: 'ps-generator/configuration',
@@ -36,13 +37,32 @@ describe('ps generator module shell', () => {
     ])
   })
 
-  it('hides PS Configuration from non-admin navigation', () => {
+  it('hides PS Configuration when only Generate PS is granted', () => {
     const nav = buildDashboardNavigation([
       moduleRow('ps', 'ps-generator', 'PS Generator', 4),
+      moduleRow('ps-history', 'ps-generator/history', 'PS History', 5),
     ])
 
     expect(nav.psGeneratorItems).toEqual([
       { id: 'ps-generator-generate', slug: 'ps-generator', name: 'Generate PS', href: '/ps-generator' },
+      { id: 'ps-generator-history', slug: 'ps-generator/history', name: 'History', href: '/ps-generator/history' },
+    ])
+  })
+
+  it('shows PS Configuration to a non-admin config editor with an explicit grant', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('ps', 'ps-generator', 'PS Generator', 4),
+      moduleRow('ps-config', 'ps-generator/configuration', 'PS Configuration', 5),
+    ])
+
+    expect(nav.psGeneratorItems).toEqual([
+      { id: 'ps-generator-generate', slug: 'ps-generator', name: 'Generate PS', href: '/ps-generator' },
+      {
+        id: 'ps-generator-configuration',
+        slug: 'ps-generator/configuration',
+        name: 'Configuration',
+        href: '/ps-generator/configuration',
+      },
     ])
   })
 

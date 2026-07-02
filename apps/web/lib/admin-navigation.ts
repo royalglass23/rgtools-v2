@@ -1,4 +1,4 @@
-﻿export interface DashboardModule {
+export interface DashboardModule {
   id: string
   slug: string
   name: string
@@ -42,12 +42,53 @@ const PS_GENERATOR_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
     name: 'Generate PS',
     href: '/ps-generator',
   },
+  'ps-generator/configuration': {
+    id: 'ps-generator-configuration',
+    slug: 'ps-generator/configuration',
+    name: 'Configuration',
+    href: '/ps-generator/configuration',
+  },
+  'ps-generator/history': {
+    id: 'ps-generator-history',
+    slug: 'ps-generator/history',
+    name: 'History',
+    href: '/ps-generator/history',
+  },
 }
 
 const PS_GENERATOR_SORT_ORDER: Record<string, number> = {
   'ps-generator': 0,
-  'ps-generator/configuration': 1,
+  'ps-generator/history': 1,
+  'ps-generator/configuration': 2,
 }
+
+const PS_GENERATOR_PERMISSION_ONLY_SLUGS = new Set([
+  'ps-generator/configuration/publish',
+])
+
+const WORK_ORDER_ROUTE_BY_SLUG: Record<string, DashboardNavItem> = {
+  'work-orders': {
+    id: 'work-order-list',
+    slug: 'work-orders',
+    name: 'Lists',
+    href: '/work-orders',
+  },
+  'admin/work-orders': {
+    id: 'work-order-configuration',
+    slug: 'admin/work-orders',
+    name: 'Configuration',
+    href: '/admin/work-orders',
+  },
+}
+
+const WORK_ORDER_SORT_ORDER: Record<string, number> = {
+  'work-orders': 0,
+  'admin/work-orders': 1,
+}
+
+const WORK_ORDER_PERMISSION_ONLY_SLUGS = new Set([
+  'work-orders/manage',
+])
 
 const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   admin: '/admin/administration',
@@ -75,7 +116,7 @@ function adminItemKey(slug: string) {
   return slug === 'admin/administration' ? 'admin' : slug
 }
 
-export function buildDashboardNavigation(modules: DashboardModule[], options: { isAdmin?: boolean } = {}) {
+export function buildDashboardNavigation(modules: DashboardModule[], options: { isAdmin?: boolean; showWorkOrderNavigation?: boolean } = {}) {
   const activeModules = modules
     .filter((mod) => mod.isActive)
     .toSorted((a, b) => a.sortOrder - b.sortOrder)
@@ -84,10 +125,13 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in ADMIN_ROUTE_BY_SLUG) &&
     !(mod.slug in LEAD_INTAKE_ROUTE_BY_SLUG) &&
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
-    mod.slug !== 'ps-generator/configuration'
+    !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
+    !PS_GENERATOR_PERMISSION_ONLY_SLUGS.has(mod.slug) &&
+    !WORK_ORDER_PERMISSION_ONLY_SLUGS.has(mod.slug)
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()
   const psGeneratorItemsByKey = new Map<string, DashboardNavItem>()
+  const workOrderItemsByKey = new Map<string, DashboardNavItem>()
   const adminItemsByKey = new Map<string, DashboardNavItem>()
 
   for (const mod of activeModules) {
@@ -113,13 +157,30 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     psGeneratorItemsByKey.set(item.slug, item)
   }
 
-  if (options.isAdmin && psGeneratorItemsByKey.size > 0) {
+  if (options.isAdmin && psGeneratorItemsByKey.has('ps-generator')) {
+    psGeneratorItemsByKey.set('ps-generator/history', {
+      id: 'ps-generator-history',
+      slug: 'ps-generator/history',
+      name: 'History',
+      href: '/ps-generator/history',
+    })
     psGeneratorItemsByKey.set('ps-generator/configuration', {
       id: 'ps-generator-configuration',
       slug: 'ps-generator/configuration',
       name: 'Configuration',
       href: '/ps-generator/configuration',
     })
+  }
+
+  if (options.showWorkOrderNavigation) {
+    for (const mod of activeModules) {
+      if (mod.slug === 'admin/work-orders' && !options.isAdmin) continue
+
+      const item = WORK_ORDER_ROUTE_BY_SLUG[mod.slug]
+      if (!item) continue
+
+      workOrderItemsByKey.set(item.slug, item)
+    }
   }
 
   for (const mod of activeModules) {
@@ -155,5 +216,11 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     return aOrder - bOrder
   })
 
-  return { primaryModules, leadIntakeItems, psGeneratorItems, adminItems }
+  const workOrderItems = Array.from(workOrderItemsByKey.values()).toSorted((a, b) => {
+    const aOrder = WORK_ORDER_SORT_ORDER[a.slug] ?? Number.MAX_SAFE_INTEGER
+    const bOrder = WORK_ORDER_SORT_ORDER[b.slug] ?? Number.MAX_SAFE_INTEGER
+    return aOrder - bOrder
+  })
+
+  return { primaryModules, leadIntakeItems, psGeneratorItems, workOrderItems, adminItems }
 }

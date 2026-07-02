@@ -102,4 +102,52 @@ describe('buildDashboardNavigation', () => {
       },
     ])
   })
+
+  it('hides work order navigation by default while the module is parked on its branch', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('work-orders', 'work-orders', 'Work Orders', 5),
+      moduleRow('work-order-config', 'admin/work-orders', 'Work Order Configuration', 106, true),
+    ], { isAdmin: true })
+
+    expect(nav.primaryModules).toEqual([])
+    expect(nav.workOrderItems).toEqual([])
+    expect(nav.adminItems).toEqual([])
+  })
+
+  it('groups work order list and configuration under the Work Order menu when enabled', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('work-orders', 'work-orders', 'Work Orders', 5),
+      moduleRow('work-order-manage', 'work-orders/manage', 'Work Orders Manage', 6),
+      moduleRow('work-order-config', 'admin/work-orders', 'Work Order Configuration', 106, true),
+    ], { isAdmin: true, showWorkOrderNavigation: true })
+
+    expect(nav.primaryModules).toEqual([])
+    expect(nav.adminItems).toEqual([])
+    expect(nav.workOrderItems).toEqual([
+      { id: 'work-order-list', slug: 'work-orders', name: 'Lists', href: '/work-orders' },
+      { id: 'work-order-configuration', slug: 'admin/work-orders', name: 'Configuration', href: '/admin/work-orders' },
+    ])
+    expect(nav.primaryModules).not.toContainEqual(expect.objectContaining({ slug: 'work-orders/manage' }))
+  })
+
+  it('does not render PS publish permission rows as top-level navigation', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('ps', 'ps-generator', 'PS Generator', 4),
+      moduleRow('ps-history', 'ps-generator/history', 'PS History', 5),
+      moduleRow('ps-config', 'ps-generator/configuration', 'PS Configuration', 6),
+      moduleRow('ps-publish', 'ps-generator/configuration/publish', 'PS Configuration Publisher', 7),
+    ], { isAdmin: true })
+
+    expect(nav.primaryModules).toEqual([])
+    expect(nav.psGeneratorItems).toEqual([
+      { id: 'ps-generator-generate', slug: 'ps-generator', name: 'Generate PS', href: '/ps-generator' },
+      { id: 'ps-generator-history', slug: 'ps-generator/history', name: 'History', href: '/ps-generator/history' },
+      {
+        id: 'ps-generator-configuration',
+        slug: 'ps-generator/configuration',
+        name: 'Configuration',
+        href: '/ps-generator/configuration',
+      },
+    ])
+  })
 })

@@ -1,0 +1,56 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+function pageSource() {
+  return readFileSync(
+    join(process.cwd(), 'app/(dashboard)/admin/work-orders/page.tsx'),
+    'utf8',
+  )
+}
+
+function editorSource() {
+  return readFileSync(
+    join(process.cwd(), 'modules/work-orders/SummaryFieldsEditor.tsx'),
+    'utf8',
+  )
+}
+
+function summaryConfigSource() {
+  return readFileSync(
+    join(process.cwd(), 'modules/work-orders/summary-config.ts'),
+    'utf8',
+  )
+}
+
+describe('work order admin page', () => {
+  it('lets admins deactivate controlled options instead of deleting them', () => {
+    const source = pageSource()
+
+    expect(source).toContain('deactivateWorkOrderInstallerAction')
+    expect(source).toContain('deactivateWorkOrderStageAction')
+    expect(source).toContain('deactivateWorkOrderHardwareStatusAction')
+    expect(source).toContain('Deactivate')
+    expect(source).not.toContain('Delete')
+  })
+
+  it('surfaces global summary configuration controls', () => {
+    const source = `${pageSource()}\n${editorSource()}\n${summaryConfigSource()}`
+
+    expect(source).toContain('Work Order Summary Fields')
+    expect(source).toContain('Maintenance Program')
+    expect(source).toContain('Visible')
+    expect(source).toContain('Filterable')
+    expect(source).not.toContain('Display order')
+  })
+
+  it('reorders summary fields by dragging rows while preserving order form fields', () => {
+    const source = editorSource()
+
+    expect(source).toContain('draggable')
+    expect(source).toContain('onDragStart')
+    expect(source).toContain('onDrop')
+    expect(source).toContain('name={`order:${field.id}`}')
+    expect(source).not.toContain('type="number"')
+  })
+})

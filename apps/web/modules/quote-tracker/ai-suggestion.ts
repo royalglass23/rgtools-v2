@@ -4,12 +4,14 @@ import { db } from '@/lib/db'
 import { quoteAiGenerationFailures, quoteAiSuggestions, quoteConversationSnapshots, quoteEngagement, quoteEvents, quotes } from '@rgtools/db/schema'
 import { classifyQuoteSignal, type QuoteSignalClassification, type QuoteSignalConversationSnapshot, type QuoteSignalEngagement, type QuoteSignalQuote } from './quote-signals'
 import { formatDateTime } from './presentation'
+import { AI_GUIDANCE_TIMEOUT_MESSAGE, fetchAiGuidanceOpenAi, isAiGuidanceTimeoutError } from './ai-timeout'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const AI_SUGGESTION_PROMPT_VERSION = 'quote-ai-guidance-v1'
 export const AI_SUGGESTION_INPUT_VERSION = 'quote-ai-guidance-input-v1'
 export const AI_GUIDANCE_FAILURE_COOLDOWN_MS = 60_000
+export const AI_GUIDANCE_REGENERATION_COOLDOWN_MS = 5 * 60_000
 
 export const RECOMMENDED_MOVES = [
   'call today',
@@ -181,6 +183,7 @@ export type AiSuggestionDeps = {
   findQuote: (quoteId: string) => Promise<AiSuggestionQuote | null>
   findEngagement: (quoteId: string) => Promise<QuoteSignalEngagement>
   findLatestConversationSnapshot: (quoteId: string) => Promise<AiSuggestionConversationSnapshot | null>
+  findLatestSuggestion: (quoteId: string) => Promise<{ createdAt: Date } | null>
   findLatestFailure: (quoteId: string) => Promise<{ retryAfter: Date | null; errorMessage: string } | null>
   generateSuggestion: (input: AiSuggestionPromptInput) => Promise<unknown>
   insertSuggestion: (record: AiSuggestionRecord) => Promise<{ id: string }>
@@ -214,6 +217,17 @@ export async function generateAiSuggestionForQuote(
   if (!quote) return { ok: false, message: 'Tracked Quote not found.' }
 
   const startedAt = deps.now()
+  const latestSuggestion = await deps.findLatestSuggestion(input.quoteId)
+  if (latestSuggestion) {
+    const retryAfter = new Date(latestSuggestion.createdAt.getTime() + AI_GUIDANCE_REGENERATION_COOLDOWN_MS)
+    if (retryAfter > startedAt) {
+      return {
+        ok: false,
+        message: `AI Guidance can be regenerated after ${formatDateTime(retryAfter)}.`,
+      }
+    }
+  }
+
   const latestFailure = await deps.findLatestFailure(input.quoteId)
   if (latestFailure?.retryAfter && latestFailure.retryAfter > startedAt) {
     return {
@@ -386,6 +400,18 @@ export const realAiSuggestionDeps: AiSuggestionDeps = {
 
     return failure ?? null
   },
+  async findLatestSuggestion(quoteId) {
+    const [suggestion] = await db
+      .select({
+        createdAt: quoteAiSuggestions.createdAt,
+      })
+      .from(quoteAiSuggestions)
+      .where(eq(quoteAiSuggestions.quoteId, quoteId))
+      .orderBy(desc(quoteAiSuggestions.createdAt))
+      .limit(1)
+
+    return suggestion ?? null
+  },
   generateSuggestion: generateAiSuggestionJson,
   async insertSuggestion(record) {
     const [suggestion] = await db
@@ -407,7 +433,7 @@ async function generateAiSuggestionJson(input: AiSuggestionPromptInput): Promise
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured')
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchAiGuidanceOpenAi('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -567,6 +593,7 @@ function toSignalConversationSnapshot(
 }
 
 function safeErrorMessage(error: unknown): string {
+  if (isAiGuidanceTimeoutError(error)) return AI_GUIDANCE_TIMEOUT_MESSAGE
   if (error instanceof SyntaxError) return 'AI Suggestion response was not valid JSON.'
   if (error instanceof Error && error.message) {
     const httpMatch = error.message.match(/HTTP\s+(\d{3})/)
@@ -577,6 +604,7 @@ function safeErrorMessage(error: unknown): string {
 }
 
 function classifyAiSuggestionError(error: unknown): string {
+  if (isAiGuidanceTimeoutError(error)) return 'timeout'
   if (error instanceof SyntaxError) return 'malformed_json'
   if (!(error instanceof Error)) return 'generation_error'
   if (error.message.includes('OPENAI_API_KEY')) return 'configuration_error'

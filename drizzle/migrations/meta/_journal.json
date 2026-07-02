@@ -225,6 +225,55 @@
       "when": 1782700456000,
       "tag": "0031_ai_generation_failure_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782701000000,
+      "tag": "0032_work_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1782787200000,
+      "tag": "0033_ps_option_values_config_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1782799200000,
+      "tag": "0034_work_order_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1782856361445,
+      "tag": "0035_work_order_portal_timeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1782860400000,
+      "tag": "0036_work_order_reconciliation_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782867600000,
+      "tag": "0037_work_order_ai_suggestion_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782954000000,
+      "tag": "0038_work_order_maintenance_program",
+      "breakpoints": true
     }
   ]
 }

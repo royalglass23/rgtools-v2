@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
     "./schema-leads": "./src/schema-leads.ts",
-    "./schema-ps-generator": "./src/schema-ps-generator.ts"
+    "./schema-ps-generator": "./src/schema-ps-generator.ts",
+    "./schema-workorders": "./src/schema-workorders.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -16,10 +17,12 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "@next/env": "^16.2.6",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/ws": "^8.18.1",
     "typescript": "^5"
   }
 }

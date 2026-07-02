@@ -5,6 +5,10 @@ import { PDFDocument } from 'pdf-lib'
 import { getStorage } from '@/lib/storage'
 import type { QuoteStorage } from '@/lib/storage/types'
 import {
+  psGeneratedPdfObjects,
+  psGenerationEvents,
+} from '@rgtools/db/schema-ps-generator'
+import {
   getPublishedPsConfiguration,
   type PublishedPsConfiguration,
   type PublishedPsSystem,
@@ -35,6 +39,10 @@ export interface GenerateProducerStatementPackageDependencies {
   storage?: QuoteStorage
   now?: Date
   operationId?: string
+  persistGeneratedOutputs?: boolean
+  actor?: PsGenerationActor
+  database?: PsGenerationDatabase
+  retentionDays?: number
 }
 
 export interface GeneratedProducerStatementPdf {
@@ -42,6 +50,7 @@ export interface GeneratedProducerStatementPdf {
   templateVariantId: string
   templateLabel: string
   sourceObjectKey: string
+  r2ObjectKey?: string
   filename: string
   contentType: 'application/pdf'
   bytes: Buffer
@@ -72,6 +81,19 @@ interface GenerationContext {
   now: Date
 }
 
+export interface PsGenerationActor {
+  id: string
+  label: string
+}
+
+interface PsGenerationDatabase {
+  insert: (table: unknown) => {
+    values: (values: unknown) => {
+      returning?: (fields?: unknown) => Promise<Array<{ id: string }>>
+    }
+  }
+}
+
 export async function generateProducerStatementPackage(
   input: GenerateProducerStatementPackageInput,
   dependencies: GenerateProducerStatementPackageDependencies = {},
@@ -95,6 +117,7 @@ export async function generateProducerStatementPackage(
   validateSelectedOptions(system, input.selections)
 
   const context: GenerationContext = { configuration, system, input, now }
+  const operationId = dependencies.operationId ?? randomUUID()
   const outputs: GeneratedProducerStatementPdf[] = []
 
   for (const documentKind of documentKindsForMode(input.mode)) {
@@ -119,29 +142,172 @@ export async function generateProducerStatementPackage(
       })
     }
 
+    const filename = buildFilename(input, documentKind)
     outputs.push({
       documentKind,
       templateVariantId: template.id,
       templateLabel: template.label,
       sourceObjectKey: template.r2ObjectKey,
-      filename: buildFilename(input, documentKind),
+      r2ObjectKey: dependencies.persistGeneratedOutputs ? buildGeneratedObjectKey(operationId, filename) : undefined,
+      filename,
       contentType: 'application/pdf',
       bytes: await fillTemplatePdf(templateBytes, template, context),
     })
   }
 
+  if (dependencies.persistGeneratedOutputs) {
+    await persistGeneratedPackage({
+      input,
+      configuration,
+      system,
+      outputs,
+      storage,
+      database: dependencies.database ?? await loadDefaultDb(),
+      actor: dependencies.actor,
+      now,
+      retainedUntil: addDays(now, dependencies.retentionDays ?? 90),
+    })
+  }
+
   return {
-    operationId: dependencies.operationId ?? randomUUID(),
+    operationId,
     mode: input.mode,
     versionLabel: configuration.versionLabel,
     outputs,
   }
 }
 
+async function persistGeneratedPackage({
+  input,
+  configuration,
+  system,
+  outputs,
+  storage,
+  database,
+  actor,
+  now,
+  retainedUntil,
+}: {
+  input: GenerateProducerStatementPackageInput
+  configuration: PublishedPsConfiguration
+  system: PublishedPsSystem
+  outputs: GeneratedProducerStatementPdf[]
+  storage: QuoteStorage
+  database: PsGenerationDatabase
+  actor?: PsGenerationActor
+  now: Date
+  retainedUntil: Date
+}) {
+  if (!actor) {
+    throw new PsGenerationError('generation_actor_missing', 'A generation actor is required when persisting generated PDFs.')
+  }
+
+  for (const output of outputs) {
+    if (!output.r2ObjectKey) {
+      throw new PsGenerationError('generated_object_key_missing', `No generated object key was prepared for ${output.filename}.`)
+    }
+    await storage.put(output.r2ObjectKey, output.bytes, output.contentType)
+  }
+
+  const [event] = await database.insert(psGenerationEvents).values({
+    actorId: actor.id,
+    actorLabel: actor.label,
+    configVersionId: configuration.versionId ?? null,
+    generationMode: input.mode,
+    jobNumber: normalizeOptionalText(input.projectDetails.jobNumber),
+    clientName: input.projectDetails.clientName,
+    jobAddress: input.projectDetails.jobAddress,
+    bcNumber: normalizeOptionalText(input.projectDetails.bcNumber),
+    lotDescription: normalizeOptionalText(input.projectDetails.lotDescription),
+    selectionsSnapshot: buildSelectionsSnapshot(configuration, system, input.selections),
+    descriptionSnapshot: buildDescriptionSnapshot(outputs, configuration, system, input, now),
+    createdAt: now,
+  }).returning?.({ id: psGenerationEvents.id }) ?? []
+
+  if (!event?.id) {
+    throw new PsGenerationError('generation_record_missing', 'Generation record could not be created.')
+  }
+
+  await database.insert(psGeneratedPdfObjects).values(outputs.map((output) => ({
+    generationEventId: event.id,
+    documentKind: output.documentKind,
+    r2ObjectKey: output.r2ObjectKey!,
+    filename: output.filename,
+    retainedUntil,
+    createdAt: now,
+  })))
+}
+
 function documentKindsForMode(mode: PsGenerationMode): PsGeneratedDocumentKind[] {
   if (mode === 'ps1_only') return ['ps1']
   if (mode === 'ps3_only') return ['ps3']
   return ['ps1', 'ps3']
+}
+
+function buildGeneratedObjectKey(operationId: string, filename: string): string {
+  return `ps-generator/generated/${operationId}/${filename}`
+}
+
+function buildSelectionsSnapshot(
+  configuration: PublishedPsConfiguration,
+  system: PublishedPsSystem,
+  selections: Record<string, string>,
+) {
+  const categoriesBySlug = new Map(configuration.optionCategories.map((category) => [category.slug, category]))
+  const options: Record<string, { categoryLabel: string; slug: string; label: string }> = {}
+
+  for (const [categorySlug, selectedSlug] of Object.entries(selections)) {
+    if (categorySlug === 'system') continue
+    const category = categoriesBySlug.get(categorySlug)
+    const label = system.optionRules[categorySlug]?.find((value) => value.slug === selectedSlug)?.label ?? selectedSlug
+    options[categorySlug] = {
+      categoryLabel: category?.label ?? categorySlug,
+      slug: selectedSlug,
+      label,
+    }
+  }
+
+  return {
+    configVersionId: configuration.versionId ?? null,
+    configVersionLabel: configuration.versionLabel,
+    system: {
+      id: system.id ?? null,
+      slug: system.slug,
+      label: system.displayName,
+    },
+    options,
+  }
+}
+
+function buildDescriptionSnapshot(
+  outputs: GeneratedProducerStatementPdf[],
+  configuration: PublishedPsConfiguration,
+  system: PublishedPsSystem,
+  input: GenerateProducerStatementPackageInput,
+  now: Date,
+) {
+  const context: GenerationContext = { configuration, system, input, now }
+
+  return {
+    templates: outputs.map((output) => {
+      const variant = configuration.templateVariants.find((candidate) => candidate.id === output.templateVariantId)
+      return {
+        documentKind: output.documentKind,
+        templateVariantId: output.templateVariantId,
+        templateLabel: output.templateLabel,
+        sourceObjectKey: output.sourceObjectKey,
+        generatedDescription: resolveTemplateDescription(variant, context),
+      }
+    }),
+  }
+}
+
+function resolveTemplateDescription(
+  template: PublishedPsTemplateVariant | undefined,
+  context: GenerationContext,
+): string | null {
+  const mapping = template?.fieldMappings.find((candidate) => candidate.sourceType === 'description_template')
+  return mapping ? resolveDescriptionTemplate(context, mapping.sourceKey) : null
 }
 
 function selectTemplateVariant(
@@ -155,11 +321,9 @@ function selectTemplateVariant(
   ))
   if (documentKind === 'ps3') return candidates.find((variant) => variant.variantKind === 'ps3') ?? candidates[0] ?? null
 
-  const preferredKind = selections.gate_required === 'yes'
-    ? 'gate_ps1'
-    : selections.structure_type === 'pool-fence'
-      ? 'pool_ps1'
-      : 'standard_ps1'
+  const preferredKind = selections.structure_type === 'pool-fence'
+    ? 'pool_ps1'
+    : 'standard_ps1'
 
   return candidates.find((variant) => variant.variantKind === preferredKind)
     ?? candidates.find((variant) => variant.variantKind === 'standard_ps1')
@@ -327,10 +491,23 @@ function stringify(value: unknown): string {
   return String(value)
 }
 
+function normalizeOptionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
 function toUint8Array(bytes: Buffer): Uint8Array {
   return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+}
+
+async function loadDefaultDb(): Promise<PsGenerationDatabase> {
+  const { db } = await import('@/lib/db')
+  return db as unknown as PsGenerationDatabase
 }

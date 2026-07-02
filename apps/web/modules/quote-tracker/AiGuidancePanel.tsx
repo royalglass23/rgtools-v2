@@ -3,6 +3,8 @@ import { AiGuidanceSubmitButton } from './AiGuidanceSubmitButton'
 import { CopyLinkButton } from './CopyLinkButton'
 import { formatDateTime } from './presentation'
 
+const AI_GUIDANCE_REGENERATION_COOLDOWN_MS = 5 * 60 * 1000
+
 export function AiGuidancePanel({
   guidance,
   quoteId,
@@ -22,6 +24,9 @@ export function AiGuidancePanel({
     : guidance.aiSuggestion
       ? 'Regenerate'
       : 'Generate'
+  const disabledUntil = guidance.aiSuggestion
+    ? new Date(guidance.aiSuggestion.createdAt.getTime() + AI_GUIDANCE_REGENERATION_COOLDOWN_MS)
+    : null
 
   return (
     <details
@@ -40,7 +45,7 @@ export function AiGuidancePanel({
           {generateSuggestionAction && quoteId ? (
             <form action={generateSuggestionAction}>
               <input type="hidden" name="quoteId" value={quoteId} />
-              <AiGuidanceSubmitButton label={actionLabel} />
+              <AiGuidanceSubmitButton label={actionLabel} disabledUntil={disabledUntil} />
             </form>
           ) : (
             <button

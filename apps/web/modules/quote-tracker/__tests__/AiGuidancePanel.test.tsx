@@ -106,6 +106,24 @@ describe('AiGuidancePanel', () => {
     expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled()
   })
 
+  it('disables Regenerate for 5 minutes after saved guidance is created', () => {
+    render(
+      <AiGuidancePanel
+        quoteId={quoteId}
+        generateSuggestionAction={() => undefined}
+        guidance={{
+          conversationSnapshot: null,
+          aiSuggestion: suggestionFixture({
+            createdAt: new Date(Date.now()),
+          }),
+          generationFailure: null,
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Regenerate in 5 min' })).toBeDisabled()
+  })
+
   it('opens by default and shows saved Conversation Snapshot and AI Suggestion separately', () => {
     render(
       <AiGuidancePanel
@@ -368,6 +386,7 @@ function suggestionFixture(overrides: Partial<{
   analyticsSnapshot: unknown
   staleAt: Date | null
   staleReason: string | null
+  createdAt: Date
 }> = {}) {
   return {
     id: 'suggestion-1',
