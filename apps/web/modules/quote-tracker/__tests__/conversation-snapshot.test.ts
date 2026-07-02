@@ -265,6 +265,25 @@ describe('generateConversationSnapshotForQuote', () => {
     }))
   })
 
+  it('returns a staff-readable message when OpenAI times out', async () => {
+    const d = deps({
+      summarizeHistory: vi.fn(async () => {
+        throw Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })
+      }),
+    })
+
+    const result = await generateConversationSnapshotForQuote({ quoteId, triggeredByUserId: userId }, d)
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'AI Guidance took longer than 5 minutes, so it was stopped. Please try again.',
+    })
+    expect(d.recordFailure).toHaveBeenCalledWith(expect.objectContaining({
+      failureStage: 'conversation_snapshot',
+      errorMessage: 'AI Guidance took longer than 5 minutes, so it was stopped. Please try again.',
+    }))
+  })
+
   it('requests a strict Conversation Snapshot JSON schema from OpenAI', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -311,6 +330,7 @@ describe('generateConversationSnapshotForQuote', () => {
     })
 
     const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body?.toString() ?? '{}')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
     expect(requestBody.response_format).toMatchObject({
       type: 'json_schema',
       json_schema: {

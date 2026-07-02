@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { quoteAiGenerationFailures, quoteAiSuggestions, quoteConversationSnapshots, quoteEngagement, quoteEvents, quotes } from '@rgtools/db/schema'
 import { classifyQuoteSignal, type QuoteSignalClassification, type QuoteSignalConversationSnapshot, type QuoteSignalEngagement, type QuoteSignalQuote } from './quote-signals'
 import { formatDateTime } from './presentation'
+import { AI_GUIDANCE_TIMEOUT_MESSAGE, fetchAiGuidanceOpenAi, isAiGuidanceTimeoutError } from './ai-timeout'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -407,7 +408,7 @@ async function generateAiSuggestionJson(input: AiSuggestionPromptInput): Promise
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured')
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchAiGuidanceOpenAi('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -567,6 +568,7 @@ function toSignalConversationSnapshot(
 }
 
 function safeErrorMessage(error: unknown): string {
+  if (isAiGuidanceTimeoutError(error)) return AI_GUIDANCE_TIMEOUT_MESSAGE
   if (error instanceof SyntaxError) return 'AI Suggestion response was not valid JSON.'
   if (error instanceof Error && error.message) {
     const httpMatch = error.message.match(/HTTP\s+(\d{3})/)
@@ -577,6 +579,7 @@ function safeErrorMessage(error: unknown): string {
 }
 
 function classifyAiSuggestionError(error: unknown): string {
+  if (isAiGuidanceTimeoutError(error)) return 'timeout'
   if (error instanceof SyntaxError) return 'malformed_json'
   if (!(error instanceof Error)) return 'generation_error'
   if (error.message.includes('OPENAI_API_KEY')) return 'configuration_error'

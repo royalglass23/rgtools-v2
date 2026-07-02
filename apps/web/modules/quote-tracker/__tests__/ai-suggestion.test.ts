@@ -231,6 +231,16 @@ describe('generateAiSuggestionForQuote', () => {
       errorType: 'malformed_json',
     },
     {
+      name: 'AI timeout',
+      overrides: {
+        generateSuggestion: vi.fn(async () => {
+          throw Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })
+        }),
+      },
+      message: 'AI Guidance took longer than 5 minutes, so it was stopped. Please try again.',
+      errorType: 'timeout',
+    },
+    {
       name: 'persistence failure',
       overrides: {
         insertSuggestion: vi.fn(async () => {
@@ -318,6 +328,7 @@ describe('generateAiSuggestionForQuote', () => {
     })
 
     const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body?.toString() ?? '{}')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
     expect(requestBody.response_format).toMatchObject({
       type: 'json_schema',
       json_schema: {

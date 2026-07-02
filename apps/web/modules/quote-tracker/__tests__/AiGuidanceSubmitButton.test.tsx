@@ -27,7 +27,9 @@ describe('AiGuidanceSubmitButton', () => {
 
     render(<AiGuidanceSubmitButton label="Retry and regenerate" />)
 
-    expect(screen.getByRole('button', { name: 'Generating' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Generating AI Guidance' })).toBeDisabled()
+    expect(screen.getByText('AI Guidance is working in the background.')).toBeInTheDocument()
+    expect(screen.getByText(/longer than 5 minutes/i)).toBeInTheDocument()
     expect(screen.getByText('Reading ServiceM8 history')).toBeInTheDocument()
   })
 })

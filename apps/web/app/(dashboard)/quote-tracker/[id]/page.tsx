@@ -266,7 +266,7 @@ function buildEngagementData(detail: NonNullable<Awaited<ReturnType<typeof getQu
     uniqueSessions: detail.engagement?.uniqueSessions ?? detail.viewerSessions.length,
     uniqueDevices: detail.engagement?.uniqueDevices ?? new Set(detail.events.map((event) => event.deviceType).filter(Boolean)).size,
     forwardingSuspected: detail.engagement?.forwardingSuspected ?? detail.viewerSessions.length > 1,
-    hasCta: detail.events.some((event) => event.eventType === 'cta'),
+    hasCta: detail.events.some((event) => event.eventType === 'cta' || event.eventType === 'download'),
     hasReturnVisit: openDays.size >= 2,
     createdAt: detail.quote.createdAt,
   }
