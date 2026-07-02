@@ -321,11 +321,9 @@ function selectTemplateVariant(
   ))
   if (documentKind === 'ps3') return candidates.find((variant) => variant.variantKind === 'ps3') ?? candidates[0] ?? null
 
-  const preferredKind = selections.gate_required === 'yes'
-    ? 'gate_ps1'
-    : selections.structure_type === 'pool-fence'
-      ? 'pool_ps1'
-      : 'standard_ps1'
+  const preferredKind = selections.structure_type === 'pool-fence'
+    ? 'pool_ps1'
+    : 'standard_ps1'
 
   return candidates.find((variant) => variant.variantKind === preferredKind)
     ?? candidates.find((variant) => variant.variantKind === 'standard_ps1')

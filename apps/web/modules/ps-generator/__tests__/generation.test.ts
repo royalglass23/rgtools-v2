@@ -89,11 +89,13 @@ describe('Producer Statement generation', () => {
     )
   })
 
-  it('generates PS1 only and fills checkbox mappings from selected options', async () => {
+  it('uses the standard PS1 template when gate is required', async () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
     const objects: Record<string, Buffer> = {
-      'templates/ps-generator/wordpress/double-disc/ps1-gate.pdf': await createFixturePdf([
-        { name: 'gate_required', type: 'checkbox' },
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
+        { name: 'client_name', type: 'text' },
+        { name: 'job_address', type: 'text' },
+        { name: 'bc_number', type: 'text' },
         { name: 'description', type: 'text' },
       ]),
     }
@@ -122,14 +124,54 @@ describe('Producer Statement generation', () => {
     expect(result.outputs).toHaveLength(1)
     expect(result.outputs[0]).toMatchObject({
       documentKind: 'ps1',
-      templateLabel: 'Double Disc PS1 - Gate',
+      templateLabel: 'Double Disc PS1',
+      sourceObjectKey: 'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf',
     })
 
     const form = await readForm(result.outputs[0].bytes)
-    expect(form.getCheckBox('gate_required').isChecked()).toBe(true)
     expect(form.getTextField('description').getText()).toBe(
-      'Double Disc glass balustrade with gate to Pool fence, External, fixed to Steel; Laminated glass at 15mm.',
+      'Double Disc glass balustrade to Pool fence, External, fixed to Steel; Laminated glass at 15mm.',
     )
+  })
+
+  it('uses the pool PS1 template for pool fence selections when one is published', async () => {
+    const configuration = withPoolPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
+      { fieldName: 'pool_description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/frameless-spigot/ps1-pool.pdf': await createFixturePdf([
+        { name: 'client_name', type: 'text' },
+        { name: 'pool_description', type: 'text' },
+      ]),
+    }
+
+    const result = await generateProducerStatementPackage({
+      mode: 'ps1_only',
+      projectDetails: {
+        clientName: 'Pool Customer',
+        jobAddress: '9 Fence Road',
+      },
+      selections: {
+        system: 'frameless-spigot',
+        structure_material: 'timber',
+        structure_type: 'pool-fence',
+        location: 'external',
+        structure_built: 'new',
+        glass_type: 'toughened',
+        thickness: '12mm',
+        gate_required: 'yes',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+    })
+
+    expect(result.outputs[0]).toMatchObject({
+      documentKind: 'ps1',
+      templateLabel: 'Frameless Spigot Pool PS1',
+      sourceObjectKey: 'templates/ps-generator/wordpress/frameless-spigot/ps1-pool.pdf',
+    })
   })
 
   it('generates PS3 only without fetching a PS1 template', async () => {
@@ -363,6 +405,20 @@ function withStandardPs1Mappings(
     ...configuration,
     templateVariants: configuration.templateVariants.map((variant) => (
       variant.systemSlug === 'double-disc' && variant.variantKind === 'standard_ps1'
+        ? { ...variant, fieldMappings }
+        : variant
+    )),
+  }
+}
+
+function withPoolPs1Mappings(
+  configuration: PublishedPsConfiguration,
+  fieldMappings: PublishedPsConfiguration['templateVariants'][number]['fieldMappings'],
+): PublishedPsConfiguration {
+  return {
+    ...configuration,
+    templateVariants: configuration.templateVariants.map((variant) => (
+      variant.systemSlug === 'frameless-spigot' && variant.variantKind === 'pool_ps1'
         ? { ...variant, fieldMappings }
         : variant
     )),

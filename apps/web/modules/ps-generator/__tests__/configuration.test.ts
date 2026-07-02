@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildConfigurationReadModel,
   buildPublishedPsConfigurationReadModel,
+  buildPsConfigurationSystemRows,
   createPsGeneratorSeedRows,
 } from '../configuration'
 import {
   createConfigurationDraft,
+  createDraftSystemRow,
   upsertDraftDescriptionTemplate,
   upsertDraftSystem,
   runDraftConfigurationTestGeneration,
   updateDraftSystemOptionRule,
+  updateDraftSystemRow,
   updateDraftFieldMapping,
   publishConfigurationDraft,
   replaceDraftTemplateVariant,
@@ -46,7 +50,6 @@ describe('published PS Generator configuration', () => {
       ],
     })
     expect(configuration.templateVariants.map((variant) => variant.variantKind)).toEqual([
-      'gate_ps1',
       'pool_ps1',
       'standard_ps1',
       'ps3',
@@ -102,6 +105,39 @@ describe('published PS Generator configuration', () => {
     expect(configuration.systems.flatMap((system) => (
       Object.values(system.optionRules).flatMap((values) => values.map((value) => value.slug))
     ))).not.toContain('legacy-face-fixed')
+  })
+
+  it('summarises system rows with standard and pool template status for configuration editors', () => {
+    const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
+
+    expect(buildPsConfigurationSystemRows(configuration)).toEqual([
+      {
+        id: 'seed-system:double-disc',
+        slug: 'double-disc',
+        displayName: 'Double Disc',
+        isActive: true,
+        standardPs1Template: {
+          id: 'seed-template:double-disc-standard-ps1',
+          label: 'Double Disc PS1',
+          originalFilename: 'Double Disc PS1.pdf',
+          r2ObjectKey: 'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf',
+        },
+        poolPs1Template: null,
+      },
+      {
+        id: 'seed-system:frameless-spigot',
+        slug: 'frameless-spigot',
+        displayName: 'Frameless Spigot',
+        isActive: true,
+        standardPs1Template: null,
+        poolPs1Template: {
+          id: 'seed-template:frameless-spigot-pool-ps1',
+          label: 'Frameless Spigot Pool PS1',
+          originalFilename: 'Frameless Spigot Pool PS1.pdf',
+          r2ObjectKey: 'templates/ps-generator/wordpress/frameless-spigot/ps1-pool.pdf',
+        },
+      },
+    ])
   })
 
   it('keeps draft option value edits isolated until the draft is published and audited', () => {
@@ -250,6 +286,110 @@ describe('published PS Generator configuration', () => {
       action: 'published',
       before: { state: 'draft' },
       after: { state: 'published' },
+    })
+  })
+
+  it('creates a draft system row with the matching option, self-rule, and PS1 templates', () => {
+    const now = new Date('2026-06-30T00:00:00.000Z')
+    let rows = createPsGeneratorSeedRows()
+    const draft = createConfigurationDraft(rows, {
+      actorId: 'config-editor-1',
+      draftVersionLabel: 'wordpress-plugin-v2-add-system',
+      now,
+    })
+    rows = draft.rows
+
+    const created = createDraftSystemRow(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      displayName: '  face fixed ',
+      standardPs1Template: {
+        r2ObjectKey: 'drafts/face-fixed/standard.pdf',
+        originalFilename: 'Face Fixed.pdf',
+        fieldDiscovery: { fields: ['client_name'] },
+      },
+      poolPs1Template: {
+        r2ObjectKey: 'drafts/face-fixed/pool.pdf',
+        originalFilename: 'Face Fixed Pool.pdf',
+        fieldDiscovery: { fields: ['pool_description'] },
+      },
+      now,
+    })
+    rows = created.rows
+
+    const draftConfiguration = buildConfigurationReadModel(rows, draft.configVersionId, 'draft')
+    const system = draftConfiguration.systems.find((candidate) => candidate.slug === 'face-fixed')
+    expect(system).toMatchObject({
+      slug: 'face-fixed',
+      displayName: 'Face Fixed',
+      optionRules: expect.objectContaining({
+        system: [{ slug: 'face-fixed', label: 'Face Fixed' }],
+        structure_material: [],
+      }),
+    })
+    expect(draftConfiguration.optionCategories.find((category) => category.slug === 'system')?.values).toContainEqual({
+      slug: 'face-fixed',
+      label: 'Face Fixed',
+    })
+    expect(draftConfiguration.templateVariants.filter((variant) => variant.systemSlug === 'face-fixed')).toEqual([
+      expect.objectContaining({
+        variantKind: 'pool_ps1',
+        label: 'Face Fixed Pool PS1',
+        originalFilename: 'Face Fixed Pool.pdf',
+      }),
+      expect.objectContaining({
+        variantKind: 'standard_ps1',
+        label: 'Face Fixed PS1',
+        originalFilename: 'Face Fixed.pdf',
+      }),
+    ])
+    expect(buildPublishedPsConfigurationReadModel(rows).systems.map((systemRow) => systemRow.slug)).not.toContain('face-fixed')
+    expect(created.auditEntries.map((entry) => entry.entityType).slice(-5)).toEqual([
+      'system',
+      'option_value',
+      'system_option_rule',
+      'template_variant',
+      'template_variant',
+    ])
+  })
+
+  it('edits an existing draft system row without changing its slug', () => {
+    const now = new Date('2026-06-30T00:00:00.000Z')
+    let rows = createPsGeneratorSeedRows()
+    const draft = createConfigurationDraft(rows, {
+      actorId: 'config-editor-1',
+      draftVersionLabel: 'wordpress-plugin-v2-edit-system',
+      now,
+    })
+    rows = draft.rows
+
+    const edited = updateDraftSystemRow(rows, {
+      actorId: 'config-editor-1',
+      configVersionId: draft.configVersionId,
+      systemSlug: 'frameless-spigot',
+      displayName: 'frameless spigot mk2',
+      standardPs1Template: {
+        r2ObjectKey: 'drafts/frameless-spigot/standard.pdf',
+        originalFilename: 'Frameless Spigot Standard.pdf',
+        fieldDiscovery: { fields: ['client_name'] },
+      },
+      now,
+    })
+    rows = edited.rows
+
+    const draftConfiguration = buildConfigurationReadModel(rows, draft.configVersionId, 'draft')
+    const system = draftConfiguration.systems.find((candidate) => candidate.slug === 'frameless-spigot')
+    expect(system?.displayName).toBe('Frameless Spigot Mk2')
+    expect(draftConfiguration.optionCategories.find((category) => category.slug === 'system')?.values).toContainEqual({
+      slug: 'frameless-spigot',
+      label: 'Frameless Spigot Mk2',
+    })
+    expect(draftConfiguration.systems.map((candidate) => candidate.slug)).not.toContain('frameless-spigot-mk2')
+    expect(draftConfiguration.templateVariants.find((variant) => (
+      variant.systemSlug === 'frameless-spigot' && variant.variantKind === 'standard_ps1'
+    ))).toMatchObject({
+      label: 'Frameless Spigot Mk2 PS1',
+      originalFilename: 'Frameless Spigot Standard.pdf',
     })
   })
 

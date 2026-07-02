@@ -172,6 +172,25 @@ export interface PublishedPsTemplateVariant {
   }>
 }
 
+export interface PsConfigurationSystemRow {
+  id?: string
+  slug: string
+  displayName: string
+  isActive: boolean
+  standardPs1Template: {
+    id: string
+    label: string
+    originalFilename: string | null
+    r2ObjectKey: string
+  } | null
+  poolPs1Template: {
+    id: string
+    label: string
+    originalFilename: string | null
+    r2ObjectKey: string
+  } | null
+}
+
 export interface PublishedPsDescriptionTemplate {
   slug: string
   label: string
@@ -405,6 +424,20 @@ export function buildConfigurationReadModel(
   }
 }
 
+export function buildPsConfigurationSystemRows(configuration: PublishedPsConfiguration): PsConfigurationSystemRow[] {
+  return configuration.systems.map((system) => {
+    const templates = configuration.templateVariants.filter((template) => template.systemSlug === system.slug)
+    return {
+      id: system.id,
+      slug: system.slug,
+      displayName: system.displayName,
+      isActive: true,
+      standardPs1Template: templateSummary(templates.find((template) => template.variantKind === 'standard_ps1')),
+      poolPs1Template: templateSummary(templates.find((template) => template.variantKind === 'pool_ps1')),
+    }
+  })
+}
+
 export async function getPublishedPsConfiguration(database?: Awaited<ReturnType<typeof loadDefaultDb>>): Promise<PublishedPsConfiguration> {
   const db = database ?? await loadDefaultDb()
   const [version] = await db
@@ -457,4 +490,14 @@ function sortByOrder<T extends { sortOrder: number; slug?: string; fieldName?: s
 
 function sortTemplateVariant(a: TemplateVariantRow, b: TemplateVariantRow) {
   return a.documentKind.localeCompare(b.documentKind) || a.variantKind.localeCompare(b.variantKind) || a.label.localeCompare(b.label)
+}
+
+function templateSummary(template: PublishedPsTemplateVariant | undefined): PsConfigurationSystemRow['standardPs1Template'] {
+  if (!template) return null
+  return {
+    id: template.id,
+    label: template.label,
+    originalFilename: template.originalFilename,
+    r2ObjectKey: template.r2ObjectKey,
+  }
 }
