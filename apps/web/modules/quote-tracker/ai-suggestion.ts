@@ -11,6 +11,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const AI_SUGGESTION_PROMPT_VERSION = 'quote-ai-guidance-v1'
 export const AI_SUGGESTION_INPUT_VERSION = 'quote-ai-guidance-input-v1'
 export const AI_GUIDANCE_FAILURE_COOLDOWN_MS = 60_000
+export const AI_GUIDANCE_REGENERATION_COOLDOWN_MS = 5 * 60_000
 
 export const RECOMMENDED_MOVES = [
   'call today',
@@ -182,6 +183,7 @@ export type AiSuggestionDeps = {
   findQuote: (quoteId: string) => Promise<AiSuggestionQuote | null>
   findEngagement: (quoteId: string) => Promise<QuoteSignalEngagement>
   findLatestConversationSnapshot: (quoteId: string) => Promise<AiSuggestionConversationSnapshot | null>
+  findLatestSuggestion: (quoteId: string) => Promise<{ createdAt: Date } | null>
   findLatestFailure: (quoteId: string) => Promise<{ retryAfter: Date | null; errorMessage: string } | null>
   generateSuggestion: (input: AiSuggestionPromptInput) => Promise<unknown>
   insertSuggestion: (record: AiSuggestionRecord) => Promise<{ id: string }>
@@ -215,6 +217,17 @@ export async function generateAiSuggestionForQuote(
   if (!quote) return { ok: false, message: 'Tracked Quote not found.' }
 
   const startedAt = deps.now()
+  const latestSuggestion = await deps.findLatestSuggestion(input.quoteId)
+  if (latestSuggestion) {
+    const retryAfter = new Date(latestSuggestion.createdAt.getTime() + AI_GUIDANCE_REGENERATION_COOLDOWN_MS)
+    if (retryAfter > startedAt) {
+      return {
+        ok: false,
+        message: `AI Guidance can be regenerated after ${formatDateTime(retryAfter)}.`,
+      }
+    }
+  }
+
   const latestFailure = await deps.findLatestFailure(input.quoteId)
   if (latestFailure?.retryAfter && latestFailure.retryAfter > startedAt) {
     return {
@@ -386,6 +399,18 @@ export const realAiSuggestionDeps: AiSuggestionDeps = {
       .limit(1)
 
     return failure ?? null
+  },
+  async findLatestSuggestion(quoteId) {
+    const [suggestion] = await db
+      .select({
+        createdAt: quoteAiSuggestions.createdAt,
+      })
+      .from(quoteAiSuggestions)
+      .where(eq(quoteAiSuggestions.quoteId, quoteId))
+      .orderBy(desc(quoteAiSuggestions.createdAt))
+      .limit(1)
+
+    return suggestion ?? null
   },
   generateSuggestion: generateAiSuggestionJson,
   async insertSuggestion(record) {

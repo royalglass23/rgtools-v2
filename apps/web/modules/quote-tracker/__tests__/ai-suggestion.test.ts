@@ -53,6 +53,7 @@ function deps(overrides: Partial<AiSuggestionDeps> = {}): AiSuggestionDeps {
         risksBlockers: ['Timing may decide the job.'],
       },
     })),
+    findLatestSuggestion: vi.fn(async () => null),
     findLatestFailure: vi.fn(async () => null),
     generateSuggestion: vi.fn(async () => ({
       nextViableMove: 'Call today to confirm timing and low iron glass scope.',
@@ -153,6 +154,25 @@ describe('generateAiSuggestionForQuote', () => {
     expect(d.insertSuggestion).toHaveBeenCalledTimes(2)
     expect(d.insertSuggestion).toHaveBeenNthCalledWith(1, expect.objectContaining({ quoteId }))
     expect(d.insertSuggestion).toHaveBeenNthCalledWith(2, expect.objectContaining({ quoteId }))
+  })
+
+  it('blocks regeneration for 5 minutes after the latest AI Suggestion', async () => {
+    const d = deps({
+      findLatestSuggestion: vi.fn(async () => ({
+        createdAt: new Date('2026-06-25T00:00:00Z'),
+      })),
+      now: () => new Date('2026-06-25T00:04:59Z'),
+    })
+
+    const result = await generateAiSuggestionForQuote({ quoteId, triggeredByUserId: userId }, d)
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'AI Guidance can be regenerated after 25 Jun 2026, 12:05 pm.',
+    })
+    expect(d.generateSuggestion).not.toHaveBeenCalled()
+    expect(d.insertSuggestion).not.toHaveBeenCalled()
+    expect(d.recordFailure).not.toHaveBeenCalled()
   })
 
   it('records a failure and does not save malformed AI output', async () => {
