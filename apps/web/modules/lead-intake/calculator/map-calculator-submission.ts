@@ -25,6 +25,7 @@ export type CalculatorSubmission = {
   }
   turnstileToken?: unknown
   loadedAt?: unknown
+  submissionRef?: unknown
 }
 
 export type CalculatorEstimateForEmail = {

@@ -8,6 +8,7 @@ import {
   type CalculatorSubmission,
 } from '@/modules/lead-intake/calculator/map-calculator-submission'
 import { saveLeadSubmitFailure } from '@/modules/lead-intake/calculator/submit-failures'
+import { findCalculatorLeadBySubmissionRef } from '@/modules/lead-intake/calculator/idempotency'
 import { numberValue, stringValue } from '@/modules/lead-intake/calculator/parse'
 import { errorMessage } from '@/lib/error-message'
 import { sendCustomerEstimateEmail } from '@/modules/lead-intake/email/customer-estimate'
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     payload = await readJsonBody(request)
     const submission = payload as CalculatorSubmission
+    const submissionRef = normalizeSubmissionRef(submission.submissionRef)
 
     if (stringValue(submission.lead?.websiteUrl)) {
       logSubmit({ correlationId, ip, stage: 'honeypot', outcome: 'rejected', reason: 'honeypot_filled' })
@@ -90,21 +92,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const existingLead = await findCalculatorLeadBySubmissionRef(submissionRef)
+    if (existingLead) {
+      logSubmit({ correlationId, ip, stage: 'idempotency', outcome: 'accepted', reason: existingLead.leadId })
+      return json({
+        ok: true,
+        leadId: existingLead.leadId,
+        submissionRef,
+        idempotent: true,
+      }, 200, request)
+    }
+
     let input
     try {
       input = mapCalculatorSubmissionToIntakeInput(submission, {
         submittedAt: new Date(),
-        submissionRef: `calculator:${Date.now()}-${crypto.randomUUID()}`,
+        submissionRef,
       })
     } catch (error) {
       const message = errorMessage(error)
-      await deadLetter({ correlationId, ip, stage: 'map', error: message, payload })
+      await deadLetter({ correlationId, ip, stage: 'map', error: message, payload, submissionRef })
       return json({ error: 'Unable to submit lead' }, 500, request)
     }
 
     const result = await submitLeadIntakeForUser(input, null, { syncServiceM8: false })
     if (!('success' in result)) {
-      await deadLetter({ correlationId, ip, stage: 'save', error: result.error, payload })
+      await deadLetter({ correlationId, ip, stage: 'save', error: result.error, payload, submissionRef })
       return json({ error: 'Unable to submit lead' }, 500, request)
     }
 
@@ -160,12 +173,19 @@ export async function POST(request: NextRequest) {
       logSubmit({ correlationId, ip, stage: 'email', outcome: 'error', reason: errorMessage(schedulingError) })
     }
 
-    return json({ ok: true, leadId: result.leadId }, 200, request)
+    return json({ ok: true, leadId: result.leadId, submissionRef }, 200, request)
   } catch (error) {
     const message = errorMessage(error)
     logSubmit({ correlationId, ip, stage: 'save', outcome: 'error', reason: message })
     if (payload !== null) {
-      await deadLetter({ correlationId, ip, stage: 'save', error: message, payload })
+      await deadLetter({
+        correlationId,
+        ip,
+        stage: 'save',
+        error: message,
+        payload,
+        submissionRef: normalizeSubmissionRef((payload as CalculatorSubmission).submissionRef),
+      })
     }
     return json({ error: 'Unable to submit lead' }, 500, request)
   }
@@ -185,6 +205,7 @@ async function deadLetter(input: {
   stage: string
   error: string
   payload: unknown
+  submissionRef: string
 }) {
   logSubmit({
     correlationId: input.correlationId,
@@ -194,6 +215,13 @@ async function deadLetter(input: {
     reason: input.error,
   })
   await saveLeadSubmitFailure(input)
+}
+
+function normalizeSubmissionRef(value: unknown): string {
+  const ref = stringValue(value)
+  if (/^rgcalc_[a-z0-9]+_[a-z0-9]+$/.test(ref)) return ref
+  if (/^calculator:[a-zA-Z0-9:_-]+$/.test(ref)) return ref
+  return `calculator:${Date.now()}-${crypto.randomUUID()}`
 }
 
 function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
