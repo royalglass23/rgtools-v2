@@ -87,9 +87,22 @@ function request(body: unknown = validPayload, origin = 'https://www.royalglass.
   })
 }
 
+function serverRequest(body: unknown = validPayload, secret = 'wordpress-forward-secret') {
+  return new NextRequest('http://localhost/api/lead-intake/calculator-submit', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-forwarded-for': '203.0.113.10, 10.0.0.2',
+      'x-rg-calculator-secret': secret,
+    },
+    body: JSON.stringify(body),
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.CALCULATOR_ALLOWED_ORIGIN = 'https://royalglass.co.nz, https://www.royalglass.co.nz, https://rgtools.co.nz, https://www.rgtools.co.nz'
+  process.env.CALCULATOR_SUBMIT_SECRET = 'wordpress-forward-secret'
   submitLeadIntakeForUserMock.mockResolvedValue({
     success: true,
     leadId: 'lead-uuid',
@@ -170,6 +183,42 @@ describe('POST /api/lead-intake/calculator-submit', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('https://www.rgtools.co.nz')
     expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
     expect(submitLeadIntakeForUserMock).toHaveBeenCalled()
+  })
+
+  it('accepts trusted WordPress server forwards without browser CORS or Turnstile', async () => {
+    verifyTurnstileTokenMock.mockResolvedValue({ ok: false, reason: 'missing-token' })
+    checkLeadSubmitRateLimitMock.mockResolvedValue({ ok: false, retryAfterSeconds: 3600 })
+
+    const response = await POST(serverRequest({
+      ...validPayload,
+      turnstileToken: '',
+      lead: {
+        ...validPayload.lead,
+        notes: 'Forwarded from WordPress after same-origin calculator submit',
+      },
+    }))
+    const json = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+    expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
+    expect(verifyTurnstileTokenMock).not.toHaveBeenCalled()
+    expect(checkLeadSubmitRateLimitMock).not.toHaveBeenCalled()
+    expect(submitLeadIntakeForUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'calculator',
+        freeText: expect.stringContaining('Forwarded from WordPress after same-origin calculator submit'),
+      }),
+      null,
+      { syncServiceM8: false },
+    )
+  })
+
+  it('rejects server forwards with a bad shared secret', async () => {
+    const response = await POST(serverRequest(validPayload, 'wrong-secret'))
+
+    expect(response.status).toBe(403)
+    expect(submitLeadIntakeForUserMock).not.toHaveBeenCalled()
   })
 
   it('rejects disallowed CORS origins before processing the body', async () => {
