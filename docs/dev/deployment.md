@@ -82,12 +82,15 @@ Seed scripts are operational commands, not part of every deploy.
 
 ```bash
 pnpm seed
+pnpm seed:production-access
 pnpm seed:ps-generator
 pnpm seed:tracking
 pnpm --dir apps/web tsx scripts/seed-scoring-config-v4.ts
 ```
 
-`pnpm seed` creates/updates the protected admin user and module rows. `pnpm seed:ps-generator` inserts the published `wordpress-plugin-v1` PS Generator config. `pnpm seed:tracking` upserts quote tracking settings. PS generation also requires the referenced template PDFs in R2.
+`pnpm seed` creates/updates the protected admin user and module rows. `pnpm seed:production-access` only inserts missing staff grants for production-safe modules (`lead-intake`, `leads`, and `quote-tracker`); it does not reset passwords or grant dev-only modules. `pnpm seed:ps-generator` inserts the published `wordpress-plugin-v1` PS Generator config. `pnpm seed:tracking` upserts quote tracking settings. PS generation also requires the referenced template PDFs in R2.
+
+Do not put seed operations in the default Vercel build command. Run them as explicit release steps against the intended database, after confirming the deployment target and environment variables.
 
 ## Cloudflare Workers
 

@@ -1,16 +1,25 @@
 'use server'
 
 import bcrypt from 'bcryptjs'
+import { revalidatePath } from 'next/cache'
 import { and, eq } from 'drizzle-orm'
 import { type Session } from 'next-auth'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { users, modules, userModuleAccess } from '@rgtools/db/schema'
+import { users, modules, userModuleAccess, settings } from '@rgtools/db/schema'
 import { assertCanManageUser } from '@/lib/access'
 import type { AccessUser } from '@/lib/access'
 import { AUDIT_ACTIONS } from '@/lib/audit'
 import { logAudit } from '@/lib/audit-db'
 import { logError } from '@/lib/logger'
+import {
+  DEFAULT_MENU_AVAILABILITY,
+  MENU_AVAILABILITY_SETTING_KEY,
+  MENU_KEYS,
+  serializeMenuAvailability,
+  type MenuAvailability,
+  type MenuRole,
+} from '@/lib/menu-availability'
 
 // ── Helper: resolve the calling actor as an AccessUser ────────────────────────
 
@@ -360,6 +369,72 @@ export async function setModuleAccess(
       metadata: { targetUserId: userId, moduleId, grant },
     })
     return { error: `Failed to update access. Please try again. Ref: ${errorId}` }
+  }
+}
+
+export async function updateMenuAvailability(
+  formData: FormData,
+): Promise<{ success: true } | { error: string }> {
+  let actorId: string | null = null
+
+  try {
+    const { session, actor } = await getActorOrThrow()
+    actorId = session.user.id as string
+
+    if (!actor.isProtected) {
+      return { error: 'Forbidden: only the protected admin can update menu availability.' }
+    }
+
+    const nextAvailability: MenuAvailability = {
+      staff: { ...DEFAULT_MENU_AVAILABILITY.staff },
+      admin: { ...DEFAULT_MENU_AVAILABILITY.admin },
+    }
+
+    for (const role of ['staff', 'admin'] satisfies MenuRole[]) {
+      for (const key of MENU_KEYS) {
+        nextAvailability[role][key] = formData.get(`menu:${role}:${key}`) === 'on'
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(settings)
+        .values({
+          key: MENU_AVAILABILITY_SETTING_KEY,
+          value: serializeMenuAvailability(nextAvailability),
+          updatedBy: session.user.id as string,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: settings.key,
+          set: {
+            value: serializeMenuAvailability(nextAvailability),
+            updatedBy: session.user.id as string,
+            updatedAt: new Date(),
+          },
+        })
+
+      await logAudit({
+        actorId: session.user.id as string,
+        entityType: 'access',
+        action: 'access.menu_availability_updated',
+        targetId: null,
+        before: null,
+        after: { menuAvailability: nextAvailability },
+      }, tx)
+    })
+
+    revalidatePath('/')
+    revalidatePath('/admin/administration')
+
+    return { success: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Forbidden')) return { error: msg }
+    const errorId = await logError('admin.updateMenuAvailability', err, {
+      userId: actorId,
+    })
+    return { error: `Failed to update menu availability. Please try again. Ref: ${errorId}` }
   }
 }
 

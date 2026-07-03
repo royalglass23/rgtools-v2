@@ -12,6 +12,7 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
     "seed": "tsx scripts/seed.ts",
+    "seed:production-access": "tsx scripts/seed-production-access.ts",
     "seed:ps-generator": "tsx scripts/seed-ps-generator-config-v1.ts",
     "seed:tracking": "tsx scripts/seed-tracking-settings.ts",
     "quote:pull": "tsx scripts/quote-pull-test.ts",

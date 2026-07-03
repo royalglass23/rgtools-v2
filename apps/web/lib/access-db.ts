@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { users, modules, userModuleAccess } from '@rgtools/db/schema'
 import { canAccessModule } from '@/lib/access'
+import { getMenuAvailability } from '@/lib/menu-availability-db'
 import type { AccessUser, AccessModule } from '@/lib/access'
 
 type ModuleRow = typeof modules.$inferSelect
@@ -43,9 +44,12 @@ export async function getAccessibleModules(userId: string): Promise<ModuleRow[]>
     }
   }
 
-  const activeModules = await db.query.modules.findMany({
-    where: eq(modules.isActive, true),
-  })
+  const [activeModules, menuAvailability] = await Promise.all([
+    db.query.modules.findMany({
+      where: eq(modules.isActive, true),
+    }),
+    getMenuAvailability(),
+  ])
 
   return activeModules.filter((mod) => {
     const accessModule: AccessModule = {
@@ -54,7 +58,7 @@ export async function getAccessibleModules(userId: string): Promise<ModuleRow[]>
       adminOnly: mod.adminOnly,
       isActive: mod.isActive,
     }
-    return canAccessModule(accessUser, accessModule, grantSet)
+    return canAccessModule(accessUser, accessModule, grantSet, menuAvailability)
   })
 }
 
