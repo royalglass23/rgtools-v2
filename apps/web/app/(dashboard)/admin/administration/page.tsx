@@ -5,6 +5,7 @@ import { users, modules, userModuleAccess, auditLog, errorLog } from '@rgtools/d
 import { and, count, desc, eq, gte, isNull, like, lte, or } from 'drizzle-orm'
 import { deriveAuditEntityType, formatAuditDetail } from '@/lib/audit'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { CreateUserForm } from '@/modules/admin/CreateUserForm'
 import { TestErrorButton } from '@/modules/admin/TestErrorButton'
 import { UserRow } from '@/modules/admin/UserRow'
@@ -273,7 +274,11 @@ export default async function AdminPage({
   }
   async function updateMenuAvailabilityAction(formData: FormData) {
     'use server'
-    await updateMenuAvailability(formData)
+    const result = await updateMenuAvailability(formData)
+    if ('error' in result) {
+      redirect(`/admin/administration?menuError=${encodeURIComponent(result.error)}`)
+    }
+    redirect('/admin/administration?menuSaved=1')
   }
 
   return (
@@ -336,6 +341,16 @@ export default async function AdminPage({
       {isProtectedActor && (
         <section>
           <h2 className="mb-4 text-lg font-semibold text-gray-800">Menu Availability</h2>
+          {parseString(params.menuSaved) === '1' && (
+            <div className="mb-4 rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Menu availability saved.
+            </div>
+          )}
+          {parseString(params.menuError) && (
+            <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              Menu availability could not be saved. {parseString(params.menuError)}
+            </div>
+          )}
           <form action={updateMenuAvailabilityAction} className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200 bg-gray-50">
