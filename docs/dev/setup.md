@@ -52,6 +52,7 @@ Copy `.env.example` to `.env.local` and fill in all values. The shared DB client
 | `SERVICEM8_WEBHOOK_SECRET` | Quote webhook | Shared secret used to verify ServiceM8 attachment webhook calls |
 | `SERVICEM8_ATTACHMENT_WEBHOOK_URL` | Quote webhook | Public app URL for `/api/servicem8/attachment` when registering the webhook |
 | `CALCULATOR_ALLOWED_ORIGIN` | Yes | Comma-separated browser origins allowed to POST calculator leads |
+| `CALCULATOR_SUBMIT_SECRET` | Production | Shared secret for trusted WordPress server-to-server calculator lead forwards |
 | `TURNSTILE_SECRET` | Production | Cloudflare Turnstile siteverify secret |
 | `RESEND_API_KEY` | Production | Resend API key |
 | `RESEND_FROM` | Production | Verified sender, e.g. `Royal Glass <support@royalglass.co.nz>` |

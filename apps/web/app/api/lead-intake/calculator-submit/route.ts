@@ -42,10 +42,11 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const correlationId = crypto.randomUUID()
   const ip = getClientIp(request.headers)
+  const trustedServerRequest = isTrustedServerRequest(request)
   let payload: unknown = null
 
   try {
-    const originResult = validateOrigin(request)
+    const originResult = validateOrigin(request, trustedServerRequest)
     if (!originResult.ok) {
       logSubmit({ correlationId, ip, stage: 'cors', outcome: 'rejected', reason: 'origin_not_allowed' })
       return json({ error: 'Forbidden' }, 403, request)
@@ -70,21 +71,23 @@ export async function POST(request: NextRequest) {
       return json({ error: 'Forbidden' }, 403, request)
     }
 
-    const turnstile = await verifyTurnstileToken(submission.turnstileToken, ip)
-    if (!turnstile.ok) {
-      logSubmit({ correlationId, ip, stage: 'turnstile', outcome: 'rejected', reason: turnstile.reason })
-      return json({ error: 'Forbidden' }, 403, request)
-    }
+    if (!trustedServerRequest) {
+      const turnstile = await verifyTurnstileToken(submission.turnstileToken, ip)
+      if (!turnstile.ok) {
+        logSubmit({ correlationId, ip, stage: 'turnstile', outcome: 'rejected', reason: turnstile.reason })
+        return json({ error: 'Forbidden' }, 403, request)
+      }
 
-    const rateLimit = await checkLeadSubmitRateLimit(ip)
-    if (!rateLimit.ok) {
-      logSubmit({ correlationId, ip, stage: 'rate_limit', outcome: 'rejected', reason: 'too_many_attempts' })
-      return json(
-        { error: 'Too many submissions' },
-        429,
-        request,
-        { 'retry-after': String(rateLimit.retryAfterSeconds) },
-      )
+      const rateLimit = await checkLeadSubmitRateLimit(ip)
+      if (!rateLimit.ok) {
+        logSubmit({ correlationId, ip, stage: 'rate_limit', outcome: 'rejected', reason: 'too_many_attempts' })
+        return json(
+          { error: 'Too many submissions' },
+          429,
+          request,
+          { 'retry-after': String(rateLimit.retryAfterSeconds) },
+        )
+      }
     }
 
     let input
@@ -205,9 +208,20 @@ function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
   }
 }
 
-function validateOrigin(request: NextRequest): { ok: true } | { ok: false } {
+function validateOrigin(
+  request: NextRequest,
+  trustedServerRequest = isTrustedServerRequest(request),
+): { ok: true } | { ok: false } {
+  if (trustedServerRequest) return { ok: true }
+
   const origin = request.headers.get('origin')
   return origin && allowedOrigins().includes(origin) ? { ok: true } : { ok: false }
+}
+
+function isTrustedServerRequest(request: NextRequest): boolean {
+  const secret = process.env.CALCULATOR_SUBMIT_SECRET || process.env.RGTOOLS_CALCULATOR_SUBMIT_SECRET
+  const provided = request.headers.get('x-rg-calculator-secret')
+  return Boolean(secret && provided && provided === secret)
 }
 
 function json(body: unknown, status: number, request: NextRequest, headers: Record<string, string> = {}) {
