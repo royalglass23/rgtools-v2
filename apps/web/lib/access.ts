@@ -1,3 +1,5 @@
+import { roleCanSeeMenu, type MenuAvailability } from './menu-availability'
+
 /**
  * Pure access-control functions — no DB imports, no side effects.
  * All decisions are derived from the arguments passed in.
@@ -19,17 +21,6 @@ export interface AccessModule {
   isActive: boolean
 }
 
-const TEMP_PROTECTED_ADMIN_ONLY_MODULE_SLUGS = new Set([
-  'clients',
-  'ps-generator',
-  'ps-generator/history',
-  'ps-generator/configuration',
-  'ps-generator/configuration/publish',
-  'work-orders',
-  'work-orders/manage',
-  'admin/work-orders',
-])
-
 // ── canAccessModule ───────────────────────────────────────────────────────────
 
 /**
@@ -48,13 +39,16 @@ export function canAccessModule(
   user: AccessUser,
   module: AccessModule,
   grantSet: Set<string>,
+  menuAvailability?: MenuAvailability,
 ): boolean {
   if (!module.isActive) return false
 
-  // Temporary main-release lock: keep in-progress dev modules visible only to
-  // the protected admin account while dev is merged forward.
-  if (TEMP_PROTECTED_ADMIN_ONLY_MODULE_SLUGS.has(module.slug)) {
-    return user.role === 'admin' && user.isProtected
+  if (user.role === 'admin' && user.isProtected) {
+    return true
+  }
+
+  if (menuAvailability && !roleCanSeeMenu(user.role, module.slug, menuAvailability)) {
+    return false
   }
 
   if (module.adminOnly) {

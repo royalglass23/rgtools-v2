@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { canAccessModule, assertCanManageUser } from '../access'
 import { buildAuditDetail, AUDIT_ACTIONS } from '../audit'
+import { DEFAULT_MENU_AVAILABILITY } from '../menu-availability'
 
 // ── Shared fixtures ────────────────────────────────────────────────────────────
 
@@ -11,7 +12,8 @@ const protectedStaff = { id: 'u3', username: 'pstaff', role: 'staff' as const, i
 
 const adminOnlyModule = { id: 'm1', slug: 'admin-panel', adminOnly: true,  isActive: true }
 const normalModule    = { id: 'm2', slug: 'quotes',      adminOnly: false, isActive: true }
-const temporaryLockedModule = { id: 'm3', slug: 'work-orders', adminOnly: false, isActive: true }
+const menuLockedModule = { id: 'm3', slug: 'work-orders', adminOnly: false, isActive: true }
+const menuLockedSubmodule = { id: 'm4', slug: 'ps-generator/history', adminOnly: false, isActive: true }
 
 // ── canAccessModule ────────────────────────────────────────────────────────────
 
@@ -37,17 +39,22 @@ describe('canAccessModule', () => {
     expect(canAccessModule(staff, normalModule, new Set())).toBe(false)
   })
 
-  it('staff + temporary locked module WITH grant -> false', () => {
-    const grantSet = new Set([temporaryLockedModule.id])
-    expect(canAccessModule(staff, temporaryLockedModule, grantSet)).toBe(false)
+  it('staff + menu disabled module WITH grant -> false', () => {
+    const grantSet = new Set([menuLockedModule.id])
+    expect(canAccessModule(staff, menuLockedModule, grantSet, DEFAULT_MENU_AVAILABILITY)).toBe(false)
   })
 
-  it('regular admin + temporary locked module -> false', () => {
-    expect(canAccessModule(admin, temporaryLockedModule, new Set())).toBe(false)
+  it('regular admin + menu disabled module -> false', () => {
+    expect(canAccessModule(admin, menuLockedModule, new Set(), DEFAULT_MENU_AVAILABILITY)).toBe(false)
   })
 
-  it('protected admin + temporary locked module -> true', () => {
-    expect(canAccessModule(superAdmin, temporaryLockedModule, new Set())).toBe(true)
+  it('menu disabled parent blocks submenu access', () => {
+    const grantSet = new Set([menuLockedSubmodule.id])
+    expect(canAccessModule(staff, menuLockedSubmodule, grantSet, DEFAULT_MENU_AVAILABILITY)).toBe(false)
+  })
+
+  it('protected admin + menu disabled module -> true', () => {
+    expect(canAccessModule(superAdmin, menuLockedModule, new Set(), DEFAULT_MENU_AVAILABILITY)).toBe(true)
   })
 })
 
