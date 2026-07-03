@@ -15,9 +15,24 @@ import { syncLeadToServiceM8 } from '@/modules/lead-intake/servicem8/sync'
 import { submitLeadIntakeForUser } from '@/modules/lead-intake/actions'
 
 const MINIMUM_SUBMIT_AGE_MS = 3000
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://royalglass.co.nz',
+  'https://www.royalglass.co.nz',
+  'https://rgtools.co.nz',
+  'https://www.rgtools.co.nz',
+]
 
-function allowedOrigin(): string {
-  return process.env.CALCULATOR_ALLOWED_ORIGIN || 'https://royalglass.co.nz'
+function allowedOrigins(): string[] {
+  const configured = process.env.CALCULATOR_ALLOWED_ORIGIN
+  if (!configured) return DEFAULT_ALLOWED_ORIGINS
+
+  return Array.from(new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...configured
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ]))
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -180,9 +195,9 @@ async function deadLetter(input: {
 
 function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
   const origin = request.headers.get('origin')
-  const allowed = allowedOrigin()
+  const allowed = origin && allowedOrigins().includes(origin)
   return {
-    ...(origin === allowed ? { 'access-control-allow-origin': allowed } : {}),
+    ...(allowed ? { 'access-control-allow-origin': origin } : {}),
     'access-control-allow-methods': 'POST, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'vary': 'Origin',
@@ -191,7 +206,8 @@ function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
 }
 
 function validateOrigin(request: NextRequest): { ok: true } | { ok: false } {
-  return request.headers.get('origin') === allowedOrigin() ? { ok: true } : { ok: false }
+  const origin = request.headers.get('origin')
+  return origin && allowedOrigins().includes(origin) ? { ok: true } : { ok: false }
 }
 
 function json(body: unknown, status: number, request: NextRequest, headers: Record<string, string> = {}) {

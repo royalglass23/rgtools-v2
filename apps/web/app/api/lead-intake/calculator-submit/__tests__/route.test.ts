@@ -89,7 +89,7 @@ function request(body: unknown = validPayload, origin = 'https://www.royalglass.
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.CALCULATOR_ALLOWED_ORIGIN = 'https://www.royalglass.co.nz'
+  process.env.CALCULATOR_ALLOWED_ORIGIN = 'https://royalglass.co.nz, https://www.royalglass.co.nz, https://rgtools.co.nz, https://www.rgtools.co.nz'
   submitLeadIntakeForUserMock.mockResolvedValue({
     success: true,
     leadId: 'lead-uuid',
@@ -118,6 +118,23 @@ describe('OPTIONS /api/lead-intake/calculator-submit', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('https://www.royalglass.co.nz')
     expect(response.headers.get('access-control-allow-methods')).toContain('POST')
   })
+
+  it('returns a CORS preflight for the rgtools calculator origin', async () => {
+    const response = await OPTIONS(request(validPayload, 'https://www.rgtools.co.nz'))
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://www.rgtools.co.nz')
+    expect(response.headers.get('access-control-allow-methods')).toContain('POST')
+  })
+
+  it('keeps rgtools allowed when env is still configured for a single Royal Glass origin', async () => {
+    process.env.CALCULATOR_ALLOWED_ORIGIN = 'https://www.royalglass.co.nz'
+
+    const response = await OPTIONS(request(validPayload, 'https://www.rgtools.co.nz'))
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://www.rgtools.co.nz')
+  })
 })
 
 describe('POST /api/lead-intake/calculator-submit', () => {
@@ -143,6 +160,16 @@ describe('POST /api/lead-intake/calculator-submit', () => {
     // ServiceM8 sync runs in the background (after response) so the lead reaches
     // the SM8 inbox without depending on a cron/retry batch.
     expect(syncLeadToServiceM8Mock).toHaveBeenCalledWith('lead-uuid')
+  })
+
+  it('accepts calculator submissions from the rgtools production origin', async () => {
+    const response = await POST(request(validPayload, 'https://www.rgtools.co.nz'))
+    const json = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://www.rgtools.co.nz')
+    expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
+    expect(submitLeadIntakeForUserMock).toHaveBeenCalled()
   })
 
   it('rejects disallowed CORS origins before processing the body', async () => {
