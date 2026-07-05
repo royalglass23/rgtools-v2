@@ -52,6 +52,7 @@ next-env.d.ts
 .superpowers/
 .vscode/
 .worktrees/
+.github/
 AGENTS.md
 
 # Local scratch (e.g. quote-pull test output)
