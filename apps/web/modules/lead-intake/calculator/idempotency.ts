@@ -15,7 +15,7 @@ export async function findCalculatorLeadBySubmissionRef(
     .select({ leadId: leads.id })
     .from(leads)
     .where(and(
-      eq(leads.source, 'calculator'),
+      eq(leads.channel, 'calculator'),
       eq(leads.externalRef, submissionRef),
     ))
     .limit(1)
