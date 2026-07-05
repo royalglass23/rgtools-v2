@@ -6,7 +6,7 @@ type AddressComponent = { types: string[]; short_name: string }
 
 type Props = {
   value: string
-  onChange: (address: string, suburb: string) => void
+  onChange: (address: string, suburb: string, source?: 'input' | 'place') => void
   label?: string
   required?: boolean
   updateOnInput?: boolean
@@ -15,6 +15,9 @@ type Props = {
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
 
 let mapsConfigured = false
+
+const FIELD_LABEL_CLASS = 'inline-flex h-4 items-center gap-2 text-xs font-medium text-gray-600'
+const FIELD_CONTROL_CLASS = 'mt-1 h-[38px] w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
 
 export function extractSuburb(components: AddressComponent[]): string {
   for (const type of ['locality', 'sublocality_level_1', 'sublocality']) {
@@ -36,8 +39,8 @@ export function PlacesAutocomplete({
   useEffect(() => { onChangeRef.current = onChange })
 
   useEffect(() => {
-    if (!updateOnInput && inputRef.current) inputRef.current.value = value
-  }, [updateOnInput, value])
+    if (inputRef.current && inputRef.current.value !== value) inputRef.current.value = value
+  }, [value])
 
   useEffect(() => {
     if (!apiKey || !inputRef.current) return
@@ -63,7 +66,7 @@ export function PlacesAutocomplete({
         const place = autocomplete.getPlace()
         const address = place.formatted_address ?? inputRef.current?.value ?? ''
         const suburb = extractSuburb(place.address_components ?? [])
-        onChangeRef.current(address, suburb)
+        onChangeRef.current(address, suburb, 'place')
       })
     })
 
@@ -75,13 +78,13 @@ export function PlacesAutocomplete({
 
   function handleManualInput(nextValue: string) {
     if (updateOnInput || !nextValue) {
-      onChangeRef.current(nextValue, '')
+      onChangeRef.current(nextValue, '', 'input')
     }
   }
 
   return (
     <label className="block">
-      <span className="flex items-center gap-2 text-xs font-medium text-gray-600">
+      <span className={FIELD_LABEL_CLASS}>
         {label}
         {required ? <span aria-hidden="true" className="text-red-600">*</span> : null}
       </span>
@@ -89,12 +92,11 @@ export function PlacesAutocomplete({
         ref={inputRef}
         type="text"
         aria-label={label}
-        value={updateOnInput ? value : undefined}
-        defaultValue={updateOnInput ? undefined : value}
+        defaultValue={value}
         required={required}
         onChange={(event) => handleManualInput(event.target.value)}
         autoComplete="off"
-        className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className={FIELD_CONTROL_CLASS}
         placeholder="Start typing an address..."
       />
     </label>

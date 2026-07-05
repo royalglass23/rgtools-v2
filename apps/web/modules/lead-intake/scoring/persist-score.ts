@@ -1,45 +1,42 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
-import {
-  clients,
-  leadCategoryScores,
-  leads,
-  scoringConfigVersions,
-} from '@rgtools/db/schema-leads'
-import { scoreLead, type LeadAnswers, type ScoreResult, type ScoringConfig } from './score-lead'
+import { leads } from '@rgtools/db/schema-leads'
+import { scoreLead, type DecisionMatrixAnswers, type LeadTier, type ScoreResult } from './score-lead'
 
 export type PersistLeadScoreResult = ScoreResult & {
   leadId: string
-  configVersionId: string
-  completeness: number
+  configVersionId: string | null
+  reason: string
+  completenessPercent: number
+  flagNote: string | null
 }
 
 type LeadScoreSource = {
-  clientType: string | null
+  clientTypeAnswer: string | null
   budgetBand: string | null
-  timeline: string | null
-  consentStatus: string | null
-  rcStatus: string | null
-  bcStatus: string | null
+  resourceConsent: string | null
+  buildingConsent: string | null
   buildingStage: string | null
-  location: string | null
-  suburb: string | null
+  projectType: string | null
+  priceSensitivity: string | null
   decisionMakers: string | null
-  priceSensitivityRead: string | null
-  storedAnswers: Partial<Record<keyof LeadAnswers, string>>
+  source: string | null
+  distanceBand: string | null
+  paymentHistory: string | null
+  siteAccess: string | null
+  installationHeight: string | null
 }
 
 export async function persistLeadScore(
   leadId: string,
   actorId?: string | null,
 ): Promise<PersistLeadScoreResult> {
-  const activeConfig = await loadActiveConfig()
   const leadSource = await loadLeadScoreSource(leadId)
-  const answers = leadSourceToAnswers(leadSource, activeConfig.config)
-  const scoreResult = scoreLead(answers, activeConfig.config)
-  const completeness = calculateCompleteness(scoreResult.categoryRows)
+  const scoreResult = scoreLead(leadSourceToAnswers(leadSource))
+  const completenessPercent = Math.round((scoreResult.completeness.answered / scoreResult.completeness.total) * 100)
   const scoredAt = new Date()
+  const reason = buildReason(scoreResult)
 
   await db.transaction(async (tx) => {
     await tx
@@ -47,34 +44,14 @@ export async function persistLeadScore(
       .set({
         seedScore: scoreResult.score,
         tier: scoreResult.tier,
-        scoreReason: scoreResult.reason,
-        strikeFlag: scoreResult.flagNote,
-        configVersionId: activeConfig.id,
+        scoreReason: reason,
+        strikeFlag: null,
+        configVersionId: null,
         scoredAt,
-        completeness,
+        completeness: completenessPercent,
         updatedAt: scoredAt,
       })
       .where(eq(leads.id, leadId))
-
-    for (const row of scoreResult.categoryRows) {
-      await tx
-        .insert(leadCategoryScores)
-        .values({
-          leadId,
-          category: row.category,
-          answerKey: row.answerKey,
-          points: row.points,
-          configVersionId: activeConfig.id,
-        })
-        .onConflictDoUpdate({
-          target: [leadCategoryScores.leadId, leadCategoryScores.category],
-          set: {
-            answerKey: row.answerKey,
-            points: row.points,
-            configVersionId: activeConfig.id,
-          },
-        })
-    }
 
     await logAudit({
       actorId: actorId ?? null,
@@ -85,8 +62,8 @@ export async function persistLeadScore(
       after: {
         score: scoreResult.score,
         tier: scoreResult.tier,
-        configVersionId: activeConfig.id,
-        completeness,
+        configVersionId: null,
+        completeness: completenessPercent,
       },
     }, tx)
   })
@@ -94,48 +71,31 @@ export async function persistLeadScore(
   return {
     ...scoreResult,
     leadId,
-    configVersionId: activeConfig.id,
-    completeness,
-  }
-}
-
-async function loadActiveConfig(): Promise<{ id: string; config: ScoringConfig }> {
-  const [activeConfig] = await db
-    .select({
-      id: scoringConfigVersions.id,
-      config: scoringConfigVersions.config,
-    })
-    .from(scoringConfigVersions)
-    .where(eq(scoringConfigVersions.isActive, true))
-    .limit(1)
-
-  if (!activeConfig) {
-    throw new Error('No active scoring config version found')
-  }
-
-  return {
-    id: activeConfig.id,
-    config: activeConfig.config as ScoringConfig,
+    configVersionId: null,
+    reason,
+    completenessPercent,
+    flagNote: null,
   }
 }
 
 async function loadLeadScoreSource(leadId: string): Promise<LeadScoreSource> {
   const [leadSource] = await db
     .select({
-      clientType: clients.clientType,
+      clientTypeAnswer: leads.clientTypeAnswer,
       budgetBand: leads.budgetBand,
-      timeline: leads.timeline,
-      consentStatus: leads.consentStatus,
-      rcStatus: leads.rcStatus,
-      bcStatus: leads.bcStatus,
+      resourceConsent: leads.resourceConsent,
+      buildingConsent: leads.buildingConsent,
       buildingStage: leads.buildingStage,
-      location: leads.location,
-      suburb: leads.suburb,
+      projectType: leads.projectType,
+      priceSensitivity: leads.priceSensitivity,
       decisionMakers: leads.decisionMakers,
-      priceSensitivityRead: leads.priceSensitivityRead,
+      source: leads.source,
+      distanceBand: leads.distanceBand,
+      paymentHistory: leads.paymentHistory,
+      siteAccess: leads.siteAccess,
+      installationHeight: leads.installationHeight,
     })
     .from(leads)
-    .innerJoin(clients, eq(leads.clientId, clients.id))
     .where(eq(leads.id, leadId))
     .limit(1)
 
@@ -143,48 +103,31 @@ async function loadLeadScoreSource(leadId: string): Promise<LeadScoreSource> {
     throw new Error(`Lead not found: ${leadId}`)
   }
 
-  const storedRows = await db
-    .select({
-      category: leadCategoryScores.category,
-      answerKey: leadCategoryScores.answerKey,
-    })
-    .from(leadCategoryScores)
-    .where(eq(leadCategoryScores.leadId, leadId))
+  return leadSource
+}
 
+function leadSourceToAnswers(source: LeadScoreSource): DecisionMatrixAnswers {
   return {
-    ...leadSource,
-    storedAnswers: Object.fromEntries(
-      storedRows
-        .filter((row) => row.answerKey !== null)
-        .map((row) => [`cat${row.category}`, row.answerKey]),
-    ),
+    clientType: source.clientTypeAnswer,
+    budgetBand: source.budgetBand,
+    resourceConsent: source.resourceConsent,
+    buildingConsent: source.buildingConsent,
+    buildingStage: source.buildingStage,
+    projectType: source.projectType,
+    priceSensitivity: source.priceSensitivity,
+    decisionMakers: source.decisionMakers,
+    source: source.source,
+    distanceBand: source.distanceBand,
+    paymentHistory: source.paymentHistory,
+    siteAccess: source.siteAccess,
+    installationHeight: source.installationHeight,
   }
 }
 
-function leadSourceToAnswers(source: LeadScoreSource, config: ScoringConfig): LeadAnswers {
-  return {
-    cat1: optionKeyOrUndefined(config, '1', source.storedAnswers.cat1 ?? source.clientType),
-    cat2: optionKeyOrUndefined(config, '2', source.storedAnswers.cat2 ?? source.budgetBand),
-    cat4: optionKeyOrUndefined(config, '4', source.storedAnswers.cat4 ?? null),
-    cat5: optionKeyOrUndefined(config, '5', source.storedAnswers.cat5 ?? source.priceSensitivityRead),
-    cat6: optionKeyOrUndefined(config, '6', source.storedAnswers.cat6 ?? source.decisionMakers),
-    cat7: optionKeyOrUndefined(config, '7', source.storedAnswers.cat7 ?? null),
-    cat8: optionKeyOrUndefined(config, '8', source.storedAnswers.cat8 ?? source.rcStatus),
-    cat9: optionKeyOrUndefined(config, '9', source.storedAnswers.cat9 ?? source.bcStatus),
-    cat10: optionKeyOrUndefined(config, '10', source.storedAnswers.cat10 ?? source.buildingStage),
-  }
+function buildReason(scoreResult: ScoreResult): string {
+  return `Tier ${scoreResult.tier} (${scoreResult.score}): ${scoreResult.completeness.answered}/${scoreResult.completeness.total} matrix fields answered`
 }
 
-function optionKeyOrUndefined(
-  config: ScoringConfig,
-  category: string,
-  value: string | null,
-): string | undefined {
-  if (!value) return undefined
-  return Object.hasOwn(config.categories[category]?.options ?? {}, value) ? value : undefined
-}
-
-function calculateCompleteness(categoryRows: ScoreResult['categoryRows']): number {
-  const answeredRows = categoryRows.filter((row) => row.answerKey !== null)
-  return Math.round((answeredRows.length / categoryRows.length) * 100)
+export function tierFollowUpLabel(tier: LeadTier): string {
+  return `Tier ${tier}`
 }

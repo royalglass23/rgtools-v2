@@ -143,7 +143,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('mergeClients', () => {
 
     const [lead] = await db
       .insert(leads)
-      .values({ clientId: loser.clientId, source: 'phone', projectType: 'Other', location: 'Albany' })
+      .values({ clientId: loser.clientId, channel: 'phone', product: 'Other', location: 'Albany' })
       .returning({ id: leads.id })
     createdLeadIds.add(lead.id)
 

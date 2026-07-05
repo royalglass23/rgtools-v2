@@ -12,7 +12,6 @@ import {
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { normalizeNzPhone } from '@/modules/lead-intake/intake-utils'
-import { deriveProjectType } from '@/modules/lead-intake/import/enrich-row'
 import { isServiceM8QuoteStatus } from './lead-lifecycle'
 
 // Re-exported for existing importers/tests that reference these from this module.
@@ -253,14 +252,15 @@ export async function importLeadFromServiceM8JobNumber(
       .values({
         clientId: resolved.clientId,
         contactId: resolved.contactId,
-        source: 'other',
+        channel: 'other',
         externalRef: resolvedJobNumber,
         syncStatus: 'synced',
         servicem8JobUuid: meta.jobUuid,
         servicem8JobNumber: resolvedJobNumber,
         servicem8Status: meta.status,
-        projectType,
+        product: projectType,
         location: meta.jobAddress,
+        jobDescription: freeText,
         freeText,
         createdBy: actorId,
         updatedAt: now,
@@ -399,6 +399,15 @@ export async function linkLeadToServiceM8JobByNumber(
 
 function hasContactDetail(contact: { phone: string | null; mobile: string | null; email: string | null } | null): boolean {
   return Boolean(contact?.phone || contact?.mobile || contact?.email)
+}
+
+function deriveProjectType(description: string | null | undefined) {
+  const normalized = (description ?? '').toLowerCase()
+  if (normalized.includes('pool')) return 'pool_fence'
+  if (normalized.includes('balustrade') || normalized.includes('balcony')) return 'balustrade'
+  if (normalized.includes('shower')) return 'shower'
+  if (normalized.includes('handrail')) return 'handrail'
+  return 'other'
 }
 
 async function fetchJobByUuid(

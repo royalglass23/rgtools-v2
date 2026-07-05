@@ -15,7 +15,7 @@ Click any row to open the lead detail page.
 | **Job Number** | ServiceM8 job number, when linked |
 | **Job Address** | The project address |
 | **Project** | Project type |
-| **Tier** | A, B, C, or D when scored; imported ServiceM8 leads may need scoring first |
+| **Tier** | A, B, C, D, or E when scored; imported ServiceM8 leads may need scoring first |
 | **Score** | Raw score out of 100 when scored |
 | **SM8** | ServiceM8 link status |
 | **Completeness** | Percentage of scored fields filled in |
@@ -30,7 +30,7 @@ Use **View** to choose the lifecycle set:
 
 Other filters narrow the selected view:
 
-- **Tier** shows only A, B, C, or D leads.
+- **Tier** shows only A, B, C, D, or E leads.
 - **SM8** shows Linked, Pending, or Failed leads.
 - **Date** limits by last 7 days, last 30 days, or all time.
 - **Activity** can show stale unlinked leads.

@@ -8,6 +8,9 @@ import { getDashboardActionCounts, getDashboardChartData, getDashboardKpis } fro
 import type { SparkPoint } from '@/modules/dashboard/kpis'
 import { SparkLine } from '@/modules/dashboard/SparkLine'
 import { ChartSection } from '@/modules/dashboard/ChartSection'
+import { userCanAccessSlug } from '@/lib/access-db'
+import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { QuickCaptureForm } from '@/modules/dashboard/QuickCaptureForm'
 
 export default async function DashboardPage({
   searchParams,
@@ -20,12 +23,15 @@ export default async function DashboardPage({
   const params = await searchParams
   const denied = typeof params.denied === 'string' ? params.denied : undefined
   const isAdmin = session.user.role === 'admin'
+  const canUseLeadIntake = await userCanAccessSlug(session.user.id, 'lead-intake')
 
   const [actionCounts, kpis, chartData] = await Promise.all([
     getDashboardActionCounts(),
     getDashboardKpis(),
     getDashboardChartData(),
   ])
+  const optionLists = canUseLeadIntake ? await getActiveScoringOptionLists() : null
+  const buildingStageOptions = optionLists?.categories['10']?.options ?? []
 
   // ── Admin-selected tables ───────────────────────────────────────────────────
   const config = await getDashboardTables()
@@ -51,6 +57,8 @@ export default async function DashboardPage({
       {/* Business Overview + Charts — admin only */}
       {isAdmin && <BusinessOverviewSection kpis={kpis} />}
       {isAdmin && <ChartSection leadsPerWeek={chartData.leadsPerWeek} pipelineByWeek={chartData.pipelineByWeek} />}
+
+      {canUseLeadIntake && <QuickCaptureForm buildingStageOptions={buildingStageOptions} />}
 
       {/* Actions Needed */}
       <ActionsNeededSection counts={actionCounts} />

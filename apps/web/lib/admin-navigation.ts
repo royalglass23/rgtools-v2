@@ -90,26 +90,27 @@ const WORK_ORDER_PERMISSION_ONLY_SLUGS = new Set([
   'work-orders/manage',
 ])
 
+const REMOVED_ROUTE_SLUGS = new Set([
+  'admin/lead-import',
+  'admin/lead-scoring',
+])
+
 const ADMIN_ROUTE_BY_SLUG: Record<string, string> = {
   admin: '/admin/administration',
   'admin/administration': '/admin/administration',
-  'admin/lead-scoring': '/admin/lead-scoring',
   'admin/calculator-pricing': '/admin/calculator-pricing',
   'admin/dashboard-settings': '/admin/dashboard-settings',
   'admin/tracking': '/admin/tracking',
-  'admin/lead-import': '/admin/lead-import',
   'admin/client-merge-review': '/admin/client-merge-review',
 }
 
 const ADMIN_SORT_ORDER: Record<string, number> = {
   admin: 0,
   'admin/administration': 0,
-  'admin/lead-scoring': 1,
-  'admin/calculator-pricing': 2,
-  'admin/dashboard-settings': 3,
-  'admin/tracking': 4,
-  'admin/lead-import': 5,
-  'admin/client-merge-review': 6,
+  'admin/calculator-pricing': 1,
+  'admin/dashboard-settings': 2,
+  'admin/tracking': 3,
+  'admin/client-merge-review': 4,
 }
 
 function adminItemKey(slug: string) {
@@ -127,7 +128,8 @@ export function buildDashboardNavigation(modules: DashboardModule[], options: { 
     !(mod.slug in PS_GENERATOR_ROUTE_BY_SLUG) &&
     !(mod.slug in WORK_ORDER_ROUTE_BY_SLUG) &&
     !PS_GENERATOR_PERMISSION_ONLY_SLUGS.has(mod.slug) &&
-    !WORK_ORDER_PERMISSION_ONLY_SLUGS.has(mod.slug)
+    !WORK_ORDER_PERMISSION_ONLY_SLUGS.has(mod.slug) &&
+    !REMOVED_ROUTE_SLUGS.has(mod.slug)
   ))
   const leadIntakeItemsByKey = new Map<string, DashboardNavItem>()
   const psGeneratorItemsByKey = new Map<string, DashboardNavItem>()

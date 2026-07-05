@@ -5,9 +5,10 @@ import { auth } from '@/lib/auth'
 import { userCanAccessSlug } from '@/lib/access-db'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
-import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
+import { clients, leads } from '@rgtools/db/schema-leads'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { DECISION_MATRIX, type MatrixFieldKey } from '@/modules/lead-intake/scoring/score-lead'
 import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
   markLeadPendingServiceM8Sync,
@@ -15,12 +16,14 @@ import {
   type ServiceM8LeadSyncOutcome,
 } from '@/modules/lead-intake/servicem8/sync'
 import {
-  buildCategoryAnswers,
   normalizeInput,
+  repairMatrixFieldAliases,
   validateMinimum,
   validateScoredOptions,
 } from './intake-utils'
-import { computeDistanceBand } from './distance'
+import { computeDrivingDistance } from './distance'
+
+type LeadInsert = typeof leads.$inferInsert
 
 export type LeadIntakeInput = {
   leadId?: string
@@ -33,6 +36,7 @@ export type LeadIntakeInput = {
   servicem8CompanyUuid?: string
   clientProfileKey: string
   projectType: string
+  product?: string
   location: string
   suburb?: string
   cat4?: string
@@ -46,6 +50,12 @@ export type LeadIntakeInput = {
   decisionMakers?: string
   priceSensitivityRead?: string
   distanceBand?: string
+  rawDrivingDistanceKm?: number | null
+  leadSource?: string
+  paymentHistory?: string
+  siteAccess?: string
+  installationHeight?: string
+  jobDescription?: string
   source: 'phone' | 'email' | 'wechat' | 'calculator' | 'contact_form' | 'other'
   timeline?: string
   externalRef?: string
@@ -59,7 +69,7 @@ export type LeadIntakeResult =
       clientId: string
       matchedExistingClient: boolean
       score: number
-      tier: 'A' | 'B' | 'C' | 'D'
+      tier: 'A' | 'B' | 'C' | 'D' | 'E'
       reason: string
       completeness: number
       distanceBand: string | null
@@ -77,18 +87,26 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
   const [row] = await db
     .select({
       leadId: leads.id,
+      channel: leads.channel,
+      clientTypeAnswer: leads.clientTypeAnswer,
       source: leads.source,
       projectType: leads.projectType,
+      product: leads.product,
       location: leads.location,
       suburb: leads.suburb,
-      consentStatus: leads.consentStatus,
-      rcStatus: leads.rcStatus,
-      bcStatus: leads.bcStatus,
+      resourceConsent: leads.resourceConsent,
+      buildingConsent: leads.buildingConsent,
       buildingStage: leads.buildingStage,
       followUpDate: leads.followUpDate,
       budgetBand: leads.budgetBand,
       decisionMakers: leads.decisionMakers,
-      priceSensitivityRead: leads.priceSensitivityRead,
+      priceSensitivity: leads.priceSensitivity,
+      distanceBand: leads.distanceBand,
+      rawDrivingDistanceKm: leads.rawDrivingDistanceKm,
+      paymentHistory: leads.paymentHistory,
+      siteAccess: leads.siteAccess,
+      installationHeight: leads.installationHeight,
+      jobDescription: leads.jobDescription,
       freeText: leads.freeText,
       updatedAt: leads.updatedAt,
       clientName: clients.name,
@@ -103,40 +121,34 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
 
   if (!row) return null
 
-  const categoryRows = await db
-    .select({
-      category: leadCategoryScores.category,
-      answerKey: leadCategoryScores.answerKey,
-    })
-    .from(leadCategoryScores)
-    .where(eq(leadCategoryScores.leadId, leadId))
-
-  const answerByCategory = Object.fromEntries(
-    categoryRows.map((categoryRow) => [categoryRow.category, categoryRow.answerKey ?? '']),
-  )
-
   return {
     leadId: row.leadId,
     clientName: row.clientName,
     companyName: row.companyName ?? '',
     phone: row.phone ?? '',
     email: row.email ?? '',
-    clientProfileKey: answerByCategory[1] ?? '',
-    projectType: row.projectType ?? '',
+    clientProfileKey: row.clientTypeAnswer ?? '',
+    projectType: row.product ?? row.projectType ?? '',
     location: row.location ?? '',
     suburb: row.suburb ?? '',
-    cat4: answerByCategory[4] ?? '',
-    distanceBand: answerByCategory[7] ?? '',
+    cat4: row.projectType ?? '',
+    distanceBand: row.distanceBand ?? '',
     consentStatus: '',
-    rcStatus: answerByCategory[8] ?? row.rcStatus ?? '',
-    bcStatus: answerByCategory[9] ?? row.bcStatus ?? '',
-    buildingStage: answerByCategory[10] ?? row.buildingStage ?? '',
+    rcStatus: row.resourceConsent ?? '',
+    bcStatus: row.buildingConsent ?? '',
+    buildingStage: row.buildingStage ?? '',
     followUpDate: row.followUpDate ?? '',
     lastUpdated: row.updatedAt.toISOString(),
-    budgetBand: answerByCategory[2] ?? row.budgetBand ?? '',
-    decisionMakers: answerByCategory[6] ?? row.decisionMakers ?? '',
-    priceSensitivityRead: answerByCategory[5] ?? row.priceSensitivityRead ?? '',
-    source: row.source,
+    budgetBand: row.budgetBand ?? '',
+    decisionMakers: row.decisionMakers ?? '',
+    priceSensitivityRead: row.priceSensitivity ?? '',
+    source: row.channel,
+    leadSource: row.source ?? '',
+    paymentHistory: row.paymentHistory ?? '',
+    siteAccess: row.siteAccess ?? '',
+    installationHeight: row.installationHeight ?? '',
+    rawDrivingDistanceKm: row.rawDrivingDistanceKm === null ? null : Number(row.rawDrivingDistanceKm),
+    jobDescription: row.jobDescription ?? '',
     freeText: row.freeText ?? '',
   }
 }
@@ -144,7 +156,7 @@ export async function getLeadIntakeForEdit(leadId: string): Promise<LeadIntakeIn
 export async function computeLeadDistance(address: string): Promise<string | null> {
   const session = await auth()
   if (!session?.user?.id) return null
-  return computeDistanceBand(address)
+  return (await computeDrivingDistance(address))?.band ?? null
 }
 
 export async function submitLeadIntake(input: LeadIntakeInput): Promise<LeadIntakeResult> {
@@ -162,7 +174,7 @@ export async function submitLeadIntakeForUser(
     allowMissingContact = false,
   }: { syncServiceM8?: boolean; allowMissingContact?: boolean } = {},
 ): Promise<LeadIntakeResult> {
-  const normalized = normalizeInput(input)
+  const normalized = repairMatrixFieldAliases(normalizeInput(input))
   const validationError = allowMissingContact
     ? validateMinimumWithoutContact(normalized)
     : validateMinimum(normalized)
@@ -173,8 +185,10 @@ export async function submitLeadIntakeForUser(
   const optionError = validateScoredOptions(normalized, optionLists.categories)
   if (optionError) return { error: optionError }
 
-  const distanceBand = await computeDistanceBand(normalized.location)
-  const categoryAnswers = buildCategoryAnswers(normalized, distanceBand)
+  const distance = await computeDrivingDistance(normalized.location)
+  const distanceBand = distance?.band ?? normalized.distanceBand ?? null
+  const rawDrivingDistanceKm = distance?.rawKm ?? normalized.rawDrivingDistanceKm ?? null
+  const matrixFields = buildMatrixFields(normalized, distanceBand)
   const followUpDate = parseFollowUpDate(normalized.followUpDate)
   const now = new Date()
   let leadId = ''
@@ -210,19 +224,28 @@ export async function submitLeadIntakeForUser(
       await tx
         .update(leads)
         .set({
-          source: normalized.source,
-          projectType: normalized.projectType,
+          channel: normalized.source,
+          clientTypeAnswer: matrixFields.clientTypeAnswer,
+          budgetBand: matrixFields.budgetBand,
+          resourceConsent: matrixFields.resourceConsent,
+          buildingConsent: matrixFields.buildingConsent,
+          buildingStage: matrixFields.buildingStage,
+          projectType: matrixFields.projectType,
+          product: normalized.projectType || null,
+          priceSensitivity: matrixFields.priceSensitivity,
+          decisionMakers: matrixFields.decisionMakers,
+          distanceBand: matrixFields.distanceBand,
+          rawDrivingDistanceKm: rawDrivingDistanceKm === null ? null : String(rawDrivingDistanceKm),
+          source: matrixFields.source,
+          paymentHistory: matrixFields.paymentHistory,
+          siteAccess: matrixFields.siteAccess,
+          installationHeight: matrixFields.installationHeight,
+          jobDescription: normalized.jobDescription || null,
           location: normalized.location,
           suburb: normalized.suburb || null,
           timeline: normalized.timeline || null,
-          budgetBand: normalized.budgetBand || null,
           consentStatus: null,
-          rcStatus: normalized.rcStatus || null,
-          bcStatus: normalized.bcStatus || null,
-          buildingStage: normalized.buildingStage || null,
           followUpDate,
-          decisionMakers: normalized.decisionMakers || null,
-          priceSensitivityRead: normalized.priceSensitivityRead || null,
           freeText: normalized.freeText || null,
           updatedAt: now,
         })
@@ -245,46 +268,36 @@ export async function submitLeadIntakeForUser(
         .values({
           clientId,
           contactId,
-          source: normalized.source,
+          channel: normalized.source,
           syncStatus: 'pending_sync',
-          projectType: normalized.projectType,
+          clientTypeAnswer: matrixFields.clientTypeAnswer,
+          budgetBand: matrixFields.budgetBand,
+          resourceConsent: matrixFields.resourceConsent,
+          buildingConsent: matrixFields.buildingConsent,
+          buildingStage: matrixFields.buildingStage,
+          projectType: matrixFields.projectType,
+          product: normalized.projectType || null,
+          priceSensitivity: matrixFields.priceSensitivity,
+          decisionMakers: matrixFields.decisionMakers,
+          distanceBand: matrixFields.distanceBand,
+          rawDrivingDistanceKm: rawDrivingDistanceKm === null ? null : String(rawDrivingDistanceKm),
+          source: matrixFields.source,
+          paymentHistory: matrixFields.paymentHistory,
+          siteAccess: matrixFields.siteAccess,
+          installationHeight: matrixFields.installationHeight,
+          jobDescription: normalized.jobDescription || null,
           location: normalized.location,
           suburb: normalized.suburb || null,
           timeline: normalized.timeline || null,
           externalRef: normalized.externalRef || null,
-          budgetBand: normalized.budgetBand || null,
           consentStatus: null,
-          rcStatus: normalized.rcStatus || null,
-          bcStatus: normalized.bcStatus || null,
-          buildingStage: normalized.buildingStage || null,
           followUpDate,
-          decisionMakers: normalized.decisionMakers || null,
-          priceSensitivityRead: normalized.priceSensitivityRead || null,
           freeText: normalized.freeText || null,
           createdBy: actorId,
         })
         .returning({ id: leads.id })
 
       leadId = createdLead.id
-    }
-
-    for (const answer of categoryAnswers) {
-      await tx
-        .insert(leadCategoryScores)
-        .values({
-          leadId,
-          category: answer.category,
-          answerKey: answer.answerKey,
-          points: 0,
-          configVersionId: optionLists.configVersionId,
-        })
-        .onConflictDoUpdate({
-          target: [leadCategoryScores.leadId, leadCategoryScores.category],
-          set: {
-            answerKey: answer.answerKey,
-            configVersionId: optionLists.configVersionId,
-          },
-        })
     }
 
     await logAudit({
@@ -295,14 +308,14 @@ export async function submitLeadIntakeForUser(
       before: normalized.leadId
         ? {
             clientId,
-            source: null,
+            channel: null,
             matchedExistingClient,
             reason: null,
           }
         : null,
       after: {
         clientId,
-        source: normalized.source,
+        channel: normalized.source,
         matchedExistingClient,
         ...(normalized.leadId ? { reason: normalized.editReason } : {}),
       },
@@ -323,17 +336,43 @@ export async function submitLeadIntakeForUser(
     score: score.score,
     tier: score.tier,
     reason: score.reason,
-    completeness: score.completeness,
+    completeness: score.completenessPercent,
     distanceBand,
     flagNote: score.flagNote,
     servicem8Sync,
   }
 }
 
+function buildMatrixFields(normalized: ReturnType<typeof normalizeInput>, distanceBand: string | null) {
+  return {
+    clientTypeAnswer: enumOptionOrNull('clientType', normalized.clientProfileKey) as LeadInsert['clientTypeAnswer'],
+    budgetBand: enumOptionOrNull('budgetBand', normalized.budgetBand) as LeadInsert['budgetBand'],
+    resourceConsent: enumOptionOrNull('resourceConsent', normalized.rcStatus) as LeadInsert['resourceConsent'],
+    buildingConsent: enumOptionOrNull('buildingConsent', normalized.bcStatus) as LeadInsert['buildingConsent'],
+    buildingStage: enumOptionOrNull('buildingStage', normalized.buildingStage) as LeadInsert['buildingStage'],
+    projectType: enumOptionOrNull('projectType', normalized.cat4) as LeadInsert['projectType'],
+    priceSensitivity: enumOptionOrNull('priceSensitivity', normalized.priceSensitivityRead) as LeadInsert['priceSensitivity'],
+    decisionMakers: enumOptionOrNull('decisionMakers', normalized.decisionMakers) as LeadInsert['decisionMakers'],
+    distanceBand: enumOptionOrNull('distanceBand', distanceBand) as LeadInsert['distanceBand'],
+    source: enumOptionOrNull('source', normalized.leadSource) as LeadInsert['source'],
+    paymentHistory: enumOptionOrNull('paymentHistory', normalized.paymentHistory) as LeadInsert['paymentHistory'],
+    siteAccess: enumOptionOrNull('siteAccess', normalized.siteAccess) as LeadInsert['siteAccess'],
+    installationHeight: enumOptionOrNull('installationHeight', normalized.installationHeight) as LeadInsert['installationHeight'],
+  }
+}
+
+function enumOptionOrNull(fieldKey: MatrixFieldKey, value: string | null | undefined): string | null {
+  if (!value) return null
+  return DECISION_MATRIX.fields
+    .find((field) => field.key === fieldKey)
+    ?.options.some((option) => option.key === value)
+    ? value
+    : null
+}
+
 function validateMinimumWithoutContact(input: ReturnType<typeof normalizeInput>): string | null {
   if (!input.clientName) return 'Client name is required.'
-  if (!input.projectType) return 'Project type is required.'
-  if (!input.location) return 'Location / suburb is required.'
+  if (!input.location) return 'Job address is required.'
   return null
 }
 

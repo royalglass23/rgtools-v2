@@ -1,4 +1,4 @@
-export type ServiceM8LeadTier = 'A' | 'B' | 'C' | 'D'
+export type ServiceM8LeadTier = 'A' | 'B' | 'C' | 'D' | 'E'
 
 export type ServiceM8LeadSyncRecord = {
   leadId: string
@@ -7,7 +7,8 @@ export type ServiceM8LeadSyncRecord = {
   companyName: string | null
   phone: string | null
   email: string | null
-  source: string
+  channel: string
+  source: string | null
   projectType: string | null
   location: string | null
   suburb: string | null
@@ -18,6 +19,9 @@ export type ServiceM8LeadSyncRecord = {
   priceSensitivityRead: string | null
   decisionMakers: string | null
   distanceBand: string | null
+  paymentHistory: string | null
+  siteAccess: string | null
+  installationHeight: string | null
   freeText: string | null
   seedScore: number | null
   tier: ServiceM8LeadTier | null
@@ -68,9 +72,13 @@ export function buildServiceM8InboxEmail(
     record.complexity ? `Complexity: ${record.complexity}` : null,
     record.priceSensitivityRead ? `Price-sensitivity read: ${record.priceSensitivityRead}` : null,
     record.decisionMakers ? `Decision-makers: ${record.decisionMakers}` : null,
-    `Source: ${record.source}`,
+    record.source ? `Source: ${record.source}` : null,
+    record.paymentHistory ? `Payment history: ${record.paymentHistory}` : null,
+    record.siteAccess ? `Site access: ${record.siteAccess}` : null,
+    record.installationHeight ? `Installation height: ${record.installationHeight}` : null,
+    `Channel: ${record.channel}`,
     record.suburb ? `Suburb: ${record.suburb}` : null,
-    record.freeText ? `Anything else: ${record.freeText}` : null,
+    record.freeText ? `Job Description: ${record.freeText}` : null,
     '',
     '--- Reference ---',
     `RGTools Lead ${record.leadId}`,

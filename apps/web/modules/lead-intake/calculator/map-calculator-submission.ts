@@ -38,10 +38,10 @@ export type CalculatorEstimateForEmail = {
 
 const CLIENT_PROFILE_BY_CUSTOMER_TYPE: Record<string, string> = {
   homeowner: 'homeowner',
-  builder: 'new_business',
-  developer: 'new_business',
-  architect: 'new_business',
-  pool_builder: 'new_business',
+  builder: 'builder_developer_pool_builder_landscaper',
+  developer: 'builder_developer_pool_builder_landscaper',
+  architect: 'builder_developer_pool_builder_landscaper',
+  pool_builder: 'builder_developer_pool_builder_landscaper',
 }
 
 const BUSINESS_CUSTOMER_TYPES = new Set(['builder', 'developer', 'architect', 'pool_builder'])
@@ -83,12 +83,13 @@ export function mapCalculatorSubmissionToIntakeInput(
     clientProfileKey: CLIENT_PROFILE_BY_CUSTOMER_TYPE[customerType] ?? '',
     projectType: PROJECT_TYPE_BY_SCENARIO[scenario] ?? 'other',
     budgetBand: budgetBandFromEstimate(estimate.low, estimate.high),
-    cat4: complexityFromConsult(estimate.needsCallUs || estimate.consultationFlags.length > 0),
+    cat4: '',
     location: stringValue(lead.address),
     source: 'calculator',
+    leadSource: 'website_google_walk_in_cold_lead',
     timeline: stringValue(lead.timeframe),
     externalRef: options.submissionRef,
-    freeText: buildFreeText(submission, estimate, options.submittedAt),
+    jobDescription: buildJobDescription(submission, estimate, options.submittedAt),
   }
 }
 
@@ -120,12 +121,12 @@ export function budgetBandFromEstimate(lowValue: unknown, highValue: unknown): s
   const midpoint = (Math.min(low, high) + Math.max(low, high)) / 2
   if (midpoint <= 0) return ''
   if (midpoint >= 50_000) return '50k_plus'
-  if (midpoint >= 10_000) return '10k_to_50k'
-  if (midpoint >= 2_000) return '2k_to_10k'
-  return 'under_2k'
+  if (midpoint >= 20_000) return '20k_50k'
+  if (midpoint >= 5_000) return '5k_20k'
+  return 'lt_5k'
 }
 
-function buildFreeText(
+function buildJobDescription(
   submission: CalculatorSubmission,
   estimate: CalculatorEstimateForEmail,
   submittedAt: Date,
@@ -160,10 +161,6 @@ function buildFreeText(
   const notes = stringValue(lead.notes)
   if (notes) lines.push(`Notes: ${notes}`)
   return lines.join('\n')
-}
-
-function complexityFromConsult(needsConsult: boolean): string {
-  return needsConsult ? 'minor_custom' : 'standard_non_custom'
 }
 
 function clampMoney(value: number): number {

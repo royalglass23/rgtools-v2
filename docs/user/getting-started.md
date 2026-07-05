@@ -47,7 +47,7 @@ Current navigation groups include:
 | **PS Generator** | Generate PS and admin-only PS Configuration |
 | **Quote Tracker** | Tracked quote list, quote details, viewer analytics, email gate settings, and AI Guidance when enabled |
 | **Clients** | Client records and linked lead/job context |
-| **Admin** | User management, settings, imports, tracking settings, dashboard tables, audit/error exports, and admin tools |
+| **Admin** | User management, settings, tracking settings, dashboard tables, audit/error exports, and admin tools |
 
 Your name and role are shown in the top right. Use **Sign out** when you are done.
 

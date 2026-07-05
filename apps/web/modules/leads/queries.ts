@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
+import { clients, leads } from '@rgtools/db/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
 import { DEFAULT_LEADS_PREFS, LEADS_SORT_COLUMNS } from './table-prefs-shared'
 
@@ -8,7 +8,7 @@ export const STALE_LEAD_DAYS = 7
 
 export type LeadsListFilters = {
   q: string
-  tier: 'all' | 'A' | 'B' | 'C' | 'D'
+  tier: 'all' | 'A' | 'B' | 'C' | 'D' | 'E'
   sm8: 'all' | 'linked' | 'pending' | 'failed'
   date: '7' | '30' | 'all'
   stale: boolean
@@ -57,7 +57,7 @@ export function parseLeadsListFilters(
 
   return {
     q,
-    tier: tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D' ? tier : 'all',
+    tier: tier === 'A' || tier === 'B' || tier === 'C' || tier === 'D' || tier === 'E' ? tier : 'all',
     sm8: sm8 === 'linked' || sm8 === 'pending' || sm8 === 'failed' ? sm8 : 'all',
     date: date === '7' || date === '30' || date === 'all' ? date : '30',
     stale,
@@ -87,7 +87,7 @@ export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSor
       clientName: clients.name,
       companyName: clients.companyName,
       location: leads.location,
-      projectType: leads.projectType,
+      projectType: leads.product,
       tier: leads.tier,
       seedScore: leads.seedScore,
       servicem8JobUuid: leads.servicem8JobUuid,
@@ -95,8 +95,8 @@ export async function getLeadsList(filters: LeadsListFilters, sort: LeadsListSor
       servicem8Status: leads.servicem8Status,
       syncStatus: leads.syncStatus,
       completeness: leads.completeness,
-      rcStatus: leads.rcStatus,
-      bcStatus: leads.bcStatus,
+      rcStatus: leads.resourceConsent,
+      bcStatus: leads.buildingConsent,
       buildingStage: leads.buildingStage,
       followUpDate: leads.followUpDate,
       updatedAt: leads.updatedAt,
@@ -131,12 +131,14 @@ export async function getLeadDetail(leadId: string) {
       email: clients.email,
       location: leads.location,
       source: leads.source,
+      channel: leads.channel,
       projectType: leads.projectType,
-      freeText: leads.freeText,
+      product: leads.product,
+      freeText: leads.jobDescription,
       budgetBand: leads.budgetBand,
       consentStatus: leads.consentStatus,
       decisionMakers: leads.decisionMakers,
-      priceSensitivityRead: leads.priceSensitivityRead,
+      priceSensitivityRead: leads.priceSensitivity,
       tier: leads.tier,
       seedScore: leads.seedScore,
       completeness: leads.completeness,
@@ -145,9 +147,14 @@ export async function getLeadDetail(leadId: string) {
       servicem8JobUuid: leads.servicem8JobUuid,
       servicem8JobNumber: leads.servicem8JobNumber,
       servicem8Status: leads.servicem8Status,
-      rcStatus: leads.rcStatus,
-      bcStatus: leads.bcStatus,
+      rcStatus: leads.resourceConsent,
+      bcStatus: leads.buildingConsent,
       buildingStage: leads.buildingStage,
+      clientTypeAnswer: leads.clientTypeAnswer,
+      distanceBand: leads.distanceBand,
+      paymentHistory: leads.paymentHistory,
+      siteAccess: leads.siteAccess,
+      installationHeight: leads.installationHeight,
       followUpDate: leads.followUpDate,
       updatedAt: leads.updatedAt,
       aiSuggestion: leads.aiSuggestion,
@@ -160,34 +167,40 @@ export async function getLeadDetail(leadId: string) {
 
   if (!lead) return null
 
-  const categoryRows = await db
-    .select({
-      category: leadCategoryScores.category,
-      answerKey: leadCategoryScores.answerKey,
-      points: leadCategoryScores.points,
-    })
-    .from(leadCategoryScores)
-    .where(eq(leadCategoryScores.leadId, leadId))
-    .orderBy(leadCategoryScores.category)
-
   const optionLists = await getActiveScoringOptionLists()
-  const scoredFields = [1, 2, 4, 5, 6, 7, 8, 9, 10].map((category) => {
-    const row = categoryRows.find((candidate) => candidate.category === category)
+  const scoredFieldValues: Record<number, string | null> = {
+    1: lead.clientTypeAnswer,
+    2: lead.budgetBand,
+    4: lead.projectType,
+    5: lead.priceSensitivityRead,
+    6: lead.decisionMakers,
+    7: lead.distanceBand,
+    8: lead.rcStatus,
+    9: lead.bcStatus,
+    10: lead.buildingStage,
+    11: lead.source,
+    12: lead.paymentHistory,
+    13: lead.siteAccess,
+    14: lead.installationHeight,
+  }
+  const scoredFields = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((category) => {
     const configCategory = optionLists.categories[String(category)]
     const label = configCategory?.label ?? categoryLabel(category)
-    const selected = configCategory?.options.find((option) => option.key === row?.answerKey)?.label
+    const answerKey = scoredFieldValues[category]
+    const selected = configCategory?.options.find((option) => option.key === answerKey)?.label
 
     return {
       category,
       label: cleanDisplayText(label),
-      answer: cleanDisplayText(selected ?? row?.answerKey ?? 'Not selected'),
-      points: row?.points ?? 0,
+      answer: cleanDisplayText(selected ?? answerKey ?? 'Not selected'),
+      points: 0,
     }
   })
 
   return {
     ...lead,
     scoredFields,
+    projectType: lead.product ?? lead.projectType,
     distanceBand: scoredFields.find((field) => field.category === 7)?.answer ?? 'Not selected',
   }
 }
@@ -243,7 +256,7 @@ function listWhere(filters: LeadsListFilters, options: GetLeadsListOptions = {})
       ilike(clients.email, query),
       ilike(clients.phone, query),
       ilike(leads.location, query),
-      ilike(leads.projectType, query),
+      ilike(leads.product, query),
       ilike(leads.externalRef, query),
       ilike(leads.servicem8JobNumber, query),
     )
@@ -294,6 +307,10 @@ function categoryLabel(category: number) {
     8: 'Resource Consent',
     9: 'Building Consent',
     10: 'Building Stage',
+    11: 'Source',
+    12: 'Payment History',
+    13: 'Site Access',
+    14: 'Installation Height',
   }
 
   return labels[category] ?? `Category ${category}`

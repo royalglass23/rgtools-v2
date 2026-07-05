@@ -159,4 +159,26 @@ describe('LeadsTableControls', () => {
     expect(within(table).getAllByText('-')).toHaveLength(2)
     expect(within(table).queryByText('D')).not.toBeInTheDocument()
   })
+
+  it('offers Tier E filtering and A-E sort labels', () => {
+    render(
+      <LeadsTableControls
+        filters={{ ...filters, tier: 'E' }}
+        rows={[{ ...rows[0], tier: 'E' }]}
+        total={1}
+        pageCount={1}
+        isAdmin={false}
+        prefs={{
+          ...prefs,
+          columns: [{ key: 'tier', visible: true }],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: /Tier/ })).toHaveValue('E')
+    expect(screen.getByRole('option', { name: 'E' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Tier A-E' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Tier E-A' })).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getByText('E')).toBeInTheDocument()
+  })
 })

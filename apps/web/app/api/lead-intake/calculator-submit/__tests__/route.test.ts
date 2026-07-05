@@ -169,7 +169,14 @@ describe('POST /api/lead-intake/calculator-submit', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('https://www.royalglass.co.nz')
     expect(json).toEqual({ ok: true, leadId: 'lead-uuid', submissionRef: 'rgcalc_test_ref123' })
     expect(submitLeadIntakeForUserMock).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'calculator', externalRef: 'rgcalc_test_ref123' }),
+      expect.objectContaining({
+        source: 'calculator',
+        projectType: 'pool_fence',
+        jobDescription: expect.stringContaining('[Calculator] submitted'),
+        leadSource: 'website_google_walk_in_cold_lead',
+        cat4: '',
+        externalRef: 'rgcalc_test_ref123',
+      }),
       null,
       { syncServiceM8: false },
     )
@@ -215,7 +222,7 @@ describe('POST /api/lead-intake/calculator-submit', () => {
       expect.objectContaining({
         source: 'calculator',
         externalRef: 'rgcalc_test_ref123',
-        freeText: expect.stringContaining('Forwarded from WordPress after same-origin calculator submit'),
+        jobDescription: expect.stringContaining('Forwarded from WordPress after same-origin calculator submit'),
       }),
       null,
       { syncServiceM8: false },
@@ -274,7 +281,7 @@ describe('POST /api/lead-intake/calculator-submit', () => {
   })
 
   it('dead-letters valid prospect payloads when the Neon save path fails', async () => {
-    submitLeadIntakeForUserMock.mockResolvedValue({ error: 'Phone or email is required.' })
+    submitLeadIntakeForUserMock.mockResolvedValue({ error: 'Email is required.' })
 
     const response = await POST(request())
     const json = await response.json()
@@ -284,7 +291,7 @@ describe('POST /api/lead-intake/calculator-submit', () => {
     expect(saveLeadSubmitFailureMock).toHaveBeenCalledWith(expect.objectContaining({
       ip: '203.0.113.10',
       stage: 'save',
-      error: 'Phone or email is required.',
+      error: 'Email is required.',
       payload: validPayload,
       submissionRef: 'rgcalc_test_ref123',
     }))
