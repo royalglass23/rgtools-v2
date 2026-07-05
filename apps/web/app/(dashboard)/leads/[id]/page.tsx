@@ -1,12 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
+import { userCanAccessSlug } from '@/lib/access-db'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { ServiceM8FetchButton } from '@/modules/leads/ServiceM8FetchButton'
 import { DeleteLeadButton } from '@/modules/leads/DeleteLeadButton'
 import { AiSuggestionButton } from '@/modules/leads/AiSuggestionButton'
+import { ReviewerNotesSection } from '@/modules/leads/ReviewerNotesSection'
+import { getLeadReviewerNotes } from '@/modules/leads/reviewer-notes'
 import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
 import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
+import { addReviewerNoteAction } from './reviewer-notes-actions'
 
 export default async function LeadDetailPage({
   params,
@@ -24,6 +28,8 @@ export default async function LeadDetailPage({
   const isReadOnly = isLeadReadOnlyForLeadIntake(lead)
   const boundDeleteAction = deleteLeadAction.bind(null, lead.id)
   const intakeSaved = notices.intakeSaved === 'updated' ? 'updated' : notices.intakeSaved === 'added' ? 'added' : null
+  const canUseLeads = session?.user?.id ? await userCanAccessSlug(session.user.id, 'leads') : false
+  const reviewerNotes = canUseLeads ? await getLeadReviewerNotes(lead.id) : []
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -74,6 +80,8 @@ export default async function LeadDetailPage({
           <Field label="Job Address" value={lead.location ?? '-'} className="sm:col-span-2" />
           <Field label="Email" value={lead.email ?? '-'} />
           <Field label="Phone" value={lead.phone ?? '-'} />
+          <Field label="Channel" value={formatEnumValue(lead.channel)} />
+          <Field label="Source" value={formatEnumValue(lead.source)} className="sm:col-span-2" />
         </dl>
       </Section>
 
@@ -81,9 +89,22 @@ export default async function LeadDetailPage({
         <dl className="grid gap-4 sm:grid-cols-2">
           <Field label="Follow-up date" value={formatNullableDate(lead.followUpDate)} />
           <Field label="Last update" value={formatDateTime(lead.updatedAt)} />
-          <Field label="Anything else" value={lead.freeText ?? '-'} className="sm:col-span-2" />
+          <Field label="Job Description" value={lead.freeText ?? '-'} className="sm:col-span-2" />
         </dl>
       </Section>
+
+      {canUseLeads && (
+        <Section title="Reviewer Notes">
+          <ReviewerNotesSection
+            leadId={lead.id}
+            initialNotes={reviewerNotes.map((note) => ({
+              ...note,
+              createdAt: note.createdAt.toISOString(),
+            }))}
+            addNoteAction={addReviewerNoteAction}
+          />
+        </Section>
+      )}
 
       <Section title="Scored Fields">
         <div className="overflow-hidden rounded border border-gray-200">
@@ -184,7 +205,12 @@ function TierBadge({ tier }: { tier: string | null }) {
     B: 'bg-blue-100 text-blue-800',
     C: 'bg-yellow-100 text-yellow-800',
     D: 'bg-gray-100 text-gray-700',
+    E: 'bg-slate-100 text-slate-700',
   }[tier] ?? 'bg-gray-100 text-gray-700'
 
   return <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${classes}`}>{tier}</span>
+}
+
+function formatEnumValue(value: string | null | undefined) {
+  return value ? value.replaceAll('_', ' ') : '-'
 }

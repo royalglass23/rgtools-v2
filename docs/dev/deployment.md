@@ -76,6 +76,22 @@ pnpm db:migrate:prod
 
 The `@rgtools/web` build script also runs root migrations before `next build`.
 
+### Lead decision matrix migration
+
+Migration `0040_leads_decision_matrix_foundation` is expand-safe for production:
+
+- It adds the Decision Matrix enum types and columns.
+- It copies the old lead `source` channel into the new `channel` column before reusing `source` for warmth/source scoring.
+- It preserves legacy text values for `budget_band`, `building_stage`, `project_type`, and `decision_makers` in `legacy_*` columns before converting matching values to enums.
+- It keeps existing clients, leads, lead outcomes, email logs, submit failures, and retry state intact.
+
+Before applying to production, create a Neon branch or snapshot. After applying, spot-check:
+
+- recent lead detail pages still load
+- new `/lead-intake` saves work
+- calculator submissions still create leads or dead-letter failures
+- ServiceM8 sync failures remain visible in lead sync status
+
 ### Seed operations
 
 Seed scripts are operational commands, not part of every deploy.
@@ -84,7 +100,6 @@ Seed scripts are operational commands, not part of every deploy.
 pnpm seed
 pnpm seed:ps-generator
 pnpm seed:tracking
-pnpm --dir apps/web tsx scripts/seed-scoring-config-v4.ts
 ```
 
 `pnpm seed` creates/updates the protected admin user and module rows. `pnpm seed:ps-generator` inserts the published `wordpress-plugin-v1` PS Generator config. `pnpm seed:tracking` upserts quote tracking settings. PS generation also requires the referenced template PDFs in R2.
@@ -189,3 +204,20 @@ The script reads `SERVICEM8_ATTACHMENT_WEBHOOK_URL` and `SERVICEM8_WEBHOOK_SECRE
 - **Vercel** - redeploy a previous deployment from the Vercel dashboard.
 - **Cloudflare Worker** - run `npx wrangler rollback` from the worker directory.
 - **Database** - no automatic rollback; keep a Neon branch or snapshot before production migrations.
+
+For the lead decision matrix migration, rollback is:
+
+1. Stop new deploy traffic by redeploying the previous Vercel deployment.
+2. Restore the pre-migration Neon branch or snapshot if the enum migration causes production data issues.
+3. If only the app deploy fails and the DB migration succeeded, keep the expanded schema in place; the previous app version tolerates the added columns and unused enum types.
+4. Preserve `legacy_*` lead columns until the old values have been reviewed or backfilled.
+
+## Monitoring
+
+After lead-intake releases, watch these signals for at least the first business day:
+
+- `/api/lead-intake/calculator-submit` structured logs by `stage` and `outcome`, especially `save:error`, `turnstile:rejected`, and `rate_limit:rejected`.
+- `lead_submit_failures` rows by `created_at`, `stage`, `correlation_id`, and `submission_ref`.
+- `leads.sync_status` counts for `pending_sync` and `sync_failed`.
+- `lead.servicem8_sync_failed` audit entries.
+- Vercel function errors for `/lead-intake`, `/leads/[id]`, and calculator submit routes.

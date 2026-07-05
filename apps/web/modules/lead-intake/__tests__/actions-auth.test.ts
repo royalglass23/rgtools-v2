@@ -5,12 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockAuth = vi.hoisted(() => vi.fn())
 const mockUserCanAccessSlug = vi.hoisted(() => vi.fn())
 const mockSelect = vi.hoisted(() => vi.fn())
-const mockComputeDistanceBand = vi.hoisted(() => vi.fn())
+const mockComputeDrivingDistance = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({ auth: mockAuth }))
 vi.mock('@/lib/access-db', () => ({ userCanAccessSlug: mockUserCanAccessSlug }))
 vi.mock('@/lib/db', () => ({ db: { select: mockSelect } }))
-vi.mock('@/modules/lead-intake/distance', () => ({ computeDistanceBand: mockComputeDistanceBand }))
+vi.mock('@/modules/lead-intake/distance', () => ({ computeDrivingDistance: mockComputeDrivingDistance }))
 
 import { getLeadIntakeForEdit, computeLeadDistance } from '../actions'
 
@@ -58,14 +58,14 @@ describe('MT-69: computeLeadDistance authorization', () => {
     mockAuth.mockResolvedValue(null)
     const result = await computeLeadDistance('Albany, Auckland')
     expect(result).toBeNull()
-    expect(mockComputeDistanceBand).not.toHaveBeenCalled()
+    expect(mockComputeDrivingDistance).not.toHaveBeenCalled()
   })
 
   it('invokes distance lookup for authenticated callers', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
-    mockComputeDistanceBand.mockResolvedValue('near')
+    mockComputeDrivingDistance.mockResolvedValue({ band: 'lt_15km', rawKm: 8 })
     const result = await computeLeadDistance('Albany, Auckland')
-    expect(result).toBe('near')
-    expect(mockComputeDistanceBand).toHaveBeenCalledWith('Albany, Auckland')
+    expect(result).toBe('lt_15km')
+    expect(mockComputeDrivingDistance).toHaveBeenCalledWith('Albany, Auckland')
   })
 })

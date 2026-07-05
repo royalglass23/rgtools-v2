@@ -7,13 +7,52 @@ import { users } from './schema'
 export const leadClientTypeEnum = pgEnum('lead_client_type', [
   'homeowner', 'builder', 'developer', 'investor', 'repeat_exclusive',
 ])
-export const leadSourceEnum = pgEnum('lead_source', [
+export const leadChannelEnum = pgEnum('lead_channel', [
   'phone', 'email', 'wechat', 'calculator', 'contact_form', 'other',
+])
+export const leadMatrixClientTypeEnum = pgEnum('lead_matrix_client_type', [
+  'builder_developer_pool_builder_landscaper', 'homeowner',
+])
+export const leadBudgetBandEnum = pgEnum('lead_budget_band', [
+  '50k_plus', '20k_50k', '5k_20k', 'lt_5k',
+])
+export const leadConsentStatusEnum = pgEnum('lead_consent_status', [
+  'approved_not_required', 'submitted_pending', 'not_available',
+])
+export const leadBuildingStageEnum = pgEnum('lead_building_stage', [
+  'ready_for_glazing', 'interior_finish', 'gib_plastering_framing_complete',
+  'foundation_early_construction', 'planning',
+])
+export const leadProjectTypeEnum = pgEnum('lead_project_type', [
+  'new_build_commercial_fit_out', 'high_end_residential_multi_unit_residential',
+  'renovation_replacement',
+])
+export const leadPriceSensitivityEnum = pgEnum('lead_price_sensitivity', [
+  'not_price_sensitive', 'value_focused', 'normal', 'price_sensitive', 'cheapest_only',
+])
+export const leadDecisionMakersEnum = pgEnum('lead_decision_makers', [
+  'decision_maker_confirmed_owner_director', 'project_manager_site_manager',
+  'multiple_decision_makers_unknown',
+])
+export const leadWarmthSourceEnum = pgEnum('lead_warmth_source', [
+  'existing_client_referral_repeat_builder_architect', 'website_google_walk_in_cold_lead',
+])
+export const leadDistanceBandEnum = pgEnum('lead_distance_band', [
+  'lt_15km', '15_50km', 'gt_50km',
+])
+export const leadPaymentHistoryEnum = pgEnum('lead_payment_history', [
+  'always_on_time_good', 'new_client', 'slow_payment_poor_history',
+])
+export const leadSiteAccessEnum = pgEnum('lead_site_access', [
+  'easy', 'normal', 'tight', 'very_difficult',
+])
+export const leadInstallationHeightEnum = pgEnum('lead_installation_height', [
+  'ground_floor_ladder', 'scaffold_ewp_crane',
 ])
 export const leadSyncStatusEnum = pgEnum('lead_sync_status', [
   'pending_sync', 'synced', 'sync_failed',
 ])
-export const leadTierEnum = pgEnum('lead_tier', ['A', 'B', 'C', 'D'])
+export const leadTierEnum = pgEnum('lead_tier', ['A', 'B', 'C', 'D', 'E'])
 export const leadOutcomeEnum = pgEnum('lead_outcome', [
   'won', 'lost_outside_rubric', 'lost_score_wrong', 'lost_served_late',
   'lost_silence', 'disqualified',
@@ -88,26 +127,42 @@ export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
   contactId: uuid('contact_id').references(() => clientContacts.id, { onDelete: 'set null' }),
-  source: leadSourceEnum('source').notNull(),
+  channel: leadChannelEnum('channel').notNull(),
   externalRef: text('external_ref'),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),
   servicem8JobUuid: text('servicem8_job_uuid'),
   servicem8JobNumber: text('servicem8_job_number'),
   servicem8Status: text('servicem8_status'),
   syncError: text('sync_error'),
-  projectType: text('project_type'),
+  clientTypeAnswer: leadMatrixClientTypeEnum('client_type_answer'),
+  budgetBand: leadBudgetBandEnum('budget_band'),
+  resourceConsent: leadConsentStatusEnum('resource_consent'),
+  buildingConsent: leadConsentStatusEnum('building_consent'),
+  buildingStage: leadBuildingStageEnum('building_stage'),
+  projectType: leadProjectTypeEnum('project_type'),
+  priceSensitivity: leadPriceSensitivityEnum('price_sensitivity'),
+  decisionMakers: leadDecisionMakersEnum('decision_makers'),
+  source: leadWarmthSourceEnum('source'),
+  distanceBand: leadDistanceBandEnum('distance_band'),
+  rawDrivingDistanceKm: numeric('raw_driving_distance_km', { precision: 8, scale: 2 }),
+  paymentHistory: leadPaymentHistoryEnum('payment_history'),
+  siteAccess: leadSiteAccessEnum('site_access'),
+  installationHeight: leadInstallationHeightEnum('installation_height'),
+  jobDescription: text('job_description'),
+  product: text('product'),
+  legacyBudgetBand: text('legacy_budget_band'),
+  legacyBuildingStage: text('legacy_building_stage'),
+  legacyProjectType: text('legacy_project_type'),
+  legacyDecisionMakers: text('legacy_decision_makers'),
   location: text('location'),
   suburb: text('suburb'),
-  budgetBand: text('budget_band'),
   timeline: text('timeline'),
   consentStatus: text('consent_status'),
   rcStatus: text('rc_status'),
   bcStatus: text('bc_status'),
-  buildingStage: text('building_stage'),
   followUpDate: date('follow_up_date'),
   aiSuggestion: text('ai_suggestion'),
   aiSuggestionAt: timestamp('ai_suggestion_at', { withTimezone: true }),
-  decisionMakers: text('decision_makers'),
   priceSensitivityRead: text('price_sensitivity_read'),
   hasOtherQuotes: boolean('has_other_quotes'),
   freeText: text('free_text'),
@@ -131,17 +186,15 @@ export const leads = pgTable('leads', {
   uniqueIndex('leads_external_ref_uq').on(t.externalRef),
 ])
 
-export const leadCategoryScores = pgTable('lead_category_scores', {
+export const leadReviewerNotes = pgTable('lead_reviewer_notes', {
   id: uuid('id').primaryKey().defaultRandom(),
   leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
-  category: integer('category').notNull(),
-  answerKey: text('answer_key'),
-  points: integer('points').notNull(),
-  configVersionId: uuid('config_version_id').references(() => scoringConfigVersions.id),
+  authorId: uuid('author_id').notNull().references(() => users.id),
+  text: text('text').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
-  index('lead_cat_scores_lead_idx').on(t.leadId),
-  uniqueIndex('lead_cat_uq').on(t.leadId, t.category),
+  index('lead_reviewer_notes_lead_idx').on(t.leadId),
+  index('lead_reviewer_notes_author_idx').on(t.authorId),
 ])
 
 export const userTablePrefs = pgTable('user_table_prefs', {

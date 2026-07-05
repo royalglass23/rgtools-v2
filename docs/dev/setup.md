@@ -114,12 +114,6 @@ pnpm seed:tracking
 
 This upserts the tracking, viewer button, and notification settings read by the app and tracker/notifier workers.
 
-Seed scoring config when a scoring version changes:
-
-```bash
-pnpm --dir apps/web tsx scripts/seed-scoring-config-v4.ts
-```
-
 ## Run the dev server
 
 ```bash

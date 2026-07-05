@@ -23,7 +23,7 @@ Treat all of the above as internal or customer data. Do not paste real records, 
 - Admins can access all active modules.
 - Staff must have a `user_module_access` grant for each module.
 - Mutating server actions and API routes should check both authentication and the relevant module/admin permission before writing.
-- Admin-only operations include user management, module grants, scoring/pricing/tracking configuration, lead import, client merge review, audit/error exports, and PS Generator configuration.
+- Admin-only operations include user management, module grants, pricing/tracking configuration, dashboard table configuration, client merge review, audit/error exports, and PS Generator configuration.
 
 Protected account behavior and module grants should stay auditable. Do not bypass the access helpers with one-off DB writes unless performing a documented emergency repair.
 

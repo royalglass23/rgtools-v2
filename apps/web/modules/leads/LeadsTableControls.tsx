@@ -271,7 +271,7 @@ function FilterBar({
           </button>
         </div>
       </label>
-      <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']]} />
+      <Select name={`${paramPrefix}tier`} label="Tier" value={filters.tier} options={[['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['E', 'E']]} />
       <Select name={`${paramPrefix}sm8`} label="SM8" value={filters.sm8} options={[['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']]} />
       <Select name={`${paramPrefix}date`} label="Date" value={filters.date} options={[['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']]} />
       <Select name={`${paramPrefix}stale`} label="Activity" value={filters.stale ? 'true' : 'false'} options={[['false', 'All'], ['true', 'Stale (7d+)']]} />
@@ -331,8 +331,8 @@ function LeadsSortSelect({ filters, basePath, paramPrefix, onSort }: { filters: 
         <option value="clientName_desc">Client Z–A</option>
         <option value="createdAt_desc">Date newest</option>
         <option value="createdAt_asc">Date oldest</option>
-        <option value="tier_asc">Tier A–D</option>
-        <option value="tier_desc">Tier D–A</option>
+        <option value="tier_asc">Tier A-E</option>
+        <option value="tier_desc">Tier E-A</option>
         <option value="seedScore_desc">Score high–low</option>
         <option value="seedScore_asc">Score low–high</option>
         <option value="completeness_desc">Completeness high–low</option>
@@ -517,6 +517,7 @@ function TierBadge({ tier }: { tier: string | null }) {
     B: 'bg-blue-100 text-blue-800',
     C: 'bg-yellow-100 text-yellow-800',
     D: 'bg-gray-100 text-gray-700',
+    E: 'bg-slate-100 text-slate-700',
   }[tier ?? 'D']
 
   return <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${classes}`}>{tier ?? 'D'}</span>

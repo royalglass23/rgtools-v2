@@ -1,4 +1,5 @@
 import type { LeadIntakeInput } from './actions'
+import { DECISION_MATRIX, type MatrixFieldKey } from './scoring/score-lead'
 
 export type NormalizedLeadIntakeInput = LeadIntakeInput & {
   phoneNormalized: string | null
@@ -32,16 +33,53 @@ export function normalizeInput(input: LeadIntakeInput): NormalizedLeadIntakeInpu
     budgetBand: input.budgetBand?.trim() || '',
     decisionMakers: input.decisionMakers?.trim() || '',
     priceSensitivityRead: input.priceSensitivityRead?.trim() || '',
+    distanceBand: input.distanceBand?.trim() || '',
+    leadSource: input.leadSource?.trim() || '',
+    paymentHistory: input.paymentHistory?.trim() || '',
+    siteAccess: input.siteAccess?.trim() || '',
+    installationHeight: input.installationHeight?.trim() || '',
+    jobDescription: input.jobDescription?.trim() || '',
     freeText: input.freeText?.trim() || '',
   }
 }
 
+export function repairMatrixFieldAliases(input: NormalizedLeadIntakeInput): NormalizedLeadIntakeInput {
+  const projectTypeInBuildingStage = !input.cat4
+    && hasMatrixOption('projectType', input.buildingStage)
+  if (projectTypeInBuildingStage) {
+    return {
+      ...input,
+      cat4: input.buildingStage,
+      buildingStage: '',
+    }
+  }
+
+  const buildingStageInProjectType = !input.buildingStage
+    && hasMatrixOption('buildingStage', input.cat4)
+  if (buildingStageInProjectType) {
+    return {
+      ...input,
+      cat4: '',
+      buildingStage: input.cat4,
+    }
+  }
+
+  return input
+}
+
 export function validateMinimum(input: NormalizedLeadIntakeInput): string | null {
   if (!input.clientName) return 'Client name is required.'
-  if (!input.phone && !input.email) return 'Phone or email is required.'
-  if (!input.projectType) return 'Project type is required.'
-  if (!input.location) return 'Location / suburb is required.'
+  if (!input.phone) return 'Phone is required.'
+  if (!input.email) return 'Email is required.'
+  if (!input.location) return 'Job address is required.'
   return null
+}
+
+function hasMatrixOption(fieldKey: MatrixFieldKey, value: string | null | undefined): boolean {
+  if (!value) return false
+  return DECISION_MATRIX.fields
+    .find((field) => field.key === fieldKey)
+    ?.options.some((option) => option.key === value) ?? false
 }
 
 export function validateScoredOptions(
@@ -57,6 +95,10 @@ export function validateScoredOptions(
     ['8', input.rcStatus, 'Resource Consent'],
     ['9', input.bcStatus, 'Building Consent'],
     ['10', input.buildingStage, 'Building Stage'],
+    ['11', input.leadSource, 'Source'],
+    ['12', input.paymentHistory, 'Payment History'],
+    ['13', input.siteAccess, 'Site Access'],
+    ['14', input.installationHeight, 'Installation Height'],
   ] as const
 
   for (const [category, value, label] of checks) {

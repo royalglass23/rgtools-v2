@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { users, auditLog } from '@rgtools/db/schema'
-import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
+import { clients, leads } from '@rgtools/db/schema-leads'
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
@@ -33,7 +33,6 @@ const createdClientIds: string[] = []
 
 afterEach(async () => {
   for (const leadId of createdLeadIds.splice(0)) {
-    await db.delete(leadCategoryScores).where(eq(leadCategoryScores.leadId, leadId))
     await db.delete(auditLog).where(eq(auditLog.targetId, leadId))
     await db.delete(leads).where(eq(leads.id, leadId))
   }
@@ -56,6 +55,7 @@ function minimumInput(overrides: Partial<LeadIntakeInput> = {}): LeadIntakeInput
   return {
     clientName: `Codex Intake Test ${crypto.randomUUID()}`,
     phone: '021 333 444',
+    email: 'lead@example.com',
     clientProfileKey: '',
     projectType: 'pool_fence',
     location: 'Albany',
@@ -75,17 +75,17 @@ describe('lead intake validation', () => {
     expect(validateMinimum({
       ...minimumInput({ phone: '', email: '' }),
       phoneNormalized: null,
-    })).toBe('Phone or email is required.')
+    })).toBe('Phone is required.')
 
     expect(validateMinimum({
-      ...minimumInput({ projectType: '' }),
+      ...minimumInput({ email: '' }),
       phoneNormalized: '+6421333444',
-    })).toBe('Project type is required.')
+    })).toBe('Email is required.')
 
     expect(validateMinimum({
       ...minimumInput({ location: '' }),
       phoneNormalized: '+6421333444',
-    })).toBe('Location / suburb is required.')
+    })).toBe('Job address is required.')
   })
 
   it('allows the mandatory minimum without optional fields', () => {
@@ -109,24 +109,24 @@ describe('lead intake validation', () => {
   it('stores selected config option keys, not display labels', () => {
     expect(buildCategoryAnswers({
       ...minimumInput({
-        clientProfileKey: 'owner_occupier',
-        budgetBand: '10k_50k',
+        clientProfileKey: 'homeowner',
+        budgetBand: '20k_50k',
         consentStatus: 'under_review',
-        rcStatus: 'approved',
-        bcStatus: 'not_required',
-        buildingStage: 'fitout_complete',
+        rcStatus: 'approved_not_required',
+        bcStatus: 'approved_not_required',
+        buildingStage: 'ready_for_glazing',
       }),
       phoneNormalized: '+6421333444',
     })).toEqual([
-      { category: 1, answerKey: 'owner_occupier' },
-      { category: 2, answerKey: '10k_50k' },
+      { category: 1, answerKey: 'homeowner' },
+      { category: 2, answerKey: '20k_50k' },
       { category: 4, answerKey: undefined },
       { category: 5, answerKey: undefined },
       { category: 6, answerKey: undefined },
       { category: 7, answerKey: undefined },
-      { category: 8, answerKey: 'approved' },
-      { category: 9, answerKey: 'not_required' },
-      { category: 10, answerKey: 'fitout_complete' },
+      { category: 8, answerKey: 'approved_not_required' },
+      { category: 9, answerKey: 'approved_not_required' },
+      { category: 10, answerKey: 'ready_for_glazing' },
     ])
   })
 })
@@ -166,19 +166,11 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
         tier: leads.tier,
         seedScore: leads.seedScore,
         configVersionId: leads.configVersionId,
+        clientTypeAnswer: leads.clientTypeAnswer,
       })
       .from(leads)
       .where(eq(leads.id, result.leadId))
       .limit(1)
-
-    const categoryRows = await db
-      .select({
-        category: leadCategoryScores.category,
-        answerKey: leadCategoryScores.answerKey,
-      })
-      .from(leadCategoryScores)
-      .where(eq(leadCategoryScores.leadId, result.leadId))
-      .orderBy(leadCategoryScores.category)
 
     const auditRows = await db
       .select({ action: auditLog.action })
@@ -191,9 +183,8 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
     expect(lead.seedScore).toBe(result.score)
     expect(result.servicem8Sync).toMatchObject({ ok: true })
     expect(sendLeadToServiceM8InboxMock).toHaveBeenCalledOnce()
-    expect(lead.configVersionId).toBeTruthy()
-    expect(categoryRows.length).toBeGreaterThanOrEqual(6)
-    expect(categoryRows[0]).toMatchObject({ category: 1 })
+    expect(lead.configVersionId).toBeNull()
+    expect(lead.clientTypeAnswer).toBeNull()
     expect(auditRows.map((row) => row.action).sort()).toEqual([
       'lead.create',
       'lead.score',
@@ -212,11 +203,11 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
 
     const result = await submitLeadIntakeForUser(
       minimumInput({
-        clientProfileKey: 'repeat_builder',
+        clientProfileKey: 'builder_developer_pool_builder_landscaper',
         budgetBand: '50k_plus',
-        rcStatus: 'approved',
-        bcStatus: 'not_required',
-        buildingStage: 'fitout_complete',
+        rcStatus: 'approved_not_required',
+        bcStatus: 'approved_not_required',
+        buildingStage: 'ready_for_glazing',
         followUpDate: '2026-07-01',
         consentStatus: 'both_consents_approved',
       }),
@@ -232,8 +223,8 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
     const [lead] = await db
       .select({
         consentStatus: leads.consentStatus,
-        rcStatus: leads.rcStatus,
-        bcStatus: leads.bcStatus,
+        rcStatus: leads.resourceConsent,
+        bcStatus: leads.buildingConsent,
         buildingStage: leads.buildingStage,
         followUpDate: leads.followUpDate,
       })
@@ -243,18 +234,18 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('submitLeadIntakeForUser integration'
 
     expect(lead).toEqual({
       consentStatus: null,
-      rcStatus: 'approved',
-      bcStatus: 'not_required',
-      buildingStage: 'fitout_complete',
+      rcStatus: 'approved_not_required',
+      bcStatus: 'approved_not_required',
+      buildingStage: 'ready_for_glazing',
       followUpDate: '2026-07-01',
     })
 
     const editInput = await getLeadIntakeForEdit(result.leadId)
     expect(editInput).toMatchObject({
       consentStatus: '',
-      rcStatus: 'approved',
-      bcStatus: 'not_required',
-      buildingStage: 'fitout_complete',
+      rcStatus: 'approved_not_required',
+      bcStatus: 'approved_not_required',
+      buildingStage: 'ready_for_glazing',
       followUpDate: '2026-07-01',
     })
   }, 30000)

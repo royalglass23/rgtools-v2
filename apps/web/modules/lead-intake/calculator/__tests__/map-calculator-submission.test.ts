@@ -60,21 +60,26 @@ describe('mapCalculatorSubmissionToIntakeInput', () => {
       email: 'sarah@example.com',
       clientProfileKey: 'homeowner',
       projectType: 'pool_fence',
-      budgetBand: '2k_to_10k',
-      cat4: 'minor_custom',
+      budgetBand: 'lt_5k',
+      cat4: '',
       location: '12 Beach Rd, Takapuna',
       source: 'calculator',
+      leadSource: 'website_google_walk_in_cold_lead',
       timeline: 'asap',
       externalRef: 'calculator:test-ref',
     })
 
-    expect(input.freeText).toContain('[Calculator] submitted 2026-06-12T01:02:03.000Z')
-    expect(input.freeText).toContain('Estimate: $4100 - $5400 (subtotal $4800)')
-    expect(input.freeText).toContain('premium_pool_fence, 12m, 2 corner(s), 1 gate(s)')
-    expect(input.freeText).toContain('Fixing: spigot_round | Substrate: concrete | Hardware: standard_chrome')
-    expect(input.freeText).toContain('Glass: toughened_12mm / clear')
-    expect(input.freeText).toContain('Special Engineer Design may be required')
-    expect(input.freeText).toContain('Contact consent: yes')
+    expect(input.jobDescription).toContain('[Calculator] submitted 2026-06-12T01:02:03.000Z')
+    expect(input.jobDescription).toContain('Estimate: $4100 - $5400 (subtotal $4800)')
+    expect(input.jobDescription).toContain('premium_pool_fence, 12m, 2 corner(s), 1 gate(s)')
+    expect(input.jobDescription).toContain('Fixing: spigot_round | Substrate: concrete | Hardware: standard_chrome')
+    expect(input.jobDescription).toContain('Glass: toughened_12mm / clear')
+    expect(input.jobDescription).toContain('Special Engineer Design may be required')
+    expect(input.jobDescription).toContain('Contact consent: yes')
+    expect(input.freeText).toBeUndefined()
+    expect(input.rcStatus).toBeUndefined()
+    expect(input.bcStatus).toBeUndefined()
+    expect(input.buildingStage).toBeUndefined()
   })
 
   it('clamps untrusted estimate values before deriving the budget band', () => {
@@ -91,7 +96,7 @@ describe('mapCalculatorSubmissionToIntakeInput', () => {
     })
 
     expect(input.budgetBand).toBe('50k_plus')
-    expect(input.freeText).toContain('Estimate: $0 - $999999')
+    expect(input.jobDescription).toContain('Estimate: $0 - $999999')
   })
 
   it('maps all known scenarios to rgtools project-type keys', () => {
@@ -113,9 +118,10 @@ describe('mapCalculatorSubmissionToIntakeInput', () => {
 
 describe('budgetBandFromEstimate', () => {
   it('uses clamped midpoint thresholds', () => {
-    expect(budgetBandFromEstimate(1500, 1800)).toBe('under_2k')
-    expect(budgetBandFromEstimate(4100, 5400)).toBe('2k_to_10k')
-    expect(budgetBandFromEstimate(11000, 13000)).toBe('10k_to_50k')
+    expect(budgetBandFromEstimate(1500, 1800)).toBe('lt_5k')
+    expect(budgetBandFromEstimate(4100, 5400)).toBe('lt_5k')
+    expect(budgetBandFromEstimate(11000, 13000)).toBe('5k_20k')
+    expect(budgetBandFromEstimate(21000, 30000)).toBe('20k_50k')
     expect(budgetBandFromEstimate(48000, 60000)).toBe('50k_plus')
     expect(budgetBandFromEstimate(Number.NaN, 1000)).toBe('')
   })

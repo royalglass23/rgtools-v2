@@ -74,7 +74,7 @@ Migrations are generated and applied from the repo root into `drizzle/migrations
 
 Source path: `apps/web/modules/lead-intake`.
 
-The lead intake module captures enquiries, computes distance, scores the lead using the active scoring config, writes audit records, and sends the lead to the ServiceM8 inbox. Public calculator submissions enter through `POST /api/lead-intake/calculator-submit` and use anti-spam checks before mapping the payload into the lead intake flow.
+The lead intake module captures enquiries, computes distance, scores the lead using the hardcoded Decision Matrix, writes audit records, and sends the lead to the ServiceM8 inbox. Public calculator submissions enter through `POST /api/lead-intake/calculator-submit` and use anti-spam checks before mapping the payload into the lead intake flow.
 
 Key areas:
 
@@ -157,7 +157,7 @@ The generated PDF flow reads template PDFs from storage keys such as `templates/
 
 Source path: `apps/web/modules/admin`.
 
-Admin features include user management, CSV export, error-log viewing, dashboard table configuration, scoring configuration, tracking settings, lead import, and client merge review.
+Admin features include user management, CSV export, error-log viewing, dashboard table configuration, pricing configuration, tracking settings, client merge review, and Work Order configuration.
 
 ## Cloudflare workers
 
@@ -222,7 +222,7 @@ Root-level `scripts/migrate-prod.mjs` runs production migrations from `DB_URL_PR
 ## Security and privacy boundaries
 
 - App authentication uses NextAuth credentials and JWT sessions.
-- Admins manage users, module grants, settings, imports, exports, and merge review.
+- Admins manage users, module grants, settings, exports, and merge review.
 - Staff access is module-grant based and should be checked again in server actions.
 - Quote PDFs live in R2 and should not be exposed as raw bucket URLs.
 - Public viewer routes are intentionally limited to quote viewing, tracking, and privacy notice surfaces.

@@ -6,6 +6,9 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ## [Unreleased]
 
+### Removed
+- Removed the legacy editable scoring admin UI, obsolete scoring seed scripts, and retired spreadsheet intake surface. Lead intake now uses the hardcoded Decision Matrix as the single scoring source of truth.
+
 ### Documentation
 - Added a [Security Policy](SECURITY.md) and a developer [security runbook](dev/security.md) covering reporting, environment separation, secrets, access control, quote data handling, retention, and incident response.
 - Updated the [Leads how-to](how-to/leads.md), ServiceM8 developer notes, and RG Leads manual checklist for the Quote-status lead workflow.
@@ -72,7 +75,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 
 ### Added
 - ServiceM8 sync: lead intake pushes new leads directly to the ServiceM8 inbox via SMTP.
-- Amber blocker flag note displayed on `ScorePanel`, result banner, and persisted to DB.
+- Amber review note displayed on `ScorePanel`, result banner, and persisted to DB.
 - Strike layer in scoring engine for blocker-low answers.
 - Scoring config v3 seeded with updated point values and strike weights.
 

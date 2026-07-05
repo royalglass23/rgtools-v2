@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { auditLog } from '@rgtools/db/schema'
 import { logAudit } from '@/lib/audit-db'
-import { clients, leadCategoryScores, leads } from '@rgtools/db/schema-leads'
+import { clients, leads } from '@rgtools/db/schema-leads'
 import { errorMessage } from '@/lib/error-message'
 import { setJobLeadsQuality } from '@/lib/servicem8/client'
 import { createServiceM8ClientFromEnv } from './client'
@@ -158,20 +158,27 @@ async function loadLeadSyncRecord(leadId: string): Promise<ServiceM8LeadSyncReco
       companyName: clients.companyName,
       phone: clients.phone,
       email: clients.email,
+      channel: leads.channel,
       source: leads.source,
-      projectType: leads.projectType,
+      projectType: leads.product,
       location: leads.location,
       suburb: leads.suburb,
       budgetBand: leads.budgetBand,
       consentStatus: leads.consentStatus,
-      priceSensitivityRead: leads.priceSensitivityRead,
+      priceSensitivityRead: leads.priceSensitivity,
       decisionMakers: leads.decisionMakers,
-      freeText: leads.freeText,
+      freeText: leads.jobDescription,
       seedScore: leads.seedScore,
       tier: leads.tier,
       scoreReason: leads.scoreReason,
       strikeFlag: leads.strikeFlag,
       completeness: leads.completeness,
+      clientProfileKey: leads.clientTypeAnswer,
+      complexity: leads.projectType,
+      distanceBand: leads.distanceBand,
+      paymentHistory: leads.paymentHistory,
+      siteAccess: leads.siteAccess,
+      installationHeight: leads.installationHeight,
     })
     .from(leads)
     .innerJoin(clients, eq(leads.clientId, clients.id))
@@ -182,24 +189,8 @@ async function loadLeadSyncRecord(leadId: string): Promise<ServiceM8LeadSyncReco
     throw new Error(`Lead not found: ${leadId}`)
   }
 
-  const categoryRows = await db
-    .select({
-      category: leadCategoryScores.category,
-      answerKey: leadCategoryScores.answerKey,
-    })
-    .from(leadCategoryScores)
-    .where(eq(leadCategoryScores.leadId, leadId))
-    .limit(20)
-
-  const answerByCategory = Object.fromEntries(
-    categoryRows.map((row) => [row.category, row.answerKey]),
-  )
-
   return {
     ...record,
-    clientProfileKey: answerByCategory[1] ?? null,
-    complexity: answerByCategory[4] ?? null,
-    distanceBand: answerByCategory[7] ?? null,
   }
 }
 

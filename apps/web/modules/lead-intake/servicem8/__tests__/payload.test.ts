@@ -9,7 +9,8 @@ function leadRecord(overrides: Partial<ServiceM8LeadSyncRecord> = {}): ServiceM8
     companyName: 'Smith Builds',
     phone: '021 123 456',
     email: 'aroha@example.com',
-    source: 'phone',
+    channel: 'phone',
+    source: 'existing_client_referral_repeat_builder_architect',
     projectType: 'pool_fence',
     location: '12 Queen Street, Auckland',
     suburb: 'Auckland Central',
@@ -20,6 +21,9 @@ function leadRecord(overrides: Partial<ServiceM8LeadSyncRecord> = {}): ServiceM8
     priceSensitivityRead: 'average_negotiation',
     decisionMakers: 'sole_decision_maker',
     distanceBand: 'within_30km',
+    paymentHistory: 'new_client',
+    siteAccess: 'easy',
+    installationHeight: 'ground_floor_ladder',
     freeText: 'Customer wants a frameless option.',
     seedScore: 82,
     tier: 'A',
@@ -66,12 +70,16 @@ describe('buildServiceM8LeadPayload', () => {
     expect(email.body).toContain('Complexity: standard_non_custom')
     expect(email.body).toContain('Price-sensitivity read: average_negotiation')
     expect(email.body).toContain('Decision-makers: sole_decision_maker')
-    expect(email.body).toContain('Source: phone')
+    expect(email.body).toContain('Source: existing_client_referral_repeat_builder_architect')
+    expect(email.body).toContain('Payment history: new_client')
+    expect(email.body).toContain('Site access: easy')
+    expect(email.body).toContain('Installation height: ground_floor_ladder')
+    expect(email.body).toContain('Channel: phone')
     expect(email.body).toContain('Leads Quality: A')
     expect(email.body).toContain('Score: 82')
     expect(email.body).toContain('Completeness: 100%')
     expect(email.body).toContain('Flag: Blocker flag: remote specialised')
     expect(email.body).toContain('Reason: Tier A (82): strong fit')
-    expect(email.body).toContain('Anything else: Customer wants a frameless option.')
+    expect(email.body).toContain('Job Description: Customer wants a frameless option.')
   })
 })
