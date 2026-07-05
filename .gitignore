@@ -60,6 +60,7 @@ tmp/
 docs/superpowers/
 docs/codex/
 docs/adr/
+docs/dev/
 CONTEXT.md
 workers/tracker/.dev.vars
 
