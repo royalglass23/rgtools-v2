@@ -242,6 +242,7 @@ export const leadSubmitAttempts = pgTable('lead_submit_attempts', {
 export const leadSubmitFailures = pgTable('lead_submit_failures', {
   id: uuid('id').primaryKey().defaultRandom(),
   correlationId: text('correlation_id').notNull(),
+  submissionRef: text('submission_ref'),
   ip: text('ip').notNull(),
   stage: text('stage').notNull(),
   error: text('error').notNull(),
@@ -250,6 +251,7 @@ export const leadSubmitFailures = pgTable('lead_submit_failures', {
 }, (t) => [
   index('lead_submit_failures_created_at_idx').on(t.createdAt),
   index('lead_submit_failures_correlation_idx').on(t.correlationId),
+  index('lead_submit_failures_submission_ref_idx').on(t.submissionRef),
 ])
 
 export const leadEmailLog = pgTable('lead_email_log', {

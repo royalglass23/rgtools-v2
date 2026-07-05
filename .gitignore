@@ -74,3 +74,4 @@ jobcard-export/
 .secure-sdlc/
 
 AGENTS.md
+dev-server*.log

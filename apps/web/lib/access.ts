@@ -1,3 +1,5 @@
+import { roleCanSeeMenu, type MenuAvailability } from './menu-availability'
+
 /**
  * Pure access-control functions — no DB imports, no side effects.
  * All decisions are derived from the arguments passed in.
@@ -37,8 +39,17 @@ export function canAccessModule(
   user: AccessUser,
   module: AccessModule,
   grantSet: Set<string>,
+  menuAvailability?: MenuAvailability,
 ): boolean {
   if (!module.isActive) return false
+
+  if (user.role === 'admin' && user.isProtected) {
+    return true
+  }
+
+  if (menuAvailability && !roleCanSeeMenu(user.role, module.slug, menuAvailability)) {
+    return false
+  }
 
   if (module.adminOnly) {
     return user.role === 'admin'

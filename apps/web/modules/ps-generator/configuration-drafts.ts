@@ -18,6 +18,11 @@ type TemplateVariantRow = PsConfigurationRows['templateVariants'][number]
 type FieldMappingRow = PsConfigurationRows['fieldMappings'][number]
 type DescriptionTemplateRow = PsConfigurationRows['descriptionTemplates'][number]
 type AuditEntry = NonNullable<PsConfigurationRows['auditEntries']>[number]
+type DraftTemplateInput = {
+  r2ObjectKey: string
+  originalFilename: string
+  fieldDiscovery: unknown
+}
 
 interface DraftActorInput {
   actorId: string
@@ -222,6 +227,196 @@ export function upsertDraftSystem(
       ? rows.systems.map((system) => system.id === before.id ? after : system)
       : [...rows.systems, after],
   }, audit))
+}
+
+export function createDraftSystemRow(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    displayName: string
+    isActive?: boolean
+    standardPs1Template: DraftTemplateInput
+    poolPs1Template?: DraftTemplateInput | null
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  requireDraftVersion(rows, input.configVersionId)
+
+  const displayName = titleCase(input.displayName)
+  const slug = slugify(displayName)
+  if (!displayName || !slug) throw new Error('System name is required.')
+  if (rows.systems.some((system) => system.configVersionId === input.configVersionId && system.slug === slug)) {
+    throw new Error(`Draft system "${slug}" already exists.`)
+  }
+
+  const systemCategory = rows.optionCategories.find((category) => category.slug === 'system' && category.isActive)
+  if (!systemCategory) throw new Error('System category is not available in this draft.')
+
+  const isActive = input.isActive ?? true
+  const archivedAt = isActive ? null : input.now
+  const sortOrder = nextSortOrder(rows.systems.filter((system) => system.configVersionId === input.configVersionId))
+  const system: SystemRow = {
+    id: `draft-system:${input.configVersionId}:${slug}`,
+    configVersionId: input.configVersionId,
+    slug,
+    displayName,
+    state: 'draft',
+    sortOrder,
+    heightRules: {},
+    metadata: {},
+    createdAt: input.now,
+    updatedAt: input.now,
+    archivedAt,
+  }
+  const option: OptionValueRow = {
+    id: `draft-option:${input.configVersionId}:${systemCategory.id}:${slug}`,
+    configVersionId: input.configVersionId,
+    categoryId: systemCategory.id,
+    slug,
+    label: displayName,
+    sortOrder,
+    isActive,
+    createdAt: input.now,
+    updatedAt: input.now,
+    archivedAt,
+  }
+  const rule: SystemOptionRuleRow = {
+    id: `draft-rule:${input.configVersionId}:${slug}:system:${slug}`,
+    systemId: system.id,
+    optionValueId: option.id,
+    isAllowed: true,
+    createdAt: input.now,
+    updatedAt: input.now,
+  }
+  const templates = [
+    draftTemplateVariant(input, system, displayName, 'standard_ps1', input.standardPs1Template),
+    ...(input.poolPs1Template ? [draftTemplateVariant(input, system, displayName, 'pool_ps1', input.poolPs1Template)] : []),
+  ]
+
+  const nextRows = {
+    ...rows,
+    systems: [...rows.systems, system],
+    optionValues: [...rows.optionValues, option],
+    systemOptionRules: [...rows.systemOptionRules, rule],
+    templateVariants: [...rows.templateVariants, ...templates],
+  }
+
+  return finishRows(withAuditEntries(nextRows, [
+    auditEntry(input, {
+      entityType: 'system',
+      entityId: system.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: null,
+      after: system,
+    }),
+    auditEntry(input, {
+      entityType: 'option_value',
+      entityId: option.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: null,
+      after: option,
+    }),
+    auditEntry(input, {
+      entityType: 'system_option_rule',
+      entityId: rule.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: null,
+      after: rule,
+    }),
+    ...templates.map((template) => auditEntry(input, {
+      entityType: 'template_variant',
+      entityId: template.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: null,
+      after: template,
+    })),
+  ]))
+}
+
+export function updateDraftSystemRow(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & {
+    configVersionId: string
+    systemSlug: string
+    displayName: string
+    isActive?: boolean
+    standardPs1Template?: DraftTemplateInput | null
+    poolPs1Template?: DraftTemplateInput | null
+  },
+): { rows: PsConfigurationRows; auditEntries: AuditEntry[] } {
+  requireDraftVersion(rows, input.configVersionId)
+
+  const before = rows.systems.find((system) => (
+    system.configVersionId === input.configVersionId
+    && system.slug === input.systemSlug
+    && system.state === 'draft'
+  ))
+  if (!before) throw new Error(`Unknown draft system "${input.systemSlug}".`)
+
+  const displayName = titleCase(input.displayName)
+  if (!displayName) throw new Error('System display name is required.')
+  const isActive = input.isActive ?? !before.archivedAt
+  const after: SystemRow = {
+    ...before,
+    displayName,
+    archivedAt: isActive ? null : input.now,
+    updatedAt: input.now,
+  }
+  let nextRows: PsConfigurationRows = {
+    ...rows,
+    systems: rows.systems.map((system) => system.id === before.id ? after : system),
+  }
+  const audits: AuditEntry[] = [auditEntry(input, {
+    entityType: 'system',
+    entityId: before.id,
+    action: after.archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
+    configVersionId: input.configVersionId,
+    before,
+    after,
+  })]
+
+  const systemCategory = rows.optionCategories.find((category) => category.slug === 'system')
+  const option = systemCategory ? nextRows.optionValues.find((value) => (
+    value.configVersionId === input.configVersionId
+    && value.categoryId === systemCategory.id
+    && value.slug === before.slug
+  )) : null
+  if (option) {
+    const updatedOption: OptionValueRow = {
+      ...option,
+      label: displayName,
+      isActive,
+      archivedAt: isActive ? null : input.now,
+      updatedAt: input.now,
+    }
+    nextRows = {
+      ...nextRows,
+      optionValues: nextRows.optionValues.map((value) => value.id === option.id ? updatedOption : value),
+    }
+    audits.push(auditEntry(input, {
+      entityType: 'option_value',
+      entityId: option.id,
+      action: updatedOption.archivedAt !== option.archivedAt ? 'archived' : 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: option,
+      after: updatedOption,
+    }))
+  }
+
+  for (const [variantKind, template] of [
+    ['standard_ps1', input.standardPs1Template],
+    ['pool_ps1', input.poolPs1Template],
+  ] as const) {
+    if (!template) continue
+    const result = upsertDraftTemplateForSystem(nextRows, input, after, displayName, variantKind, template)
+    nextRows = result.rows
+    audits.push(result.audit)
+  }
+
+  return finishRows(withAuditEntries(nextRows, audits))
 }
 
 export function updateDraftSystemOptionRule(
@@ -543,6 +738,101 @@ function withAudit(rows: PsConfigurationRows, entry: AuditEntry): PsConfiguratio
   }
 }
 
+function withAuditEntries(rows: PsConfigurationRows, entries: AuditEntry[]): PsConfigurationRows {
+  return {
+    ...rows,
+    auditEntries: [...(rows.auditEntries ?? []), ...entries],
+  }
+}
+
 function finishRows(rows: PsConfigurationRows) {
   return { rows, auditEntries: rows.auditEntries ?? [] }
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function titleCase(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b[a-z0-9]/g, (letter) => letter.toUpperCase())
+}
+
+function nextSortOrder(rows: Array<{ sortOrder: number }>) {
+  return rows.reduce((max, row) => Math.max(max, row.sortOrder), 0) + 10
+}
+
+function draftTemplateVariant(
+  input: DraftActorInput & { configVersionId: string },
+  system: SystemRow,
+  displayName: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  template: DraftTemplateInput,
+): TemplateVariantRow {
+  return {
+    id: `draft-template:${input.configVersionId}:${system.slug}:${variantKind}`,
+    systemId: system.id,
+    configVersionId: input.configVersionId,
+    documentKind: 'ps1',
+    variantKind,
+    label: variantKind === 'pool_ps1' ? `${displayName} Pool PS1` : `${displayName} PS1`,
+    r2ObjectKey: template.r2ObjectKey,
+    originalFilename: template.originalFilename,
+    fieldDiscovery: template.fieldDiscovery,
+    state: 'draft',
+    createdAt: input.now,
+    updatedAt: input.now,
+    archivedAt: null,
+  }
+}
+
+function upsertDraftTemplateForSystem(
+  rows: PsConfigurationRows,
+  input: DraftActorInput & { configVersionId: string },
+  system: SystemRow,
+  displayName: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  template: DraftTemplateInput,
+): { rows: PsConfigurationRows; audit: AuditEntry } {
+  const before = rows.templateVariants.find((candidate) => (
+    candidate.configVersionId === input.configVersionId
+    && candidate.systemId === system.id
+    && candidate.variantKind === variantKind
+    && candidate.state === 'draft'
+  ))
+  const after = before
+    ? {
+      ...before,
+      label: variantKind === 'pool_ps1' ? `${displayName} Pool PS1` : `${displayName} PS1`,
+      r2ObjectKey: template.r2ObjectKey,
+      originalFilename: template.originalFilename,
+      fieldDiscovery: template.fieldDiscovery,
+      updatedAt: input.now,
+      archivedAt: null,
+    }
+    : draftTemplateVariant(input, system, displayName, variantKind, template)
+
+  return {
+    rows: {
+      ...rows,
+      templateVariants: before
+        ? rows.templateVariants.map((candidate) => candidate.id === before.id ? after : candidate)
+        : [...rows.templateVariants, after],
+    },
+    audit: auditEntry(input, {
+      entityType: 'template_variant',
+      entityId: after.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: before ?? null,
+      after,
+    }),
+  }
 }

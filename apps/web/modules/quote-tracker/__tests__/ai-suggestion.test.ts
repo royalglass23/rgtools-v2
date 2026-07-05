@@ -53,6 +53,7 @@ function deps(overrides: Partial<AiSuggestionDeps> = {}): AiSuggestionDeps {
         risksBlockers: ['Timing may decide the job.'],
       },
     })),
+    findLatestSuggestion: vi.fn(async () => null),
     findLatestFailure: vi.fn(async () => null),
     generateSuggestion: vi.fn(async () => ({
       nextViableMove: 'Call today to confirm timing and low iron glass scope.',
@@ -155,6 +156,25 @@ describe('generateAiSuggestionForQuote', () => {
     expect(d.insertSuggestion).toHaveBeenNthCalledWith(2, expect.objectContaining({ quoteId }))
   })
 
+  it('blocks regeneration for 5 minutes after the latest AI Suggestion', async () => {
+    const d = deps({
+      findLatestSuggestion: vi.fn(async () => ({
+        createdAt: new Date('2026-06-25T00:00:00Z'),
+      })),
+      now: () => new Date('2026-06-25T00:04:59Z'),
+    })
+
+    const result = await generateAiSuggestionForQuote({ quoteId, triggeredByUserId: userId }, d)
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'AI Guidance can be regenerated after 25 Jun 2026, 12:05 pm.',
+    })
+    expect(d.generateSuggestion).not.toHaveBeenCalled()
+    expect(d.insertSuggestion).not.toHaveBeenCalled()
+    expect(d.recordFailure).not.toHaveBeenCalled()
+  })
+
   it('records a failure and does not save malformed AI output', async () => {
     const d = deps({
       generateSuggestion: vi.fn(async () => ({
@@ -229,6 +249,16 @@ describe('generateAiSuggestionForQuote', () => {
       },
       message: 'AI Suggestion response was not valid JSON.',
       errorType: 'malformed_json',
+    },
+    {
+      name: 'AI timeout',
+      overrides: {
+        generateSuggestion: vi.fn(async () => {
+          throw Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })
+        }),
+      },
+      message: 'AI Guidance took longer than 5 minutes, so it was stopped. Please try again.',
+      errorType: 'timeout',
     },
     {
       name: 'persistence failure',
@@ -318,6 +348,7 @@ describe('generateAiSuggestionForQuote', () => {
     })
 
     const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body?.toString() ?? '{}')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
     expect(requestBody.response_format).toMatchObject({
       type: 'json_schema',
       json_schema: {

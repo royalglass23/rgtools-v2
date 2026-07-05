@@ -360,6 +360,236 @@ export async function updatePsConfigurationSystemsAction(formData: FormData): Pr
   revalidateConfigurationPaths()
 }
 
+export async function createPsConfigurationSystemAction(formData: FormData): Promise<void> {
+  const actorId = await requireConfigEditor()
+  const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
+  const displayName = titleCase(String(formData.get('displayName') ?? ''))
+  const slug = slugify(displayName)
+  const standardFile = formData.get('standardPs1Template')
+  const poolFile = formData.get('poolPs1Template')
+
+  if (!displayName || !slug) throw new Error('System name is required.')
+  if (!isUpload(standardFile)) throw new Error('Choose a standard PS1 template PDF.')
+
+  const now = new Date()
+  const standardUpload = await prepareTemplateUpload(configVersionId, slug, 'standard_ps1', standardFile)
+  const poolUpload = isUpload(poolFile)
+    ? await prepareTemplateUpload(configVersionId, slug, 'pool_ps1', poolFile)
+    : null
+
+  await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: psSystems.id })
+      .from(psSystems)
+      .where(and(eq(psSystems.configVersionId, configVersionId), eq(psSystems.slug, slug)))
+      .limit(1)
+    if (existing) throw new Error('A system with this name already exists in the draft.')
+
+    const [systemCategory] = await tx
+      .select({ id: psOptionCategories.id })
+      .from(psOptionCategories)
+      .where(and(eq(psOptionCategories.slug, 'system'), eq(psOptionCategories.isActive, true)))
+      .limit(1)
+    if (!systemCategory) throw new Error('System category is not available in this draft.')
+
+    const existingSystems = await tx
+      .select({ id: psSystems.id })
+      .from(psSystems)
+      .where(eq(psSystems.configVersionId, configVersionId))
+
+    const [system] = await tx.insert(psSystems).values({
+      configVersionId,
+      slug,
+      displayName,
+      state: 'draft',
+      sortOrder: (existingSystems.length + 1) * 10,
+      heightRules: {},
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: formData.get('isActive') === 'on' ? null : now,
+    }).returning({ id: psSystems.id })
+
+    const [option] = await tx.insert(psOptionValues).values({
+      configVersionId,
+      categoryId: systemCategory.id,
+      slug,
+      label: displayName,
+      sortOrder: (existingSystems.length + 1) * 10,
+      isActive: formData.get('isActive') === 'on',
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: formData.get('isActive') === 'on' ? null : now,
+    }).returning({ id: psOptionValues.id })
+
+    const [rule] = await tx.insert(psSystemOptionRules).values({
+      systemId: system.id,
+      optionValueId: option.id,
+      isAllowed: true,
+      createdAt: now,
+      updatedAt: now,
+    }).returning({ id: psSystemOptionRules.id })
+
+    const templates = await tx.insert(psTemplateVariants).values([
+      templateValues(configVersionId, system.id, displayName, 'standard_ps1', standardUpload, now),
+      ...(poolUpload ? [templateValues(configVersionId, system.id, displayName, 'pool_ps1', poolUpload, now)] : []),
+    ]).returning({ id: psTemplateVariants.id, variantKind: psTemplateVariants.variantKind })
+
+    await tx.insert(psConfigurationAuditEntries).values([
+      {
+        actorId,
+        entityType: 'system',
+        entityId: system.id,
+        action: 'draft_saved',
+        configVersionId,
+        before: null,
+        after: { slug, displayName },
+        createdAt: now,
+      },
+      {
+        actorId,
+        entityType: 'option_value',
+        entityId: option.id,
+        action: 'draft_saved',
+        configVersionId,
+        before: null,
+        after: { categoryId: systemCategory.id, slug, label: displayName },
+        createdAt: now,
+      },
+      {
+        actorId,
+        entityType: 'system_option_rule',
+        entityId: rule.id,
+        action: 'draft_saved',
+        configVersionId,
+        before: null,
+        after: { systemId: system.id, optionValueId: option.id, isAllowed: true },
+        createdAt: now,
+      },
+      ...templates.map((template) => ({
+        actorId,
+        entityType: 'template_variant' as const,
+        entityId: template.id,
+        action: 'draft_saved' as const,
+        configVersionId,
+        before: null,
+        after: { systemId: system.id, variantKind: template.variantKind },
+        createdAt: now,
+      })),
+    ])
+  })
+
+  revalidateConfigurationPaths()
+}
+
+export async function updatePsConfigurationSystemAction(formData: FormData): Promise<void> {
+  const actorId = await requireConfigEditor()
+  const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
+  const systemId = String(formData.get('systemId') ?? '')
+  const displayName = titleCase(String(formData.get('displayName') ?? ''))
+  const isActive = formData.get('isActive') === 'on'
+  const standardFile = formData.get('standardPs1Template')
+  const poolFile = formData.get('poolPs1Template')
+  if (!systemId) throw new Error('Missing system.')
+  if (!displayName) throw new Error('System display name is required.')
+
+  const now = new Date()
+  const standardUpload = isUpload(standardFile)
+    ? await prepareTemplateUpload(configVersionId, systemId, 'standard_ps1', standardFile)
+    : null
+  const poolUpload = isUpload(poolFile)
+    ? await prepareTemplateUpload(configVersionId, systemId, 'pool_ps1', poolFile)
+    : null
+
+  await db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(psSystems)
+      .where(and(
+        eq(psSystems.id, systemId),
+        eq(psSystems.configVersionId, configVersionId),
+        eq(psSystems.state, 'draft'),
+      ))
+      .limit(1)
+    if (!before) throw new Error('Draft system was not found.')
+
+    const archivedAt = isActive ? null : before.archivedAt ?? now
+    await tx.update(psSystems).set({
+      displayName,
+      archivedAt,
+      updatedAt: now,
+    }).where(eq(psSystems.id, systemId))
+
+    const [systemCategory] = await tx
+      .select({ id: psOptionCategories.id })
+      .from(psOptionCategories)
+      .where(eq(psOptionCategories.slug, 'system'))
+      .limit(1)
+    let beforeOption: typeof psOptionValues.$inferSelect | null = null
+    let afterOption: Partial<typeof psOptionValues.$inferSelect> | null = null
+    if (systemCategory) {
+      const [option] = await tx
+        .select()
+        .from(psOptionValues)
+        .where(and(
+          eq(psOptionValues.configVersionId, configVersionId),
+          eq(psOptionValues.categoryId, systemCategory.id),
+          eq(psOptionValues.slug, before.slug),
+        ))
+        .limit(1)
+      beforeOption = option ?? null
+      afterOption = {
+        label: displayName,
+        isActive,
+        archivedAt,
+        updatedAt: now,
+      }
+      await tx.update(psOptionValues).set({
+        label: displayName,
+        isActive,
+        archivedAt,
+        updatedAt: now,
+      }).where(and(
+        eq(psOptionValues.configVersionId, configVersionId),
+        eq(psOptionValues.categoryId, systemCategory.id),
+        eq(psOptionValues.slug, before.slug),
+      ))
+    }
+
+    if (standardUpload) {
+      await upsertTemplateVariant(tx, configVersionId, systemId, displayName, 'standard_ps1', standardUpload, actorId, now)
+    }
+    if (poolUpload) {
+      await upsertTemplateVariant(tx, configVersionId, systemId, displayName, 'pool_ps1', poolUpload, actorId, now)
+    }
+
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'system',
+      entityId: systemId,
+      action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
+      configVersionId,
+      before,
+      after: { ...before, displayName, archivedAt },
+      createdAt: now,
+    })
+    if (beforeOption && afterOption) {
+      await tx.insert(psConfigurationAuditEntries).values({
+        actorId,
+        entityType: 'option_value',
+        entityId: beforeOption.id,
+        action: afterOption.archivedAt !== beforeOption.archivedAt ? 'archived' : 'draft_saved',
+        configVersionId,
+        before: beforeOption,
+        after: { ...beforeOption, ...afterOption },
+        createdAt: now,
+      })
+    }
+  })
+
+  revalidateConfigurationPaths()
+}
+
 export async function updatePsConfigurationRulesAction(formData: FormData): Promise<void> {
   const actorId = await requireConfigEditor()
   const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
@@ -854,4 +1084,114 @@ function checkboxValue(value: FormDataEntryValue | null) {
 
 function sanitizeObjectPart(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, '-')
+}
+
+function titleCase(value: FormDataEntryValue | string | null) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b[a-z0-9]/g, (letter) => letter.toUpperCase())
+}
+
+function isUpload(value: FormDataEntryValue | null): value is File {
+  return value instanceof File && value.size > 0
+}
+
+async function prepareTemplateUpload(
+  configVersionId: string,
+  systemPart: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  file: File,
+) {
+  if (file.type && file.type !== 'application/pdf') throw new Error('Template upload must be a PDF.')
+  const bytes = Buffer.from(await file.arrayBuffer())
+  const fieldDiscovery = await discoverPdfFields(bytes)
+  const objectKey = `drafts/ps-generator/templates/${configVersionId}/${sanitizeObjectPart(systemPart)}/${variantKind}/${sanitizeObjectPart(file.name)}`
+  await getStorage().put(objectKey, bytes, 'application/pdf')
+  return {
+    objectKey,
+    originalFilename: file.name,
+    fieldDiscovery,
+  }
+}
+
+function templateValues(
+  configVersionId: string,
+  systemId: string,
+  displayName: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  upload: Awaited<ReturnType<typeof prepareTemplateUpload>>,
+  now: Date,
+) {
+  return {
+    systemId,
+    configVersionId,
+    documentKind: 'ps1' as const,
+    variantKind,
+    label: variantKind === 'pool_ps1' ? `${displayName} Pool PS1` : `${displayName} PS1`,
+    r2ObjectKey: upload.objectKey,
+    originalFilename: upload.originalFilename,
+    fieldDiscovery: upload.fieldDiscovery,
+    state: 'draft' as const,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+async function upsertTemplateVariant(
+  tx: Pick<typeof db, 'select' | 'insert' | 'update'>,
+  configVersionId: string,
+  systemId: string,
+  displayName: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  upload: Awaited<ReturnType<typeof prepareTemplateUpload>>,
+  actorId: string,
+  now: Date,
+) {
+  const [before] = await tx
+    .select()
+    .from(psTemplateVariants)
+    .where(and(
+      eq(psTemplateVariants.configVersionId, configVersionId),
+      eq(psTemplateVariants.systemId, systemId),
+      eq(psTemplateVariants.variantKind, variantKind),
+      eq(psTemplateVariants.state, 'draft'),
+    ))
+    .limit(1)
+  const values = templateValues(configVersionId, systemId, displayName, variantKind, upload, now)
+
+  if (before) {
+    await tx.update(psTemplateVariants).set({
+      label: values.label,
+      r2ObjectKey: values.r2ObjectKey,
+      originalFilename: values.originalFilename,
+      fieldDiscovery: values.fieldDiscovery,
+      updatedAt: now,
+      archivedAt: null,
+    }).where(eq(psTemplateVariants.id, before.id))
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'template_variant',
+      entityId: before.id,
+      action: 'draft_saved',
+      configVersionId,
+      before,
+      after: { ...before, ...values },
+      createdAt: now,
+    })
+    return
+  }
+
+  const [inserted] = await tx.insert(psTemplateVariants).values(values).returning({ id: psTemplateVariants.id })
+  await tx.insert(psConfigurationAuditEntries).values({
+    actorId,
+    entityType: 'template_variant',
+    entityId: inserted.id,
+    action: 'draft_saved',
+    configVersionId,
+    before: null,
+    after: values,
+    createdAt: now,
+  })
 }

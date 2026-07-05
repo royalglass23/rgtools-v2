@@ -27,7 +27,8 @@ async function main() {
   }
 
   const url = new URL(callbackUrl)
-  url.searchParams.set('token', secret)
+  // TODO: move to header-based auth before activating — token in URL leaks into Vercel logs
+  // url.searchParams.set('token', secret)
 
   const body = new URLSearchParams({
     object: 'attachment',

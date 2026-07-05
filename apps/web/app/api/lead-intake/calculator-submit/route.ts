@@ -8,6 +8,7 @@ import {
   type CalculatorSubmission,
 } from '@/modules/lead-intake/calculator/map-calculator-submission'
 import { saveLeadSubmitFailure } from '@/modules/lead-intake/calculator/submit-failures'
+import { findCalculatorLeadBySubmissionRef } from '@/modules/lead-intake/calculator/idempotency'
 import { numberValue, stringValue } from '@/modules/lead-intake/calculator/parse'
 import { errorMessage } from '@/lib/error-message'
 import { sendCustomerEstimateEmail } from '@/modules/lead-intake/email/customer-estimate'
@@ -15,9 +16,24 @@ import { syncLeadToServiceM8 } from '@/modules/lead-intake/servicem8/sync'
 import { submitLeadIntakeForUser } from '@/modules/lead-intake/actions'
 
 const MINIMUM_SUBMIT_AGE_MS = 3000
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://royalglass.co.nz',
+  'https://www.royalglass.co.nz',
+  'https://rgtools.co.nz',
+  'https://www.rgtools.co.nz',
+]
 
-function allowedOrigin(): string {
-  return process.env.CALCULATOR_ALLOWED_ORIGIN || 'https://royalglass.co.nz'
+function allowedOrigins(): string[] {
+  const configured = process.env.CALCULATOR_ALLOWED_ORIGIN
+  if (!configured) return DEFAULT_ALLOWED_ORIGINS
+
+  return Array.from(new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...configured
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ]))
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -27,10 +43,11 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const correlationId = crypto.randomUUID()
   const ip = getClientIp(request.headers)
+  const trustedServerRequest = isTrustedServerRequest(request)
   let payload: unknown = null
 
   try {
-    const originResult = validateOrigin(request)
+    const originResult = validateOrigin(request, trustedServerRequest)
     if (!originResult.ok) {
       logSubmit({ correlationId, ip, stage: 'cors', outcome: 'rejected', reason: 'origin_not_allowed' })
       return json({ error: 'Forbidden' }, 403, request)
@@ -38,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     payload = await readJsonBody(request)
     const submission = payload as CalculatorSubmission
+    const submissionRef = normalizeSubmissionRef(submission.submissionRef)
 
     if (stringValue(submission.lead?.websiteUrl)) {
       logSubmit({ correlationId, ip, stage: 'honeypot', outcome: 'rejected', reason: 'honeypot_filled' })
@@ -55,38 +73,51 @@ export async function POST(request: NextRequest) {
       return json({ error: 'Forbidden' }, 403, request)
     }
 
-    const turnstile = await verifyTurnstileToken(submission.turnstileToken, ip)
-    if (!turnstile.ok) {
-      logSubmit({ correlationId, ip, stage: 'turnstile', outcome: 'rejected', reason: turnstile.reason })
-      return json({ error: 'Forbidden' }, 403, request)
+    if (!trustedServerRequest) {
+      const turnstile = await verifyTurnstileToken(submission.turnstileToken, ip)
+      if (!turnstile.ok) {
+        logSubmit({ correlationId, ip, stage: 'turnstile', outcome: 'rejected', reason: turnstile.reason })
+        return json({ error: 'Forbidden' }, 403, request)
+      }
+
+      const rateLimit = await checkLeadSubmitRateLimit(ip)
+      if (!rateLimit.ok) {
+        logSubmit({ correlationId, ip, stage: 'rate_limit', outcome: 'rejected', reason: 'too_many_attempts' })
+        return json(
+          { error: 'Too many submissions' },
+          429,
+          request,
+          { 'retry-after': String(rateLimit.retryAfterSeconds) },
+        )
+      }
     }
 
-    const rateLimit = await checkLeadSubmitRateLimit(ip)
-    if (!rateLimit.ok) {
-      logSubmit({ correlationId, ip, stage: 'rate_limit', outcome: 'rejected', reason: 'too_many_attempts' })
-      return json(
-        { error: 'Too many submissions' },
-        429,
-        request,
-        { 'retry-after': String(rateLimit.retryAfterSeconds) },
-      )
+    const existingLead = await findCalculatorLeadBySubmissionRef(submissionRef)
+    if (existingLead) {
+      logSubmit({ correlationId, ip, stage: 'idempotency', outcome: 'accepted', reason: existingLead.leadId })
+      return json({
+        ok: true,
+        leadId: existingLead.leadId,
+        submissionRef,
+        idempotent: true,
+      }, 200, request)
     }
 
     let input
     try {
       input = mapCalculatorSubmissionToIntakeInput(submission, {
         submittedAt: new Date(),
-        submissionRef: `calculator:${Date.now()}-${crypto.randomUUID()}`,
+        submissionRef,
       })
     } catch (error) {
       const message = errorMessage(error)
-      await deadLetter({ correlationId, ip, stage: 'map', error: message, payload })
+      await deadLetter({ correlationId, ip, stage: 'map', error: message, payload, submissionRef })
       return json({ error: 'Unable to submit lead' }, 500, request)
     }
 
     const result = await submitLeadIntakeForUser(input, null, { syncServiceM8: false })
     if (!('success' in result)) {
-      await deadLetter({ correlationId, ip, stage: 'save', error: result.error, payload })
+      await deadLetter({ correlationId, ip, stage: 'save', error: result.error, payload, submissionRef })
       return json({ error: 'Unable to submit lead' }, 500, request)
     }
 
@@ -142,12 +173,19 @@ export async function POST(request: NextRequest) {
       logSubmit({ correlationId, ip, stage: 'email', outcome: 'error', reason: errorMessage(schedulingError) })
     }
 
-    return json({ ok: true, leadId: result.leadId }, 200, request)
+    return json({ ok: true, leadId: result.leadId, submissionRef }, 200, request)
   } catch (error) {
     const message = errorMessage(error)
     logSubmit({ correlationId, ip, stage: 'save', outcome: 'error', reason: message })
     if (payload !== null) {
-      await deadLetter({ correlationId, ip, stage: 'save', error: message, payload })
+      await deadLetter({
+        correlationId,
+        ip,
+        stage: 'save',
+        error: message,
+        payload,
+        submissionRef: normalizeSubmissionRef((payload as CalculatorSubmission).submissionRef),
+      })
     }
     return json({ error: 'Unable to submit lead' }, 500, request)
   }
@@ -167,6 +205,7 @@ async function deadLetter(input: {
   stage: string
   error: string
   payload: unknown
+  submissionRef: string
 }) {
   logSubmit({
     correlationId: input.correlationId,
@@ -178,11 +217,18 @@ async function deadLetter(input: {
   await saveLeadSubmitFailure(input)
 }
 
+function normalizeSubmissionRef(value: unknown): string {
+  const ref = stringValue(value)
+  if (/^rgcalc_[a-z0-9]+_[a-z0-9]+$/.test(ref)) return ref
+  if (/^calculator:[a-zA-Z0-9:_-]+$/.test(ref)) return ref
+  return `calculator:${Date.now()}-${crypto.randomUUID()}`
+}
+
 function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
   const origin = request.headers.get('origin')
-  const allowed = allowedOrigin()
+  const allowed = origin && allowedOrigins().includes(origin)
   return {
-    ...(origin === allowed ? { 'access-control-allow-origin': allowed } : {}),
+    ...(allowed ? { 'access-control-allow-origin': origin } : {}),
     'access-control-allow-methods': 'POST, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'vary': 'Origin',
@@ -190,8 +236,20 @@ function corsHeaders(request: NextRequest, extra: Record<string, string> = {}) {
   }
 }
 
-function validateOrigin(request: NextRequest): { ok: true } | { ok: false } {
-  return request.headers.get('origin') === allowedOrigin() ? { ok: true } : { ok: false }
+function validateOrigin(
+  request: NextRequest,
+  trustedServerRequest = isTrustedServerRequest(request),
+): { ok: true } | { ok: false } {
+  if (trustedServerRequest) return { ok: true }
+
+  const origin = request.headers.get('origin')
+  return origin && allowedOrigins().includes(origin) ? { ok: true } : { ok: false }
+}
+
+function isTrustedServerRequest(request: NextRequest): boolean {
+  const secret = process.env.CALCULATOR_SUBMIT_SECRET || process.env.RGTOOLS_CALCULATOR_SUBMIT_SECRET
+  const provided = request.headers.get('x-rg-calculator-secret')
+  return Boolean(secret && provided && provided === secret)
 }
 
 function json(body: unknown, status: number, request: NextRequest, headers: Record<string, string> = {}) {
