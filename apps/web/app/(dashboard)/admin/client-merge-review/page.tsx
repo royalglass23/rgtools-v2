@@ -12,6 +12,7 @@ const noExternalServiceM8: ServiceM8FetchRequest = async () => ({
 
 export default async function ClientMergeReviewPage() {
   await requireModule('admin')
+  await requireModule('clients')
 
   const rows = await loadClientMergeRows(noExternalServiceM8)
   const plan = planClientMerges(rows)

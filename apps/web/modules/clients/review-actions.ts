@@ -3,6 +3,7 @@
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
+import { userCanAccessSlug } from '@/lib/access-db'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
 import { clients } from '@rgtools/db/schema-leads'
@@ -11,6 +12,9 @@ import { mergeClients } from './client-resolver'
 export async function confirmClientMergeReviewGroup(formData: FormData): Promise<void> {
   const session = await auth()
   if (session?.user?.role !== 'admin' || !session.user.id) {
+    throw new Error('Forbidden')
+  }
+  if (!await userCanAccessSlug(session.user.id, 'clients')) {
     throw new Error('Forbidden')
   }
 
