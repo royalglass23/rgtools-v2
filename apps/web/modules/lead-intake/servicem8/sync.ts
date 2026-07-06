@@ -183,6 +183,7 @@ async function loadLeadSyncRecord(leadId: string): Promise<ServiceM8LeadSyncReco
       paymentHistory: leads.paymentHistory,
       siteAccess: leads.siteAccess,
       installationHeight: leads.installationHeight,
+      updatedAt: leads.updatedAt,
     })
     .from(leads)
     .innerJoin(clients, eq(leads.clientId, clients.id))

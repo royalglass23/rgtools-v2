@@ -30,6 +30,7 @@ export type ServiceM8LeadSyncRecord = {
   scoreReason: string | null
   strikeFlag: string | null
   completeness: number | null
+  updatedAt: Date
 }
 
 export type ServiceM8LeadPayload = {
@@ -90,6 +91,7 @@ export function buildServiceM8InboxEmail(
     readableLine('Channel', humanizeValue(record.channel)),
     record.suburb ? `Suburb: ${record.suburb}` : null,
     jobCard.jobDescription ? `Job description: ${jobCard.jobDescription}` : null,
+    readableLine('Details', cleanOneLine(record.freeText)),
     jobCard.note ? `Note: ${jobCard.note}` : null,
     '',
     '--- Reference ---',
@@ -116,15 +118,25 @@ export function buildServiceM8LeadJobCardFields(
     | 'clientProfileKey'
     | 'freeText'
     | 'projectType'
+    | 'complexity'
     | 'tier'
     | 'seedScore'
     | 'completeness'
     | 'scoreReason'
     | 'strikeFlag'
+    | 'updatedAt'
   >,
 ): ServiceM8LeadJobCardFields {
   const leadQuality = record.tier ?? null
-  const jobDescription = cleanOneLine(record.freeText) ?? humanizeValue(record.projectType)
+  const jobDescriptionSegments = [
+    record.seedScore === null || record.seedScore === undefined ? null : `Score ${record.seedScore}`,
+    readableSegment('Product', humanizeValue(record.projectType)),
+    readableSegment('Project', optionLabel('projectType', record.complexity)),
+  ].filter((line): line is string => Boolean(line))
+  const jobDescription = [
+    ...jobDescriptionSegments,
+    readableSegment('Last update', formatLeadCardDate(record.updatedAt)),
+  ].filter((line): line is string => Boolean(line)).join(' | ')
   const noteLines = [
     leadQuality ? `Leads Quality ${leadQuality}` : null,
     record.seedScore === null || record.seedScore === undefined ? null : `Score ${record.seedScore}`,
@@ -135,7 +147,7 @@ export function buildServiceM8LeadJobCardFields(
   ].filter((line): line is string => Boolean(line))
 
   return {
-    jobDescription,
+    jobDescription: jobDescriptionSegments.length > 0 ? jobDescription : null,
     clientType: optionLabel('clientType', record.clientProfileKey),
     leadsQuality: leadQuality,
     note: noteLines.length > 0 ? noteLines.join(' | ') : null,
@@ -152,6 +164,20 @@ function optionLabel(fieldKey: MatrixFieldKey, value: string | null | undefined)
 
 function readableLine(label: string, value: string | null): string | null {
   return value ? `${label}: ${value}` : null
+}
+
+function readableSegment(label: string, value: string | null): string | null {
+  return value ? `${label}: ${value}` : null
+}
+
+function formatLeadCardDate(value: Date): string | null {
+  if (Number.isNaN(value.getTime())) return null
+  return new Intl.DateTimeFormat('en-NZ', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Pacific/Auckland',
+  }).format(value)
 }
 
 function cleanOneLine(value: string | null | undefined): string | null {

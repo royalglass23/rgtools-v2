@@ -30,6 +30,7 @@ function leadRecord(overrides: Partial<ServiceM8LeadSyncRecord> = {}): ServiceM8
     scoreReason: 'Tier A (82): strong fit',
     strikeFlag: 'Blocker flag: remote specialised',
     completeness: 100,
+    updatedAt: new Date('2026-07-06T02:30:00.000Z'),
     ...overrides,
   }
 }
@@ -81,7 +82,8 @@ describe('buildServiceM8LeadPayload', () => {
     expect(email.body).toContain('Completeness: 100%')
     expect(email.body).toContain('Flag: Blocker flag: remote specialised')
     expect(email.body).toContain('Reason: Tier A (82): strong fit')
-    expect(email.body).toContain('Job description: Customer wants a frameless option.')
+    expect(email.body).toContain('Job description: Score 82 | Product: Pool Fence | Project: Standard Non Custom | Last update: 6 Jul 2026')
+    expect(email.body).toContain('Details: Customer wants a frameless option.')
     expect(email.body).toContain('Note: Leads Quality A | Score 82 | 100% complete | Tier A (82): strong fit | Blocker flag: remote specialised | RGTools Lead lead-1')
   })
 })

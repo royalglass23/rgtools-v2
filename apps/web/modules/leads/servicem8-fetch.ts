@@ -98,9 +98,11 @@ export async function fetchLeadFromServiceM8(
       completeness: leads.completeness,
       clientProfileKey: leads.clientTypeAnswer,
       projectType: leads.product,
+      complexity: leads.projectType,
       freeText: leads.jobDescription,
       servicem8JobUuid: leads.servicem8JobUuid,
       createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
     })
     .from(leads)
     .where(eq(leads.id, leadId))
@@ -133,11 +135,13 @@ export async function fetchLeadFromServiceM8(
     clientProfileKey: lead.clientProfileKey,
     freeText: lead.freeText,
     projectType: lead.projectType,
+    complexity: lead.complexity,
     tier: lead.tier,
     seedScore: lead.seedScore,
     scoreReason: lead.scoreReason,
     strikeFlag: lead.strikeFlag,
     completeness: lead.completeness,
+    updatedAt: lead.updatedAt,
   })
   let customFieldUpdated = false
   let customFieldError: string | undefined

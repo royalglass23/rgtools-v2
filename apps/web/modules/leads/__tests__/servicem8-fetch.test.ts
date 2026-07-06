@@ -5,25 +5,52 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const linkedLeadRow = vi.hoisted(() => ({
   id: 'lead-1',
   tier: 'B',
+  seedScore: 70,
+  scoreReason: 'Tier B (70): good fit',
+  strikeFlag: null,
+  completeness: 86,
+  clientProfileKey: 'builder_developer_pool_builder_landscaper',
+  projectType: 'pool_fence',
+  complexity: 'new_build_commercial_fit_out',
+  freeText: null,
   servicem8JobUuid: 'job-uuid-1',
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 const unlinkedLeadRow = vi.hoisted(() => ({
   id: 'lead-2',
   tier: 'A',
+  seedScore: 82,
+  scoreReason: 'Tier A (82): strong fit',
+  strikeFlag: null,
+  completeness: 100,
+  clientProfileKey: 'builder_developer_pool_builder_landscaper',
+  projectType: 'pool_fence',
+  complexity: 'standard_non_custom',
+  freeText: null,
   servicem8JobUuid: null,
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 const unscoredLeadRow = vi.hoisted(() => ({
   id: 'lead-3',
   tier: null,
+  seedScore: null,
+  scoreReason: null,
+  strikeFlag: null,
+  completeness: null,
+  clientProfileKey: null,
+  projectType: null,
+  complexity: null,
+  freeText: null,
   servicem8JobUuid: null,
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 // Switch between lead rows per test
