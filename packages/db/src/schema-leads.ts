@@ -62,6 +62,9 @@ export const clientReviewStatusEnum = pgEnum('client_review_status', [
 export const clientCanonicalSourceEnum = pgEnum('client_canonical_source', [
   'import', 'manual', 'system',
 ])
+export const clientAliasSourceEnum = pgEnum('client_alias_source', [
+  'servicem8_import', 'manual', 'merge',
+])
 export const leadOutcomeEnum = pgEnum('lead_outcome', [
   'won', 'lost_outside_rubric', 'lost_score_wrong', 'lost_served_late',
   'lost_silence', 'disqualified',
@@ -120,6 +123,18 @@ export const clientContacts = pgTable('client_contacts', {
   index('client_contacts_client_idx').on(t.clientId),
   index('client_contacts_phone_norm_idx').on(t.phoneNormalized),
   index('client_contacts_email_idx').on(t.email),
+])
+
+export const clientAliases = pgTable('client_aliases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  alias: text('alias').notNull(),
+  source: clientAliasSourceEnum('source').default('manual').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_aliases_client_idx').on(t.clientId),
+  index('client_aliases_alias_idx').on(t.alias),
+  uniqueIndex('client_aliases_client_alias_uq').on(t.clientId, t.alias),
 ])
 
 export const scoringConfigVersions = pgTable('scoring_config_versions', {

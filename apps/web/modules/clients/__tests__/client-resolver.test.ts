@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, clientContacts, leads } from '@rgtools/db/schema-leads'
+import { clientAliases, clients, clientContacts, leads } from '@rgtools/db/schema-leads'
 import { resolveClient, mergeClients } from '../client-resolver'
 
 const createdClientIds = new Set<string>()
@@ -18,6 +18,7 @@ afterEach(async () => {
   for (const leadId of createdLeadIds) await db.delete(leads).where(eq(leads.id, leadId))
   createdLeadIds.clear()
   for (const clientId of createdClientIds) {
+    await db.delete(clientAliases).where(eq(clientAliases.clientId, clientId))
     await db.delete(clientContacts).where(eq(clientContacts.clientId, clientId))
     await db.delete(clients).where(eq(clients.id, clientId))
   }
@@ -157,5 +158,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('mergeClients', () => {
 
     const survivorContacts = await db.select().from(clientContacts).where(eq(clientContacts.clientId, survivor.clientId))
     expect(survivorContacts.length).toBeGreaterThanOrEqual(2) // survivor's own + folded-in loser contact
+
+    const survivorAliases = await db.select().from(clientAliases).where(eq(clientAliases.clientId, survivor.clientId))
+    expect(survivorAliases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ alias: 'Loser', source: 'merge' }),
+    ]))
   })
 })

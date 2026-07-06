@@ -14,10 +14,13 @@ Open **Clients** from the navigation bar. The list is for finding the customer r
 Use it to check:
 
 - Client or company name.
+- Aliases or alternate names from imports and merges.
 - Phone and email details.
 - Linked leads.
 - Linked tracked quotes.
 - ServiceM8 job context where available.
+
+Use **Search** to find a client by canonical name or alias. Use **Cleanup filter** after a ServiceM8 import to narrow the list to imported clients, clients that need review, reviewed clients, possible duplicates, clients with no contact details, clients with no client type, or ServiceM8-linked clients.
 
 Client matching is based on normalised phone and email values. When a new lead or tracked quote arrives, rgtools tries to connect it to the existing client record rather than creating a duplicate.
 

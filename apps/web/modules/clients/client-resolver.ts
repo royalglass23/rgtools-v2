@@ -1,8 +1,9 @@
 import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { quotes } from '@rgtools/db/schema'
-import { clients, clientContacts, leads } from '@rgtools/db/schema-leads'
+import { clientAliases, clients, clientContacts, leads } from '@rgtools/db/schema-leads'
 import { buildClientIdentityUpsert } from './client-identity'
+import { collectClientAliases } from './client-aliases'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -174,6 +175,28 @@ export async function mergeClients(tx: Tx, survivorId: string, loserIds: string[
 
   // Move people to the survivor BEFORE deleting losers — the FK cascade would
   // otherwise drop their contacts.
+  const loserRows = await tx
+    .select({
+      name: clients.name,
+      companyName: clients.companyName,
+      servicem8Name: clients.servicem8Name,
+      servicem8CompanyName: clients.servicem8CompanyName,
+    })
+    .from(clients)
+    .where(inArray(clients.id, losers))
+  const aliases = collectClientAliases(loserRows.flatMap((row) => [
+    row.name,
+    row.companyName,
+    row.servicem8Name,
+    row.servicem8CompanyName,
+  ]))
+  if (aliases.length > 0) {
+    await tx
+      .insert(clientAliases)
+      .values(aliases.map((alias) => ({ clientId: survivorId, alias, source: 'merge' as const })))
+      .onConflictDoNothing()
+  }
+
   await tx.update(clientContacts).set({ clientId: survivorId, updatedAt: now }).where(inArray(clientContacts.clientId, losers))
   await tx.update(leads).set({ clientId: survivorId, updatedAt: now }).where(inArray(leads.clientId, losers))
   await tx.update(quotes).set({ clientId: survivorId, updatedAt: now }).where(inArray(quotes.clientId, losers))

@@ -23,6 +23,7 @@ function company(overrides: Partial<ServiceM8CompanyImportRecord> & { uuid?: str
 function deps(existingByUuid: Record<string, ExistingImportedClient | null> = {}) {
   const created: unknown[] = []
   const updated: Array<{ id: string; values: unknown }> = []
+  const aliases: Array<{ clientId: string; aliases: string[]; source: string }> = []
   const testDeps: ClientImportDeps = {
     now: () => now,
     findByServiceM8Uuid: vi.fn(async (uuid) => existingByUuid[uuid] ?? null),
@@ -34,14 +35,17 @@ function deps(existingByUuid: Record<string, ExistingImportedClient | null> = {}
       updated.push({ id, values })
       return { id, reviewStatus: existingByUuid[(values as { servicem8CompanyUuid: string }).servicem8CompanyUuid]?.reviewStatus ?? 'pending_review' }
     }),
+    addClientAliases: vi.fn(async (clientId, aliasesToAdd, source) => {
+      aliases.push({ clientId, aliases: aliasesToAdd, source })
+    }),
   }
 
-  return { deps: testDeps, created, updated }
+  return { deps: testDeps, created, updated, aliases }
 }
 
 describe('importServiceM8CompaniesFromRows', () => {
   it('creates visible Clients from active ServiceM8 companies and reports review counts', async () => {
-    const { deps: testDeps, created } = deps()
+    const { deps: testDeps, created, aliases } = deps()
 
     const summary = await importServiceM8CompaniesFromRows([
       company({ uuid: 'company-1', name: 'Top View Construction', email: 'office@topview.test', phone: '09 111 1111' }),
@@ -65,6 +69,9 @@ describe('importServiceM8CompaniesFromRows', () => {
       reviewStatus: 'pending_review',
       servicem8SourceSnapshot: expect.objectContaining({ uuid: 'company-1', name: 'Top View Construction' }),
     })
+    expect(aliases).toEqual([
+      { clientId: 'created-1', aliases: ['Top View Construction'], source: 'servicem8_import' },
+    ])
   })
 
   it('updates source metadata for an existing reviewed Client without overwriting canonical fields', async () => {
@@ -79,7 +86,7 @@ describe('importServiceM8CompaniesFromRows', () => {
       canonicalSource: 'manual',
       canonicalUpdatedAt: new Date('2026-07-01T12:00:00.000Z'),
     }
-    const { deps: testDeps, updated } = deps({ 'company-1': existing })
+    const { deps: testDeps, updated, aliases } = deps({ 'company-1': existing })
 
     const summary = await importServiceM8CompaniesFromRows([
       company({ uuid: 'company-1', name: 'ServiceM8 Name', email: 'source@example.test', phone: '021 222 2222' }),
@@ -100,6 +107,9 @@ describe('importServiceM8CompaniesFromRows', () => {
         servicem8Phone: '021 222 2222',
       }),
     })
+    expect(aliases).toEqual([
+      { clientId: 'client-1', aliases: ['Reviewed RG Name', 'Reviewed RG Ltd', 'ServiceM8 Name'], source: 'servicem8_import' },
+    ])
   })
 
   it('skips inactive or incomplete company rows without creating staged records', async () => {

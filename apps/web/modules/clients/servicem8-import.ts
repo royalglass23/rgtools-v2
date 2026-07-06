@@ -7,6 +7,7 @@ import {
   type ClientCanonicalSource,
   type ClientReviewStatus,
 } from './client-identity'
+import { addClientAliases, collectClientAliases, type ClientAliasSource } from './client-aliases'
 
 export type ServiceM8CompanyImportRecord = {
   uuid?: string | null
@@ -37,6 +38,7 @@ export type ClientImportDeps = {
   findByServiceM8Uuid: (uuid: string) => Promise<ExistingImportedClient | null>
   createClient: (values: ClientImportValues) => Promise<{ id: string; reviewStatus: ClientReviewStatus }>
   updateClient: (id: string, values: ClientImportValues) => Promise<{ id: string; reviewStatus: ClientReviewStatus }>
+  addClientAliases: (clientId: string, aliases: string[], source: ClientAliasSource) => Promise<void>
 }
 
 export type ServiceM8ClientImportSummary = {
@@ -96,10 +98,12 @@ export async function importServiceM8CompaniesFromRows(
 
       if (existing) {
         const updated = await deps.updateClient(existing.id, values)
+        await deps.addClientAliases(existing.id, importAliases(existing, values), 'servicem8_import')
         summary.sourceUpdated += 1
         if (updated.reviewStatus === 'pending_review') summary.needsReview += 1
       } else {
         const created = await deps.createClient(values)
+        await deps.addClientAliases(created.id, importAliases(null, values), 'servicem8_import')
         summary.created += 1
         if (created.reviewStatus === 'pending_review') summary.needsReview += 1
       }
@@ -151,7 +155,19 @@ function createDbImportDeps(): ClientImportDeps {
 
       return updated
     },
+    addClientAliases,
   }
+}
+
+function importAliases(existing: ExistingImportedClient | null, values: ClientImportValues): string[] {
+  return collectClientAliases([
+    existing?.name,
+    existing?.companyName,
+    values.name,
+    values.companyName,
+    values.servicem8Name,
+    values.servicem8CompanyName,
+  ])
 }
 
 async function readServiceM8Array<T>(request: ServiceM8FetchRequest, path: string): Promise<T[]> {
