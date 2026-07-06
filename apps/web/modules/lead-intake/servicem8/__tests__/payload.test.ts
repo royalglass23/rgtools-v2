@@ -129,4 +129,46 @@ describe('buildServiceM8LeadPayload', () => {
     expect(email.body).not.toContain('matte_black')
     expect(email.body).not.toContain('toughened_12mm')
   })
+
+  it('humanizes stair calculator submissions like the ServiceM8 inbox preview', () => {
+    const email = buildServiceM8InboxEmail(leadRecord({
+      source: 'calculator',
+      clientProfileKey: 'homeowner',
+      budgetBand: '10k_to_50k',
+      projectType: 'stair',
+      complexity: 'standard_non_custom',
+      distanceBand: 'within_30km',
+      scoreReason: 'Tier B (43): Client type: homeowner, Budget band: 10k_to_50k, Complexity: standard_non_custom, Distance: within_30km',
+      freeText: [
+        '[Calculator] submitted 2026-07-06T22:15:19.856Z',
+        'Estimate: $23450 - $31250 (subtotal $26040)',
+        'Project: stair_balustrade, 10m, 0 corner(s), 0 gate(s), landing 11m',
+        'Fixing: jh_clamps | Substrate: tile | Hardware: matte_black',
+        'Glass: toughened_12mm_clear',
+        'Customer type: Homeowner | Call preference: anytime',
+      ].join('\n'),
+      seedScore: 43,
+      tier: 'B',
+      completeness: 44,
+    }), ['de9f86@inbox.servicem8.com'])
+
+    expect(email.body).toContain('Reason: Tier B (43): Client type: Homeowner, Budget band: $10k to $50k, Complexity: Standard Non Custom, Distance: Within 30 km')
+    expect(email.body).toContain('Driving distance: Within 30 km')
+    expect(email.body).toContain('Project type: Stair Balustrade')
+    expect(email.body).toContain('Client type: Homeowner')
+    expect(email.body).toContain('Budget band: $10k to $50k')
+    expect(email.body).toContain('Complexity: Standard Non Custom')
+    expect(email.body).toContain('Source: Calculator')
+    expect(email.body).toContain('Project: Stair Balustrade, 10m, 0 corner(s), 0 gate(s), landing 11m')
+    expect(email.body).toContain('Fixing: JH Clamps | Substrate: Tile | Hardware: Matte Black')
+    expect(email.body).toContain('Glass: 12mm Toughened / Clear')
+    expect(email.body).toContain('Call preference: Anytime')
+    expect(email.body).not.toContain('within_30km')
+    expect(email.body).not.toContain('stair_balustrade')
+    expect(email.body).not.toContain('10k_to_50k')
+    expect(email.body).not.toContain('standard_non_custom')
+    expect(email.body).not.toContain('jh_clamps')
+    expect(email.body).not.toContain('matte_black')
+    expect(email.body).not.toContain('toughened_12mm_clear')
+  })
 })
