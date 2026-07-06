@@ -1,7 +1,8 @@
-import { and, eq, inArray, isNull, isNotNull, or, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { quotes } from '@rgtools/db/schema'
 import { clients, clientContacts, leads } from '@rgtools/db/schema-leads'
+import { buildClientIdentityUpsert } from './client-identity'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -13,6 +14,8 @@ export type ResolveClientInput = {
   phone?: string | null
   phoneNormalized?: string | null
   email?: string | null
+  servicem8SourceSnapshot?: unknown
+  servicem8SyncedAt?: Date
 }
 
 export type ResolveClientResult = {
@@ -27,28 +30,44 @@ export async function resolveClient(tx: Tx, input: ResolveClientInput): Promise<
   const companyUuid = input.servicem8CompanyUuid?.trim() || null
 
   if (companyUuid) {
-    const [row] = await tx
-      .insert(clients)
-      .values({
+    const [existing] = await tx
+      .select()
+      .from(clients)
+      .where(eq(clients.servicem8CompanyUuid, companyUuid))
+      .limit(1)
+    const identityUpdate = buildClientIdentityUpsert({
+      existing: existing ? {
+        name: existing.name,
+        companyName: existing.companyName,
+        phone: existing.phone,
+        phoneNormalized: existing.phoneNormalized,
+        email: existing.email,
+        reviewStatus: existing.reviewStatus,
+        canonicalSource: existing.canonicalSource,
+        canonicalUpdatedAt: existing.canonicalUpdatedAt,
+      } : null,
+      source: {
         servicem8CompanyUuid: companyUuid,
-        name: input.clientName,
+        clientName: input.clientName,
         companyName: input.companyName || null,
         phone: input.phone || null,
         phoneNormalized: input.phoneNormalized || null,
         email: input.email || null,
-      })
-      .onConflictDoUpdate({
-        target: clients.servicem8CompanyUuid,
-        targetWhere: isNotNull(clients.servicem8CompanyUuid),
-        set: {
-          name: input.clientName,
-          companyName: input.companyName || null,
-          phone: input.phone || null,
-          phoneNormalized: input.phoneNormalized || null,
-          email: input.email || null,
-          updatedAt: now,
-        },
-      })
+        sourceSnapshot: input.servicem8SourceSnapshot ?? null,
+        syncedAt: input.servicem8SyncedAt ?? now,
+      },
+      now,
+    })
+
+    const [row] = existing
+      ? await tx
+        .update(clients)
+        .set(identityUpdate)
+        .where(eq(clients.id, existing.id))
+        .returning({ id: clients.id })
+      : await tx
+        .insert(clients)
+        .values(identityUpdate)
       .returning({ id: clients.id })
 
     const contactId = await resolveContact(tx, row.id, input)

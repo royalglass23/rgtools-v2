@@ -278,6 +278,17 @@ export async function importLeadFromServiceM8JobNumber(
       phone,
       phoneNormalized: phone ? normalizeNzPhone(phone) : null,
       email,
+      servicem8SourceSnapshot: {
+        source: 'lead-import',
+        jobUuid: meta.jobUuid,
+        jobNumber: resolvedJobNumber,
+        status: meta.status,
+        companyUuid: meta.companyUuid,
+        clientName: meta.clientName,
+        jobDescription: meta.jobDescription,
+        jobAddress: meta.jobAddress,
+        contact,
+      },
     })
 
     const [createdLead] = await tx

@@ -139,6 +139,17 @@ export async function createTrackedQuote(
         servicem8CompanyUuid: meta.companyUuid,
         clientName,
         companyName: meta.clientName,
+        servicem8SourceSnapshot: {
+          source: 'quote-tracker',
+          jobUuid: meta.jobUuid,
+          jobNumber: meta.jobNumber,
+          status: meta.status,
+          companyUuid: meta.companyUuid,
+          clientName: meta.clientName,
+          jobDescription: meta.jobDescription,
+          jobAddress: meta.jobAddress,
+          quoteValue: meta.quoteValue,
+        },
       }),
     )
     : null
