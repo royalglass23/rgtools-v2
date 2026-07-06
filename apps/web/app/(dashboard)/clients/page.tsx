@@ -1,14 +1,23 @@
 import Link from 'next/link'
+import { auth } from '@/lib/auth'
 import { getClientsList } from '@/modules/clients/queries'
+import { ServiceM8ClientsImportButton } from '@/modules/clients/ServiceM8ClientsImportButton'
 
 export default async function ClientsPage() {
-  const clients = await getClientsList()
+  const [clients, session] = await Promise.all([
+    getClientsList(),
+    auth(),
+  ])
+  const canImportFromServiceM8 = session?.user?.role === 'admin'
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-950">Clients</h1>
-        <p className="mt-1 text-sm text-gray-600">Companies with their contacts, leads, and tracked quotes.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-950">Clients</h1>
+          <p className="mt-1 text-sm text-gray-600">Companies with their contacts, leads, and tracked quotes.</p>
+        </div>
+        {canImportFromServiceM8 && <ServiceM8ClientsImportButton />}
       </div>
 
       <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
