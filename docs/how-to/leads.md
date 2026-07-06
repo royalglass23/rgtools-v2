@@ -81,8 +81,8 @@ Click **Fetch from ServiceM8** on the detail page. The button:
 
 1. Searches ServiceM8 jobs for `RGTools Lead {leadId}` when the lead is not yet linked, or refreshes the known job UUID when the lead is already linked.
 2. Stores the ServiceM8 job UUID, job number, and current status.
-3. On the first successful fetch for a scored lead, writes the lead tier to the ServiceM8 Leads Quality custom field.
-4. On later fetches, refreshes status without overwriting Leads Quality.
+3. On the first successful fetch for a scored lead, writes the human-readable lead values into the ServiceM8 job card: Job Description, Client Type, Leads Quality, and Note.
+4. On later fetches, refreshes status without overwriting the initial job-card import.
 
 The button shows a status message after each fetch:
 

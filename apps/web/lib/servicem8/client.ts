@@ -20,6 +20,18 @@ export type ServiceM8FetchRequest = (
   init?: RequestInit,
 ) => Promise<ServiceM8JsonResponse>
 
+export type ServiceM8LeadJobCardFieldPayload = {
+  jobDescription?: string | null
+  clientType?: string | null
+  leadsQuality?: string | null
+  note?: string | null
+}
+
+export type ServiceM8LeadJobCardWriteResult = {
+  updated: string[]
+  skipped: string[]
+}
+
 type ServiceM8RetryOptions = {
   sleep?: (ms: number) => Promise<void>
   random?: () => number
@@ -195,6 +207,71 @@ export async function setJobLeadsQuality(
   if (!response.ok) {
     throw new Error(`ServiceM8 Leads Quality write failed with HTTP ${response.status}`)
   }
+}
+
+/**
+ * Fill the fields staff expect after a ServiceM8 inbox message is converted into
+ * a job card. Standard ServiceM8 fields use their API names; RG custom fields
+ * are configured by env because their account-specific IDs are `customfield_*`.
+ */
+export async function setJobLeadCardFields(
+  jobUuid: string,
+  fields: ServiceM8LeadJobCardFieldPayload,
+  request: ServiceM8FetchRequest = createServiceM8WriteRequestFromEnv(),
+): Promise<ServiceM8LeadJobCardWriteResult> {
+  const body: Record<string, string> = {}
+  const updated: string[] = []
+  const skipped: string[] = []
+
+  addStandardField(body, updated, 'job_description', 'jobDescription', fields.jobDescription)
+  addConfiguredField(body, updated, skipped, process.env.SERVICEM8_CLIENT_TYPE_FIELD, 'clientType', fields.clientType)
+  addConfiguredField(body, updated, skipped, process.env.SERVICEM8_LEAD_QUALITY_FIELD, 'leadsQuality', fields.leadsQuality)
+  addConfiguredField(body, updated, skipped, process.env.SERVICEM8_NOTE_FIELD, 'note', fields.note)
+
+  if (Object.keys(body).length === 0) return { updated, skipped }
+
+  const response = await request(`/job/${jobUuid}.json`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`ServiceM8 lead job card write failed with HTTP ${response.status}`)
+  }
+
+  return { updated, skipped }
+}
+
+function addStandardField(
+  body: Record<string, string>,
+  updated: string[],
+  apiField: string,
+  label: string,
+  value: string | null | undefined,
+) {
+  const trimmed = value?.trim()
+  if (!trimmed) return
+  body[apiField] = trimmed
+  updated.push(label)
+}
+
+function addConfiguredField(
+  body: Record<string, string>,
+  updated: string[],
+  skipped: string[],
+  configuredField: string | null | undefined,
+  label: string,
+  value: string | null | undefined,
+) {
+  const trimmed = value?.trim()
+  if (!trimmed) return
+  const apiField = configuredField?.trim()
+  if (!apiField) {
+    skipped.push(label)
+    return
+  }
+  body[apiField] = trimmed
+  updated.push(label)
 }
 
 function odataFilter(expr: string): string {

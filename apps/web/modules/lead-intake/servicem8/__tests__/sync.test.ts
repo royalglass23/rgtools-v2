@@ -20,14 +20,14 @@ const dbMock = vi.hoisted(() => ({
 }))
 
 const sendLeadToServiceM8InboxMock = vi.hoisted(() => vi.fn())
-const setJobLeadsQualityMock = vi.hoisted(() => vi.fn())
+const setJobLeadCardFieldsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/db', () => ({ db: dbMock }))
 vi.mock('../client', () => ({
   createServiceM8ClientFromEnv: vi.fn(() => ({ sendLeadToInbox: sendLeadToServiceM8InboxMock })),
 }))
 vi.mock('@/lib/servicem8/client', () => ({
-  setJobLeadsQuality: setJobLeadsQualityMock,
+  setJobLeadCardFields: setJobLeadCardFieldsMock,
 }))
 
 import { syncLeadToServiceM8, retryServiceM8LeadSyncBatch } from '../sync'
@@ -74,8 +74,8 @@ beforeEach(() => {
   selectLimit.mockResolvedValue([leadRow])
   updateWhere.mockResolvedValue([])
   insertValues.mockResolvedValue([])
-  setJobLeadsQualityMock.mockReset()
-  setJobLeadsQualityMock.mockResolvedValue(undefined)
+  setJobLeadCardFieldsMock.mockReset()
+  setJobLeadCardFieldsMock.mockResolvedValue({ updated: ['jobDescription', 'clientType', 'leadsQuality', 'note'], skipped: [] })
 })
 
 describe('syncLeadToServiceM8', () => {
@@ -130,17 +130,22 @@ describe('syncLeadToServiceM8', () => {
     }))
   })
 
-  it('writes the tier to the linked job Leads Quality field when the lead is already linked', async () => {
+  it('writes the current lead fields to the linked ServiceM8 job card when the lead is already linked', async () => {
     selectLimit
       .mockResolvedValueOnce([{ ...leadRow, servicem8JobUuid: 'job-uuid-1' }])
 
     await syncLeadToServiceM8('lead-1')
 
-    expect(setJobLeadsQualityMock).toHaveBeenCalledWith('job-uuid-1', 'B')
+    expect(setJobLeadCardFieldsMock).toHaveBeenCalledWith('job-uuid-1', {
+      jobDescription: 'Pool Fence',
+      clientType: 'Builder / Developer / Pool Builder / Landscaper',
+      leadsQuality: 'B',
+      note: 'Leads Quality B | Score 70 | 86% complete | Tier B (70): good fit | RGTools Lead lead-1',
+    })
     expect(sendLeadToServiceM8InboxMock).not.toHaveBeenCalled()
   })
 
-  it('does not write Leads Quality when the lead is not linked to a job', async () => {
+  it('does not write job card fields when the lead is not linked to a job', async () => {
     selectLimit
       .mockResolvedValueOnce([leadRow])
       .mockResolvedValueOnce([])
@@ -151,13 +156,13 @@ describe('syncLeadToServiceM8', () => {
 
     await syncLeadToServiceM8('lead-1')
 
-    expect(setJobLeadsQualityMock).not.toHaveBeenCalled()
+    expect(setJobLeadCardFieldsMock).not.toHaveBeenCalled()
   })
 
-  it('still marks the linked lead synced when the Leads Quality write fails', async () => {
+  it('still marks the linked lead synced when the ServiceM8 job card write fails', async () => {
     selectLimit
       .mockResolvedValueOnce([{ ...leadRow, servicem8JobUuid: 'job-uuid-1' }])
-    setJobLeadsQualityMock.mockRejectedValue(new Error('ServiceM8 Leads Quality write failed with HTTP 403'))
+    setJobLeadCardFieldsMock.mockRejectedValue(new Error('ServiceM8 lead job card write failed with HTTP 403'))
 
     const result = await syncLeadToServiceM8('lead-1')
 

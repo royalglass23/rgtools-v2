@@ -4,9 +4,13 @@ import { auditLog } from '@rgtools/db/schema'
 import { logAudit } from '@/lib/audit-db'
 import { clients, leads } from '@rgtools/db/schema-leads'
 import { errorMessage } from '@/lib/error-message'
-import { setJobLeadsQuality } from '@/lib/servicem8/client'
+import { setJobLeadCardFields } from '@/lib/servicem8/client'
 import { createServiceM8ClientFromEnv } from './client'
-import { buildServiceM8InboxEmail, type ServiceM8LeadSyncRecord } from './payload'
+import {
+  buildServiceM8InboxEmail,
+  buildServiceM8LeadJobCardFields,
+  type ServiceM8LeadSyncRecord,
+} from './payload'
 
 export type ServiceM8LeadSyncOutcome =
   | { ok: true; leadId: string; reference: string }
@@ -29,7 +33,7 @@ export async function syncLeadToServiceM8(leadId: string): Promise<ServiceM8Lead
       // not fail the sync — the lead is already linked and synced.
       if (record.tier) {
         try {
-          await setJobLeadsQuality(record.servicem8JobUuid, record.tier)
+          await setJobLeadCardFields(record.servicem8JobUuid, buildServiceM8LeadJobCardFields(record))
         } catch {
           // swallow — Leads Quality is a nice-to-have; the sync still succeeds
         }

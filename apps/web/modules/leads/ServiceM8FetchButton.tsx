@@ -72,9 +72,9 @@ export function ServiceM8FetchButton({
       setLeadsQuality(result.leadsQuality)
       setMessage(
         result.customFieldError
-          ? `ServiceM8 job linked, but Leads Quality was not set: ${result.customFieldError}`
+          ? `ServiceM8 job linked, but job-card fields were not fully imported: ${result.customFieldError}`
           : result.customFieldUpdated
-            ? 'ServiceM8 job linked and Leads Quality set.'
+            ? 'ServiceM8 job linked and job-card fields imported.'
             : 'ServiceM8 job details refreshed.',
       )
     })

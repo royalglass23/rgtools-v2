@@ -4,14 +4,17 @@ import { logAudit } from '@/lib/audit-db'
 import { leads } from '@rgtools/db/schema-leads'
 import {
   createServiceM8RequestFromEnv,
+  createServiceM8WriteRequestFromEnv,
   getCompanyContact,
   getJobContact,
   getJobQuoteMeta,
   resolveJobUuid,
+  setJobLeadCardFields,
 } from '@/lib/servicem8/client'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { normalizeNzPhone } from '@/modules/lead-intake/intake-utils'
+import { buildServiceM8LeadJobCardFields } from '@/modules/lead-intake/servicem8/payload'
 import { isServiceM8QuoteStatus } from './lead-lifecycle'
 
 // Re-exported for existing importers/tests that reference these from this module.
@@ -89,6 +92,13 @@ export async function fetchLeadFromServiceM8(
     .select({
       id: leads.id,
       tier: leads.tier,
+      seedScore: leads.seedScore,
+      scoreReason: leads.scoreReason,
+      strikeFlag: leads.strikeFlag,
+      completeness: leads.completeness,
+      clientProfileKey: leads.clientTypeAnswer,
+      projectType: leads.product,
+      freeText: leads.jobDescription,
       servicem8JobUuid: leads.servicem8JobUuid,
       createdAt: leads.createdAt,
     })
@@ -118,13 +128,31 @@ export async function fetchLeadFromServiceM8(
   const leadsQuality = lead.tier ? `Leads Quality ${lead.tier}` : 'Not set'
   const jobNumber = matchingJob.generated_job_id ?? null
   const jobStatus = matchingJob.status ?? null
+  const jobCardFields = buildServiceM8LeadJobCardFields({
+    leadId: lead.id,
+    clientProfileKey: lead.clientProfileKey,
+    freeText: lead.freeText,
+    projectType: lead.projectType,
+    tier: lead.tier,
+    seedScore: lead.seedScore,
+    scoreReason: lead.scoreReason,
+    strikeFlag: lead.strikeFlag,
+    completeness: lead.completeness,
+  })
   let customFieldUpdated = false
   let customFieldError: string | undefined
 
-  if (!wasAlreadyLinked && lead.tier) {
+  if (!wasAlreadyLinked && hasLeadJobCardContent(jobCardFields)) {
     try {
-      await setLeadsQualityCustomField(request, matchingJob.uuid, leadsQuality)
-      customFieldUpdated = true
+      const writeResult = await setJobLeadCardFields(
+        matchingJob.uuid,
+        jobCardFields,
+        createServiceM8WriteRequestFromEnv(),
+      )
+      customFieldUpdated = writeResult.updated.length > 0
+      customFieldError = writeResult.skipped.length > 0
+        ? `Missing ServiceM8 field config for ${writeResult.skipped.join(', ')}`
+        : undefined
     } catch (error) {
       customFieldError = error instanceof Error ? error.message : String(error)
     }
@@ -154,6 +182,7 @@ export async function fetchLeadFromServiceM8(
       leadsQuality,
       customFieldUpdated,
       customFieldError,
+      jobCardFields,
     },
   })
 
@@ -421,6 +450,10 @@ async function fetchJobByUuid(
   return job as ServiceM8Job
 }
 
+function hasLeadJobCardContent(fields: ReturnType<typeof buildServiceM8LeadJobCardFields>): boolean {
+  return Boolean(fields.jobDescription || fields.clientType || fields.leadsQuality)
+}
+
 async function findMatchingJob(
   request: ServiceM8FetchRequest,
   reference: string,
@@ -488,24 +521,4 @@ async function findMatchingInboxJob(
   const job = await jobResponse.json()
   if (!job || typeof job !== 'object') return undefined
   return job as ServiceM8Job
-}
-
-async function setLeadsQualityCustomField(
-  request: ServiceM8FetchRequest,
-  jobUuid: string,
-  value: string,
-) {
-  const customFieldUuid = process.env.SERVICEM8_LEAD_QUALITY_FIELD?.trim()
-  if (!customFieldUuid) throw new Error('SERVICEM8_LEAD_QUALITY_FIELD is not configured')
-
-  const response = await request(`/job/${jobUuid}.json`, {
-    method: 'POST',
-    body: JSON.stringify({
-      [customFieldUuid]: value,
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`ServiceM8 custom field update failed with HTTP ${response.status}`)
-  }
 }
