@@ -47,6 +47,47 @@ export type ServiceM8LeadJobCardFields = {
   note: string | null
 }
 
+const LEGACY_OPTION_LABELS: Record<string, string> = {
+  within_30km: 'Within 30 km',
+  '30km_to_80km': '30-80 km',
+  over_80km: 'Over 80 km',
+  new_business: 'New Business',
+  existing_business: 'Existing Business',
+  '2k_to_10k': '$2k to $10k',
+  '10k_to_50k': '$10k to $50k',
+  standard_non_custom: 'Standard Non Custom',
+  pool_fence: 'Pool Fence',
+  balcony_balustrade: 'Balcony Balustrade',
+  ground_level: 'Ground Level Balustrade',
+  stair_balustrade: 'Stair Balustrade',
+  calculator: 'Calculator',
+  anytime: 'Anytime',
+  spigot_round: 'Round Spigots',
+  standoff_posts: 'Stand-off Posts',
+  tile: 'Tile',
+  concrete: 'Concrete',
+  timber: 'Timber',
+  steel: 'Steel',
+  matte_black: 'Matte Black',
+  standard_chrome: 'Standard Chrome',
+  brushed_chrome: 'Brushed Chrome',
+  powder_coated: 'Powder Coated',
+  toughened_12mm: '12mm Toughened',
+  laminated: 'Laminated Glass',
+  clear: 'Clear',
+  low_iron: 'Low Iron / Ultra-Clear',
+  tinted: 'Tinted',
+  frosted: 'Frosted',
+}
+
+const LEGACY_OPTION_PATTERN = new RegExp(
+  `\\b(${Object.keys(LEGACY_OPTION_LABELS)
+    .sort((left, right) => right.length - left.length)
+    .map(escapeRegExp)
+    .join('|')})\\b`,
+  'g',
+)
+
 export function buildServiceM8InboxEmail(
   record: ServiceM8LeadSyncRecord,
   recipients: string[],
@@ -73,7 +114,7 @@ export function buildServiceM8InboxEmail(
     `Score: ${score}`,
     `Completeness: ${completeness}%`,
     record.strikeFlag ? `Flag: ${record.strikeFlag}` : null,
-    record.scoreReason ? `Reason: ${record.scoreReason}` : null,
+    record.scoreReason ? `Reason: ${humanizeStoredText(record.scoreReason)}` : null,
     '',
     '--- Lead Intake ---',
     readableLine('Driving distance', optionLabel('distanceBand', record.distanceBand)),
@@ -91,8 +132,8 @@ export function buildServiceM8InboxEmail(
     readableLine('Channel', humanizeValue(record.channel)),
     record.suburb ? `Suburb: ${record.suburb}` : null,
     jobCard.jobDescription ? `Job description: ${jobCard.jobDescription}` : null,
-    readableLine('Details', cleanOneLine(record.freeText)),
-    jobCard.note ? `Note: ${jobCard.note}` : null,
+    readableLine('Details', humanizeStoredText(record.freeText)),
+    jobCard.note ? `Note: ${humanizeStoredText(jobCard.note)}` : null,
     '',
     '--- Reference ---',
     `RGTools Lead ${record.leadId}`,
@@ -141,7 +182,7 @@ export function buildServiceM8LeadJobCardFields(
     leadQuality ? `Leads Quality ${leadQuality}` : null,
     record.seedScore === null || record.seedScore === undefined ? null : `Score ${record.seedScore}`,
     record.completeness === null || record.completeness === undefined ? null : `${record.completeness}% complete`,
-    cleanOneLine(record.scoreReason),
+    humanizeStoredText(record.scoreReason),
     cleanOneLine(record.strikeFlag),
     `RGTools Lead ${record.leadId}`,
   ].filter((line): line is string => Boolean(line))
@@ -188,12 +229,14 @@ function cleanOneLine(value: string | null | undefined): string | null {
 function humanizeValue(value: string | null | undefined): string | null {
   const cleaned = cleanOneLine(value)
   if (!cleaned) return null
+  if (LEGACY_OPTION_LABELS[cleaned]) return LEGACY_OPTION_LABELS[cleaned]
   return cleaned
     .split('_')
     .filter(Boolean)
     .map((part) => {
       if (/^lt$/i.test(part)) return '<'
       if (/^gt$/i.test(part)) return '>'
+      if (/^km$/i.test(part)) return 'km'
       if (/^\d+k$/i.test(part)) return `$${part.toLowerCase()}`
       if (/^\d+$/.test(part)) return part
       return part.charAt(0).toUpperCase() + part.slice(1)
@@ -201,4 +244,19 @@ function humanizeValue(value: string | null | undefined): string | null {
     .join(' ')
     .replace(/< (\d+)/g, '<$1')
     .replace(/> (\d+)/g, '>$1')
+    .replace(/\bTo\b/g, 'to')
+    .replace(/\bKm\b/g, 'km')
+}
+
+function humanizeStoredText(value: string | null | undefined): string | null {
+  const cleaned = cleanOneLine(value)
+  if (!cleaned) return null
+
+  return cleaned
+    .replace(LEGACY_OPTION_PATTERN, (match) => LEGACY_OPTION_LABELS[match] ?? match)
+    .replace(/\b[a-z0-9]+(?:_[a-z0-9]+)+\b/g, (match) => humanizeValue(match) ?? match)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

@@ -64,10 +64,10 @@ describe('buildServiceM8LeadPayload', () => {
     const email = buildServiceM8InboxEmail(leadRecord(), ['de9f86@inbox.servicem8.com'])
 
     expect(email.body).toContain('--- RGTools Lead Score ---')
-    expect(email.body).toContain('Driving distance: Within 30km')
+    expect(email.body).toContain('Driving distance: Within 30 km')
     expect(email.body).toContain('Project type: Pool Fence')
     expect(email.body).toContain('Client type: Existing Business')
-    expect(email.body).toContain('Budget band: $10k To $50k')
+    expect(email.body).toContain('Budget band: $10k to $50k')
     expect(email.body).toContain('Consent status: Consent Under Review')
     expect(email.body).toContain('Complexity: Standard Non Custom')
     expect(email.body).toContain('Price-sensitivity read: Average Negotiation')
@@ -85,5 +85,48 @@ describe('buildServiceM8LeadPayload', () => {
     expect(email.body).toContain('Job description: Score 82 | Product: Pool Fence | Project: Standard Non Custom | Last update: 6 Jul 2026')
     expect(email.body).toContain('Details: Customer wants a frameless option.')
     expect(email.body).toContain('Note: Leads Quality A | Score 82 | 100% complete | Tier A (82): strong fit | Blocker flag: remote specialised | RGTools Lead lead-1')
+  })
+
+  it('humanizes legacy/raw option keys before writing the ServiceM8 email body', () => {
+    const email = buildServiceM8InboxEmail(leadRecord({
+      source: 'calculator',
+      clientProfileKey: 'new_business',
+      budgetBand: '2k_to_10k',
+      projectType: 'pool_fence',
+      complexity: 'standard_non_custom',
+      distanceBand: 'within_30km',
+      scoreReason: 'Tier C (41): Client type: new_business, Budget band: 2k_to_10k, Complexity: standard_non_custom, Distance: within_30km',
+      freeText: [
+        '[Calculator] submitted 2026-07-06T03:52:43.256Z',
+        'Project: premium_pool_fence, 10m, 2 corner(s), 1 gate(s)',
+        'Fixing: standoff_posts | Substrate: tile | Hardware: matte_black',
+        'Glass: toughened_12mm / clear',
+        'Customer type: Builder | Call preference: anytime',
+      ].join('\n'),
+      seedScore: 41,
+      tier: 'C',
+      completeness: 44,
+    }), ['de9f86@inbox.servicem8.com'])
+
+    expect(email.body).toContain('Reason: Tier C (41): Client type: New Business, Budget band: $2k to $10k, Complexity: Standard Non Custom, Distance: Within 30 km')
+    expect(email.body).toContain('Driving distance: Within 30 km')
+    expect(email.body).toContain('Project type: Pool Fence')
+    expect(email.body).toContain('Client type: New Business')
+    expect(email.body).toContain('Budget band: $2k to $10k')
+    expect(email.body).toContain('Complexity: Standard Non Custom')
+    expect(email.body).toContain('Source: Calculator')
+    expect(email.body).toContain('Project: Premium Pool Fence, 10m, 2 corner(s), 1 gate(s)')
+    expect(email.body).toContain('Fixing: Stand-off Posts | Substrate: Tile | Hardware: Matte Black')
+    expect(email.body).toContain('Glass: 12mm Toughened / Clear')
+    expect(email.body).toContain('Call preference: Anytime')
+    expect(email.body).not.toContain('within_30km')
+    expect(email.body).not.toContain('pool_fence')
+    expect(email.body).not.toContain('new_business')
+    expect(email.body).not.toContain('2k_to_10k')
+    expect(email.body).not.toContain('standard_non_custom')
+    expect(email.body).not.toContain('premium_pool_fence')
+    expect(email.body).not.toContain('standoff_posts')
+    expect(email.body).not.toContain('matte_black')
+    expect(email.body).not.toContain('toughened_12mm')
   })
 })
