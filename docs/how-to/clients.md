@@ -47,6 +47,14 @@ Admins review suspected duplicates from **Admin -> Client Merge Review**. Merge 
 
 Strong ServiceM8 identity matches can be planned for safe auto-merge. Ambiguous matches stay in the review queue, where admins can either choose the survivor client or dismiss a false match. Merged duplicates are hidden from normal client lists but kept as merged references so old imports and links can still resolve to the survivor.
 
+## Admin operation notes
+
+Run **Refresh from ServiceM8** from the Clients list when you want to import or refresh company/client records. A successful run reports scanned, created, updated, needs-review, skipped, and error counts. If row-level errors occur, the import can still complete and the warning is written to the admin error log with the import summary.
+
+After a large import, check **Cleanup filter -> Needs Review**, **No Contact Details**, **No Client Type**, and **Possible Duplicates**. Keep cleanup in small batches and use the client detail page for canonical edits. Dashboard edits, duplicate merges, and duplicate dismissals are admin-only and write audit or error-log entries.
+
+If a merge was wrong, v1 has no one-click undo. Correct it manually by creating or editing the correct survivor client, moving affected leads/quotes/work orders/contacts back to the right client in the database, and leaving an audit note explaining the correction. Use the hidden merged reference and aliases to identify what was absorbed.
+
 ## Developer reference
 
 | Thing | Location |

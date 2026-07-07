@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { userCanAccessSlug } from '@/lib/access-db'
+import { logAudit } from '@/lib/audit-db'
+import { logError } from '@/lib/logger'
 import { refreshServiceM8Clients, type ServiceM8ClientImportSummary } from './servicem8-import'
 
 export type ServiceM8ClientsImportActionState =
@@ -29,9 +31,27 @@ export async function refreshServiceM8ClientsAction(
 
   try {
     const summary = await refreshServiceM8Clients()
+    await logAudit({
+      actorId: session.user.id,
+      action: 'client.servicem8_import.completed',
+      detail: { summary },
+    })
+    if (summary.errors > 0) {
+      await logError('clients.servicem8Import.rowErrors', new Error('ServiceM8 Clients import completed with row errors'), {
+        level: 'warn',
+        userId: session.user.id,
+        metadata: {
+          summary: { ...summary, errorMessages: summary.errorMessages.slice(0, 10) },
+        },
+      })
+    }
     revalidatePath('/clients')
     return { success: true, summary }
   } catch (error) {
-    return { error: error instanceof Error ? error.message : 'ServiceM8 Clients import failed.' }
+    const errorId = await logError('clients.servicem8Import.failed', error, {
+      userId: session.user.id,
+    })
+    const message = error instanceof Error ? error.message : 'ServiceM8 Clients import failed.'
+    return { error: `${message} Ref: ${errorId}` }
   }
 }

@@ -7,6 +7,7 @@ const userCanAccessSlug = vi.fn()
 const transaction = vi.fn()
 const revalidatePath = vi.fn()
 const logAudit = vi.fn()
+const logError = vi.fn()
 const mergeClients = vi.fn()
 const insert = vi.fn()
 
@@ -22,6 +23,9 @@ vi.mock('@/lib/db', () => ({
 }))
 vi.mock('@/lib/audit-db', () => ({
   logAudit: (...args: unknown[]) => logAudit(...args),
+}))
+vi.mock('@/lib/logger', () => ({
+  logError: (...args: unknown[]) => logError(...args),
 }))
 vi.mock('../client-resolver', () => ({
   mergeClients: (...args: unknown[]) => mergeClients(...args),
@@ -48,11 +52,13 @@ describe('confirmClientMergeReviewGroup', () => {
     transaction.mockReset()
     revalidatePath.mockReset()
     logAudit.mockReset()
+    logError.mockReset()
     mergeClients.mockReset()
     insert.mockReset()
 
     auth.mockResolvedValue({ user: { id: adminId, role: 'admin' } })
     userCanAccessSlug.mockResolvedValue(true)
+    logError.mockResolvedValue('error-1')
   })
 
   it('denies the merge action when the Clients module is unavailable to the admin', async () => {
@@ -113,9 +119,25 @@ describe('confirmClientMergeReviewGroup', () => {
     expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
       actorId: adminId,
       action: 'client.duplicate.dismissed',
-      targetId: 'contact:+64210000001',
+      targetId: null,
     }))
     expect(revalidatePath).toHaveBeenCalledWith('/admin/client-merge-review')
+  })
+
+  it('logs merge failures and returns a safe error reference', async () => {
+    transaction.mockRejectedValue(new Error('merge failed'))
+
+    await expect(confirmClientMergeReviewGroup(mergeFormData())).rejects.toThrow('Failed to merge clients. Ref: error-1')
+
+    expect(logError).toHaveBeenCalledWith(
+      'clients.mergeReview.failed',
+      expect.any(Error),
+      expect.objectContaining({
+        userId: adminId,
+        metadata: expect.objectContaining({ loserCount: 1 }),
+      }),
+    )
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('denies duplicate dismissal for non-admin users', async () => {

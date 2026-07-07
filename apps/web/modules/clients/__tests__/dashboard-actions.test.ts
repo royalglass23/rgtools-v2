@@ -6,6 +6,8 @@ const auth = vi.fn()
 const userCanAccessSlug = vi.fn()
 const transaction = vi.fn()
 const revalidatePath = vi.fn()
+const logAudit = vi.fn()
+const logError = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
 vi.mock('@/lib/access-db', () => ({
@@ -18,6 +20,12 @@ vi.mock('@/lib/db', () => ({
 }))
 vi.mock('next/cache', () => ({
   revalidatePath: (path: string) => revalidatePath(path),
+}))
+vi.mock('@/lib/audit-db', () => ({
+  logAudit: (...args: unknown[]) => logAudit(...args),
+}))
+vi.mock('@/lib/logger', () => ({
+  logError: (...args: unknown[]) => logError(...args),
 }))
 
 import { updateClientDashboardAction } from '../dashboard-actions'
@@ -50,9 +58,12 @@ describe('updateClientDashboardAction', () => {
     userCanAccessSlug.mockReset()
     transaction.mockReset()
     revalidatePath.mockReset()
+    logAudit.mockReset()
+    logError.mockReset()
 
     auth.mockResolvedValue({ user: { id: adminId, role: 'admin' } })
     userCanAccessSlug.mockResolvedValue(true)
+    logError.mockResolvedValue('error-1')
   })
 
   it('lets admins edit canonical client details, notes, review status, primary contact, and aliases without mutating ServiceM8 source fields', async () => {
@@ -110,6 +121,11 @@ describe('updateClientDashboardAction', () => {
       expect.objectContaining({ clientId, alias: 'Topview Builders', source: 'manual' }),
       expect.objectContaining({ clientId, alias: 'TV Construction', source: 'manual' }),
     ])
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: adminId,
+      action: 'client.dashboard.updated',
+      targetId: clientId,
+    }), tx)
     expect(revalidatePath).toHaveBeenCalledWith('/clients')
     expect(revalidatePath).toHaveBeenCalledWith(`/clients/${clientId}`)
   })
@@ -156,5 +172,21 @@ describe('updateClientDashboardAction', () => {
       phone: '021 000 000',
     }))
     expect(revalidatePath).toHaveBeenCalledWith(`/clients/${clientId}`)
+  })
+
+  it('logs edit failures and returns a safe error reference', async () => {
+    transaction.mockRejectedValue(new Error('database unavailable'))
+
+    await expect(updateClientDashboardAction(clientId, editFormData())).rejects.toThrow('Failed to update client. Ref: error-1')
+
+    expect(logError).toHaveBeenCalledWith(
+      'clients.dashboardUpdate.failed',
+      expect.any(Error),
+      expect.objectContaining({
+        userId: adminId,
+        metadata: { clientId },
+      }),
+    )
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })
