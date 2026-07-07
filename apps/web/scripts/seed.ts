@@ -44,11 +44,9 @@ async function seed() {
     { slug: 'work-orders', name: 'Work Orders', adminOnly: false, sortOrder: 8, isActive: true },
     { slug: 'work-orders/manage', name: 'Work Orders Manage', adminOnly: false, sortOrder: 9, isActive: true },
     { slug: 'admin', name: 'Administration', adminOnly: true, sortOrder: 99, isActive: true },
-    { slug: 'admin/lead-scoring', name: 'Lead Scoring', adminOnly: true, sortOrder: 100, isActive: true },
     { slug: 'admin/calculator-pricing', name: 'Cost Calculator Price', adminOnly: true, sortOrder: 101, isActive: true },
     { slug: 'admin/dashboard-settings', name: 'Dashboard Settings', adminOnly: true, sortOrder: 102, isActive: true },
     { slug: 'admin/tracking', name: 'Tracking Settings', adminOnly: true, sortOrder: 103, isActive: true },
-    { slug: 'admin/lead-import', name: 'Lead Import', adminOnly: true, sortOrder: 104, isActive: true },
     { slug: 'admin/client-merge-review', name: 'Client Merge Review', adminOnly: true, sortOrder: 105, isActive: true },
     { slug: 'admin/work-orders', name: 'Work Order Configuration', adminOnly: true, sortOrder: 106, isActive: true },
   ]

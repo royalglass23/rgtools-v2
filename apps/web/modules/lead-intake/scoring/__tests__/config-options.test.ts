@@ -1,56 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { scoringConfigToOptionLists, type ActiveScoringConfigRow } from '../config-options'
+import { DECISION_MATRIX } from '../score-lead'
+import { decisionMatrixToOptionLists } from '../config-options'
 
-describe('scoringConfigToOptionLists', () => {
-  it('builds form option lists from config category option keys', () => {
-    const row: ActiveScoringConfigRow = {
-      id: 'config-id',
-      config: {
-        categories: {
-          '1': {
-            label: 'Customer profile',
-            max: 20,
-            options: {
-              changed_by_config: 11,
-              another_live_value: 7,
-            },
-          },
-          '2': {
-            label: 'Project value',
-            max: 20,
-            options: {
-              custom_budget_band: 5,
-            },
-          },
-        },
-        bonuses: {},
-        penalties: {},
-        tiers: {
-          A: 75,
-          B: 55,
-          C: 30,
-        },
-      },
-    }
+describe('decisionMatrixToOptionLists', () => {
+  it('builds form option lists from the hardcoded Decision Matrix', () => {
+    const result = decisionMatrixToOptionLists()
 
-    expect(scoringConfigToOptionLists(row)).toEqual({
-      configVersionId: 'config-id',
-      config: row.config,
-      categories: {
-        '1': {
-          label: 'Customer profile',
-          options: [
-            { key: 'changed_by_config', label: 'changed by config' },
-            { key: 'another_live_value', label: 'another live value' },
-          ],
-        },
-        '2': {
-          label: 'Project value',
-          options: [
-            { key: 'custom_budget_band', label: 'custom budget band' },
-          ],
-        },
-      },
+    expect(result.configVersionId).toBeNull()
+    expect(result.config).toBe(DECISION_MATRIX)
+    expect(result.categories['1']).toMatchObject({
+      label: 'Client Type',
+      options: [
+        { key: 'builder_developer_pool_builder_landscaper', label: 'Builder / Developer / Pool Builder / Landscaper' },
+        { key: 'homeowner', label: 'Homeowner' },
+      ],
+    })
+    expect(result.categories['14']).toMatchObject({
+      label: 'Installation Height',
+      options: [
+        { key: 'ground_floor_ladder', label: 'Ground Floor / Ladder' },
+        { key: 'scaffold_ewp_crane', label: 'Scaffold / EWP / Crane' },
+      ],
     })
   })
 })

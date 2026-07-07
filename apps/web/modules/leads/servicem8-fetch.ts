@@ -4,15 +4,17 @@ import { logAudit } from '@/lib/audit-db'
 import { leads } from '@rgtools/db/schema-leads'
 import {
   createServiceM8RequestFromEnv,
+  createServiceM8WriteRequestFromEnv,
   getCompanyContact,
   getJobContact,
   getJobQuoteMeta,
   resolveJobUuid,
+  setJobLeadCardFields,
 } from '@/lib/servicem8/client'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { normalizeNzPhone } from '@/modules/lead-intake/intake-utils'
-import { deriveProjectType } from '@/modules/lead-intake/import/enrich-row'
+import { buildServiceM8LeadJobCardFields } from '@/modules/lead-intake/servicem8/payload'
 import { isServiceM8QuoteStatus } from './lead-lifecycle'
 
 // Re-exported for existing importers/tests that reference these from this module.
@@ -90,8 +92,17 @@ export async function fetchLeadFromServiceM8(
     .select({
       id: leads.id,
       tier: leads.tier,
+      seedScore: leads.seedScore,
+      scoreReason: leads.scoreReason,
+      strikeFlag: leads.strikeFlag,
+      completeness: leads.completeness,
+      clientProfileKey: leads.clientTypeAnswer,
+      projectType: leads.product,
+      complexity: leads.projectType,
+      freeText: leads.jobDescription,
       servicem8JobUuid: leads.servicem8JobUuid,
       createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
     })
     .from(leads)
     .where(eq(leads.id, leadId))
@@ -119,13 +130,33 @@ export async function fetchLeadFromServiceM8(
   const leadsQuality = lead.tier ? `Leads Quality ${lead.tier}` : 'Not set'
   const jobNumber = matchingJob.generated_job_id ?? null
   const jobStatus = matchingJob.status ?? null
+  const jobCardFields = buildServiceM8LeadJobCardFields({
+    leadId: lead.id,
+    clientProfileKey: lead.clientProfileKey,
+    freeText: lead.freeText,
+    projectType: lead.projectType,
+    complexity: lead.complexity,
+    tier: lead.tier,
+    seedScore: lead.seedScore,
+    scoreReason: lead.scoreReason,
+    strikeFlag: lead.strikeFlag,
+    completeness: lead.completeness,
+    updatedAt: lead.updatedAt,
+  })
   let customFieldUpdated = false
   let customFieldError: string | undefined
 
-  if (!wasAlreadyLinked && lead.tier) {
+  if (!wasAlreadyLinked && hasLeadJobCardContent(jobCardFields)) {
     try {
-      await setLeadsQualityCustomField(request, matchingJob.uuid, leadsQuality)
-      customFieldUpdated = true
+      const writeResult = await setJobLeadCardFields(
+        matchingJob.uuid,
+        jobCardFields,
+        createServiceM8WriteRequestFromEnv(),
+      )
+      customFieldUpdated = writeResult.updated.length > 0
+      customFieldError = writeResult.skipped.length > 0
+        ? `Missing ServiceM8 field config for ${writeResult.skipped.join(', ')}`
+        : undefined
     } catch (error) {
       customFieldError = error instanceof Error ? error.message : String(error)
     }
@@ -155,6 +186,7 @@ export async function fetchLeadFromServiceM8(
       leadsQuality,
       customFieldUpdated,
       customFieldError,
+      jobCardFields,
     },
   })
 
@@ -246,6 +278,17 @@ export async function importLeadFromServiceM8JobNumber(
       phone,
       phoneNormalized: phone ? normalizeNzPhone(phone) : null,
       email,
+      servicem8SourceSnapshot: {
+        source: 'lead-import',
+        jobUuid: meta.jobUuid,
+        jobNumber: resolvedJobNumber,
+        status: meta.status,
+        companyUuid: meta.companyUuid,
+        clientName: meta.clientName,
+        jobDescription: meta.jobDescription,
+        jobAddress: meta.jobAddress,
+        contact,
+      },
     })
 
     const [createdLead] = await tx
@@ -253,14 +296,15 @@ export async function importLeadFromServiceM8JobNumber(
       .values({
         clientId: resolved.clientId,
         contactId: resolved.contactId,
-        source: 'other',
+        channel: 'other',
         externalRef: resolvedJobNumber,
         syncStatus: 'synced',
         servicem8JobUuid: meta.jobUuid,
         servicem8JobNumber: resolvedJobNumber,
         servicem8Status: meta.status,
-        projectType,
+        product: projectType,
         location: meta.jobAddress,
+        jobDescription: freeText,
         freeText,
         createdBy: actorId,
         updatedAt: now,
@@ -401,6 +445,15 @@ function hasContactDetail(contact: { phone: string | null; mobile: string | null
   return Boolean(contact?.phone || contact?.mobile || contact?.email)
 }
 
+function deriveProjectType(description: string | null | undefined) {
+  const normalized = (description ?? '').toLowerCase()
+  if (normalized.includes('pool')) return 'pool_fence'
+  if (normalized.includes('balustrade') || normalized.includes('balcony')) return 'balustrade'
+  if (normalized.includes('shower')) return 'shower'
+  if (normalized.includes('handrail')) return 'handrail'
+  return 'other'
+}
+
 async function fetchJobByUuid(
   request: ServiceM8FetchRequest,
   jobUuid: string,
@@ -410,6 +463,10 @@ async function fetchJobByUuid(
   const job = await response.json()
   if (!job || typeof job !== 'object') return undefined
   return job as ServiceM8Job
+}
+
+function hasLeadJobCardContent(fields: ReturnType<typeof buildServiceM8LeadJobCardFields>): boolean {
+  return Boolean(fields.jobDescription || fields.clientType || fields.leadsQuality)
 }
 
 async function findMatchingJob(
@@ -479,24 +536,4 @@ async function findMatchingInboxJob(
   const job = await jobResponse.json()
   if (!job || typeof job !== 'object') return undefined
   return job as ServiceM8Job
-}
-
-async function setLeadsQualityCustomField(
-  request: ServiceM8FetchRequest,
-  jobUuid: string,
-  value: string,
-) {
-  const customFieldUuid = process.env.SERVICEM8_LEAD_QUALITY_FIELD?.trim()
-  if (!customFieldUuid) throw new Error('SERVICEM8_LEAD_QUALITY_FIELD is not configured')
-
-  const response = await request(`/job/${jobUuid}.json`, {
-    method: 'POST',
-    body: JSON.stringify({
-      [customFieldUuid]: value,
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`ServiceM8 custom field update failed with HTTP ${response.status}`)
-  }
 }

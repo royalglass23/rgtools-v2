@@ -25,6 +25,7 @@ export type CalculatorSubmission = {
   }
   turnstileToken?: unknown
   loadedAt?: unknown
+  submissionRef?: unknown
 }
 
 export type CalculatorEstimateForEmail = {
@@ -37,10 +38,10 @@ export type CalculatorEstimateForEmail = {
 
 const CLIENT_PROFILE_BY_CUSTOMER_TYPE: Record<string, string> = {
   homeowner: 'homeowner',
-  builder: 'new_business',
-  developer: 'new_business',
-  architect: 'new_business',
-  pool_builder: 'new_business',
+  builder: 'builder_developer_pool_builder_landscaper',
+  developer: 'builder_developer_pool_builder_landscaper',
+  architect: 'builder_developer_pool_builder_landscaper',
+  pool_builder: 'builder_developer_pool_builder_landscaper',
 }
 
 const BUSINESS_CUSTOMER_TYPES = new Set(['builder', 'developer', 'architect', 'pool_builder'])
@@ -59,6 +60,47 @@ const CUSTOMER_TYPE_LABEL: Record<string, string> = {
   architect: 'Architect',
   pool_builder: 'Pool Builder',
   other: 'Other',
+}
+
+const SCENARIO_LABEL: Record<string, string> = {
+  ground_level: 'Ground Level Balustrade',
+  balcony_balustrade: 'Balcony Balustrade',
+  stair_balustrade: 'Stair Balustrade',
+  premium_pool_fence: 'Premium Pool Fence',
+}
+
+const FIXING_LABEL: Record<string, string> = {
+  spigot_round: 'Round Spigots',
+  spigot_square: 'Square Spigots',
+  standoff_posts: 'Stand-off Posts',
+  viking: 'Viking System',
+  jh_clamps: 'JH Clamps',
+  side_channel: 'Side Channel',
+  top_channel: 'Top Channel',
+  aluminium_1: 'Aluminium 1',
+  aluminium_2: 'Aluminium 2',
+  sed: 'SED (Special Engineer Design)',
+  not_sure: 'To be confirmed',
+}
+
+const HARDWARE_FINISH_LABEL: Record<string, string> = {
+  standard_chrome: 'Standard Chrome',
+  matte_black: 'Matte Black',
+  brushed_chrome: 'Brushed Chrome',
+  powder_coated: 'Powder Coated',
+  not_sure: 'To be confirmed',
+}
+
+const GLASS_TYPE_LABEL: Record<string, string> = {
+  toughened_12mm: '12mm Toughened',
+  laminated: 'Laminated Glass',
+}
+
+const GLASS_COLOUR_LABEL: Record<string, string> = {
+  clear: 'Clear',
+  low_iron: 'Low Iron / Ultra-Clear',
+  tinted: 'Tinted',
+  frosted: 'Frosted',
 }
 
 export function mapCalculatorSubmissionToIntakeInput(
@@ -82,12 +124,13 @@ export function mapCalculatorSubmissionToIntakeInput(
     clientProfileKey: CLIENT_PROFILE_BY_CUSTOMER_TYPE[customerType] ?? '',
     projectType: PROJECT_TYPE_BY_SCENARIO[scenario] ?? 'other',
     budgetBand: budgetBandFromEstimate(estimate.low, estimate.high),
-    cat4: complexityFromConsult(estimate.needsCallUs || estimate.consultationFlags.length > 0),
+    cat4: '',
     location: stringValue(lead.address),
     source: 'calculator',
+    leadSource: 'website_google_walk_in_cold_lead',
     timeline: stringValue(lead.timeframe),
     externalRef: options.submissionRef,
-    freeText: buildFreeText(submission, estimate, options.submittedAt),
+    jobDescription: buildJobDescription(submission, estimate, options.submittedAt),
   }
 }
 
@@ -119,12 +162,12 @@ export function budgetBandFromEstimate(lowValue: unknown, highValue: unknown): s
   const midpoint = (Math.min(low, high) + Math.max(low, high)) / 2
   if (midpoint <= 0) return ''
   if (midpoint >= 50_000) return '50k_plus'
-  if (midpoint >= 10_000) return '10k_to_50k'
-  if (midpoint >= 2_000) return '2k_to_10k'
-  return 'under_2k'
+  if (midpoint >= 20_000) return '20k_50k'
+  if (midpoint >= 5_000) return '5k_20k'
+  return 'lt_5k'
 }
 
-function buildFreeText(
+function buildJobDescription(
   submission: CalculatorSubmission,
   estimate: CalculatorEstimateForEmail,
   submittedAt: Date,
@@ -133,13 +176,16 @@ function buildFreeText(
   const answers = submission.answers ?? {}
   const estimateText = `Estimate: $${estimate.low} - $${estimate.high}` +
     (estimate.subtotal !== null ? ` (subtotal $${estimate.subtotal})` : '')
-  const project = `Project: ${stringValue(answers.scenario)}, ${stringValue(answers.length)}m, ` +
+  const project = `Project: ${formatKnownValue(answers.scenario, SCENARIO_LABEL)}, ${stringValue(answers.length)}m, ` +
     `${stringValue(answers.corners)} corner(s), ${stringValue(answers.gates)} gate(s)` +
     (numberValue(answers.landingLength) > 0 ? `, landing ${stringValue(answers.landingLength)}m` : '')
   // WizardAnswers uses fixingMethod/hardwareFinish; older payloads used fixing/hardware.
   const fixing = stringValue(answers.fixingMethod) || stringValue(answers.fixing)
   const hardware = stringValue(answers.hardwareFinish) || stringValue(answers.hardware)
-  const glass = [stringValue(answers.glassType), stringValue(answers.glassColour)].filter(Boolean).join(' / ')
+  const glass = [
+    formatKnownValue(answers.glassType, GLASS_TYPE_LABEL),
+    formatKnownValue(answers.glassColour, GLASS_COLOUR_LABEL),
+  ].filter(Boolean).join(' / ')
   const customerType =
     CUSTOMER_TYPE_LABEL[stringValue(lead.customerType)] ?? (stringValue(lead.customerType) || 'not specified')
   const consultation = `Consultation needed: ${estimate.needsCallUs || estimate.consultationFlags.length > 0 ? 'yes' : 'no'}` +
@@ -149,7 +195,7 @@ function buildFreeText(
     `[Calculator] submitted ${submittedAt.toISOString()}`,
     estimateText,
     project,
-    `Fixing: ${fixing || 'not specified'} | Substrate: ${stringValue(answers.substrate) || 'not specified'} | Hardware: ${hardware || 'not specified'}`,
+    `Fixing: ${formatKnownValue(fixing, FIXING_LABEL) || 'not specified'} | Substrate: ${formatAnswerKey(answers.substrate) || 'not specified'} | Hardware: ${formatKnownValue(hardware, HARDWARE_FINISH_LABEL) || 'not specified'}`,
     `Glass: ${glass || 'not specified'}`,
     `Customer type: ${customerType} | Call preference: ${stringValue(lead.callPreference)}`,
     consultation,
@@ -161,8 +207,19 @@ function buildFreeText(
   return lines.join('\n')
 }
 
-function complexityFromConsult(needsConsult: boolean): string {
-  return needsConsult ? 'minor_custom' : 'standard_non_custom'
+function formatKnownValue(value: unknown, labels: Record<string, string>): string {
+  const key = stringValue(value)
+  if (!key) return ''
+  return labels[key] ?? formatAnswerKey(key)
+}
+
+function formatAnswerKey(value: unknown): string {
+  const key = stringValue(value)
+  if (!key) return ''
+  return key
+    .replaceAll('_', ' ')
+    .replaceAll('/', ' / ')
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
 }
 
 function clampMoney(value: number): number {

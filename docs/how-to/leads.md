@@ -15,7 +15,7 @@ Click any row to open the lead detail page.
 | **Job Number** | ServiceM8 job number, when linked |
 | **Job Address** | The project address |
 | **Project** | Project type |
-| **Tier** | A, B, C, or D when scored; imported ServiceM8 leads may need scoring first |
+| **Tier** | A, B, C, D, or E when scored; imported ServiceM8 leads may need scoring first |
 | **Score** | Raw score out of 100 when scored |
 | **SM8** | ServiceM8 link status |
 | **Completeness** | Percentage of scored fields filled in |
@@ -30,7 +30,7 @@ Use **View** to choose the lifecycle set:
 
 Other filters narrow the selected view:
 
-- **Tier** shows only A, B, C, or D leads.
+- **Tier** shows only A, B, C, D, or E leads.
 - **SM8** shows Linked, Pending, or Failed leads.
 - **Date** limits by last 7 days, last 30 days, or all time.
 - **Activity** can show stale unlinked leads.
@@ -81,8 +81,8 @@ Click **Fetch from ServiceM8** on the detail page. The button:
 
 1. Searches ServiceM8 jobs for `RGTools Lead {leadId}` when the lead is not yet linked, or refreshes the known job UUID when the lead is already linked.
 2. Stores the ServiceM8 job UUID, job number, and current status.
-3. On the first successful fetch for a scored lead, writes the lead tier to the ServiceM8 Leads Quality custom field.
-4. On later fetches, refreshes status without overwriting Leads Quality.
+3. On the first successful fetch for a scored lead, writes the human-readable lead values into the ServiceM8 job card: Job Description, Client Type, Leads Quality, and Note.
+4. On later fetches, refreshes status without overwriting the initial job-card import.
 
 The button shows a status message after each fetch:
 

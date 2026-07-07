@@ -14,6 +14,7 @@ const verifyTurnstileTokenMock = vi.hoisted(() => vi.fn())
 const sendCustomerEstimateEmailMock = vi.hoisted(() => vi.fn())
 const syncLeadToServiceM8Mock = vi.hoisted(() => vi.fn())
 const saveLeadSubmitFailureMock = vi.hoisted(() => vi.fn())
+const findCalculatorLeadBySubmissionRefMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/modules/lead-intake/actions', () => ({
   submitLeadIntakeForUser: submitLeadIntakeForUserMock,
@@ -37,6 +38,10 @@ vi.mock('@/modules/lead-intake/servicem8/sync', () => ({
 
 vi.mock('@/modules/lead-intake/calculator/submit-failures', () => ({
   saveLeadSubmitFailure: saveLeadSubmitFailureMock,
+}))
+
+vi.mock('@/modules/lead-intake/calculator/idempotency', () => ({
+  findCalculatorLeadBySubmissionRef: findCalculatorLeadBySubmissionRefMock,
 }))
 
 import { OPTIONS, POST } from '../route'
@@ -73,6 +78,7 @@ const validPayload = {
   },
   loadedAt: Date.now() - 5000,
   turnstileToken: 'token',
+  submissionRef: 'rgcalc_test_ref123',
 }
 
 function request(body: unknown = validPayload, origin = 'https://www.royalglass.co.nz') {
@@ -121,6 +127,7 @@ beforeEach(() => {
   sendCustomerEstimateEmailMock.mockResolvedValue({ ok: true })
   syncLeadToServiceM8Mock.mockResolvedValue({ ok: true, leadId: 'lead-uuid', reference: 'RGTools Lead lead-uuid' })
   saveLeadSubmitFailureMock.mockResolvedValue(undefined)
+  findCalculatorLeadBySubmissionRefMock.mockResolvedValue(null)
 })
 
 describe('OPTIONS /api/lead-intake/calculator-submit', () => {
@@ -160,9 +167,16 @@ describe('POST /api/lead-intake/calculator-submit', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('access-control-allow-origin')).toBe('https://www.royalglass.co.nz')
-    expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
+    expect(json).toEqual({ ok: true, leadId: 'lead-uuid', submissionRef: 'rgcalc_test_ref123' })
     expect(submitLeadIntakeForUserMock).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'calculator', externalRef: expect.stringMatching(/^calculator:/) }),
+      expect.objectContaining({
+        source: 'calculator',
+        projectType: 'pool_fence',
+        jobDescription: expect.stringContaining('[Calculator] submitted'),
+        leadSource: 'website_google_walk_in_cold_lead',
+        cat4: '',
+        externalRef: 'rgcalc_test_ref123',
+      }),
       null,
       { syncServiceM8: false },
     )
@@ -181,7 +195,7 @@ describe('POST /api/lead-intake/calculator-submit', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('access-control-allow-origin')).toBe('https://www.rgtools.co.nz')
-    expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
+    expect(json).toEqual({ ok: true, leadId: 'lead-uuid', submissionRef: 'rgcalc_test_ref123' })
     expect(submitLeadIntakeForUserMock).toHaveBeenCalled()
   })
 
@@ -201,13 +215,14 @@ describe('POST /api/lead-intake/calculator-submit', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('access-control-allow-origin')).toBeNull()
-    expect(json).toEqual({ ok: true, leadId: 'lead-uuid' })
+    expect(json).toEqual({ ok: true, leadId: 'lead-uuid', submissionRef: 'rgcalc_test_ref123' })
     expect(verifyTurnstileTokenMock).not.toHaveBeenCalled()
     expect(checkLeadSubmitRateLimitMock).not.toHaveBeenCalled()
     expect(submitLeadIntakeForUserMock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'calculator',
-        freeText: expect.stringContaining('Forwarded from WordPress after same-origin calculator submit'),
+        externalRef: 'rgcalc_test_ref123',
+        jobDescription: expect.stringContaining('Forwarded from WordPress after same-origin calculator submit'),
       }),
       null,
       { syncServiceM8: false },
@@ -266,7 +281,7 @@ describe('POST /api/lead-intake/calculator-submit', () => {
   })
 
   it('dead-letters valid prospect payloads when the Neon save path fails', async () => {
-    submitLeadIntakeForUserMock.mockResolvedValue({ error: 'Phone or email is required.' })
+    submitLeadIntakeForUserMock.mockResolvedValue({ error: 'Email is required.' })
 
     const response = await POST(request())
     const json = await response.json()
@@ -276,8 +291,57 @@ describe('POST /api/lead-intake/calculator-submit', () => {
     expect(saveLeadSubmitFailureMock).toHaveBeenCalledWith(expect.objectContaining({
       ip: '203.0.113.10',
       stage: 'save',
-      error: 'Phone or email is required.',
+      error: 'Email is required.',
       payload: validPayload,
+      submissionRef: 'rgcalc_test_ref123',
     }))
+  })
+
+  it('creates a stable fallback submission reference for older calculator payloads', async () => {
+    const { submissionRef: _submissionRef, ...legacyPayload } = validPayload
+
+    const response = await POST(request(legacyPayload))
+    const json = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(json).toEqual({
+      ok: true,
+      leadId: 'lead-uuid',
+      submissionRef: expect.stringMatching(/^calculator:/),
+    })
+    expect(submitLeadIntakeForUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'calculator',
+        externalRef: expect.stringMatching(/^calculator:/),
+      }),
+      null,
+      { syncServiceM8: false },
+    )
+  })
+
+  it('returns an existing calculator lead for duplicate trusted submission references without downstream side effects', async () => {
+    findCalculatorLeadBySubmissionRefMock.mockResolvedValue({ leadId: 'existing-lead-uuid' })
+
+    const response = await POST(serverRequest({
+      ...validPayload,
+      lead: {
+        ...validPayload.lead,
+        email: 'same-customer@example.com',
+      },
+    }))
+    const json = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(json).toEqual({
+      ok: true,
+      leadId: 'existing-lead-uuid',
+      submissionRef: 'rgcalc_test_ref123',
+      idempotent: true,
+    })
+    expect(findCalculatorLeadBySubmissionRefMock).toHaveBeenCalledWith('rgcalc_test_ref123')
+    expect(submitLeadIntakeForUserMock).not.toHaveBeenCalled()
+    expect(sendCustomerEstimateEmailMock).not.toHaveBeenCalled()
+    expect(syncLeadToServiceM8Mock).not.toHaveBeenCalled()
+    expect(saveLeadSubmitFailureMock).not.toHaveBeenCalled()
   })
 })

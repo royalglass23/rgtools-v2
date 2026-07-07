@@ -93,10 +93,15 @@ describe('createTrackedQuote', () => {
     process.env.VIEWER_BASE_URL = 'https://quotes.example'
     mocks.createServiceM8RequestFromEnv.mockReturnValue({ request: true })
     mocks.getJobQuoteMeta.mockResolvedValue({
+      jobUuid: 'job-1',
+      status: 'Quote',
+      jobNumber: 'Q260001',
       clientName: 'Acme Ltd',
       companyUuid: 'company-1',
       jobDescription: 'Replace shopfront',
       jobAddress: '12 Glass St',
+      quoteValue: '1234.50',
+      subtotalExGst: 1073.48,
       totalIncGst: 1234.5,
     })
     mocks.getQuoteAttachmentPdf.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]) })
@@ -186,6 +191,14 @@ describe('createTrackedQuote', () => {
         servicem8CompanyUuid: 'company-1',
         clientName: 'Acme Ltd',
         companyName: 'Acme Ltd',
+        servicem8SourceSnapshot: expect.objectContaining({
+          source: 'quote-tracker',
+          jobUuid: 'job-1',
+          companyUuid: 'company-1',
+          clientName: 'Acme Ltd',
+          jobAddress: '12 Glass St',
+          quoteValue: '1234.50',
+        }),
       },
     )
     expect(mocks.insertValues).toHaveBeenCalledWith(

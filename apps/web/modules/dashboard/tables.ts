@@ -38,7 +38,7 @@ export const DASHBOARD_TABLES: DashboardTableMeta[] = [
     available: true,
     paramPrefix: 'leads_',
     filterFields: [
-      { name: 'tier', label: 'Tier', options: [['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']], default: 'all' },
+      { name: 'tier', label: 'Tier', options: [['all', 'All'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['E', 'E']], default: 'all' },
       { name: 'sm8', label: 'SM8', options: [['all', 'All'], ['linked', 'Linked'], ['pending', 'Pending'], ['failed', 'Failed']], default: 'all' },
       { name: 'date', label: 'Date', options: [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']], default: '30' },
       { name: 'size', label: 'Page size', options: [['5', '5'], ['10', '10'], ['20', '20'], ['50', '50'], ['100', '100']], default: '10' },

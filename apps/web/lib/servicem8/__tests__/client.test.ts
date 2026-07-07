@@ -9,6 +9,7 @@ import {
   getJobNotesAndEmails,
   resolveJobUuid,
   ServiceM8RateLimitError,
+  setJobLeadCardFields,
   setJobLeadsQuality,
   stripEmailNoise,
   withServiceM8Retry,
@@ -447,6 +448,76 @@ describe('setJobLeadsQuality', () => {
     const request: ServiceM8FetchRequest = async () => ({ ok: false, status: 403, json: async () => ({}) })
 
     await expect(setJobLeadsQuality('job-uuid-1', 'A', request)).rejects.toThrow(/403/)
+  })
+})
+
+describe('setJobLeadCardFields', () => {
+  const originalLeadQuality = process.env.SERVICEM8_LEAD_QUALITY_FIELD
+  const originalClientType = process.env.SERVICEM8_CLIENT_TYPE_FIELD
+  const originalNote = process.env.SERVICEM8_NOTE_FIELD
+
+  afterEach(() => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = originalLeadQuality
+    process.env.SERVICEM8_CLIENT_TYPE_FIELD = originalClientType
+    process.env.SERVICEM8_NOTE_FIELD = originalNote
+  })
+
+  it('posts job description and configured custom fields to the job card', async () => {
+    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'customfield_leads_quality_'
+    process.env.SERVICEM8_CLIENT_TYPE_FIELD = 'customfield_client_type_'
+    process.env.SERVICEM8_NOTE_FIELD = 'customfield_note_'
+    const calls: Array<{ path: string; init?: RequestInit }> = []
+    const request: ServiceM8FetchRequest = async (path, init) => {
+      calls.push({ path, init })
+      return { ok: true, status: 200, json: async () => ({ errorCode: 0 }) }
+    }
+
+    const result = await setJobLeadCardFields('job-uuid-1', {
+      jobDescription: 'Frameless pool fence',
+      clientType: 'Builder / Developer / Pool Builder / Landscaper',
+      leadsQuality: 'A',
+      note: 'Leads Quality A | Score 92 | RGTools Lead lead-1',
+    }, request)
+
+    expect(result).toEqual({
+      updated: ['jobDescription', 'clientType', 'leadsQuality', 'note'],
+      skipped: [],
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0].path).toBe('/job/job-uuid-1.json')
+    expect(calls[0].init?.method).toBe('POST')
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      job_description: 'Frameless pool fence',
+      customfield_client_type_: 'Builder / Developer / Pool Builder / Landscaper',
+      customfield_leads_quality_: 'A',
+      customfield_note_: 'Leads Quality A | Score 92 | RGTools Lead lead-1',
+    })
+  })
+
+  it('skips unconfigured custom fields without blocking standard job description writes', async () => {
+    delete process.env.SERVICEM8_LEAD_QUALITY_FIELD
+    delete process.env.SERVICEM8_CLIENT_TYPE_FIELD
+    delete process.env.SERVICEM8_NOTE_FIELD
+    const calls: Array<{ path: string; init?: RequestInit }> = []
+    const request: ServiceM8FetchRequest = async (path, init) => {
+      calls.push({ path, init })
+      return { ok: true, status: 200, json: async () => ({}) }
+    }
+
+    const result = await setJobLeadCardFields('job-uuid-1', {
+      jobDescription: 'Glass balustrade',
+      clientType: 'Homeowner',
+      leadsQuality: 'B',
+      note: 'Needs site measure',
+    }, request)
+
+    expect(result).toEqual({
+      updated: ['jobDescription'],
+      skipped: ['clientType', 'leadsQuality', 'note'],
+    })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      job_description: 'Glass balustrade',
+    })
   })
 })
 

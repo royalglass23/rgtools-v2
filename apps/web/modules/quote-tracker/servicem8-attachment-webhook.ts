@@ -125,7 +125,7 @@ function resolveDeps(
 function isAuthorized(url: URL, headers: Headers, secret: string | undefined): boolean {
   if (!secret) return false
   return (
-    url.searchParams.get('token') === secret ||
+    // url.searchParams.get('token') === secret ||  // TODO: token-in-URL leaks to logs — use header auth instead
     headers.get('x-servicem8-webhook-secret') === secret ||
     headers.get('authorization') === `Bearer ${secret}`
   )

@@ -90,7 +90,7 @@ export function buildSuggestionPrompt(lead: SuggestionLead): string {
     '=== SALES SIGNALS ===',
     `Decision-makers: ${field('Decision-makers')}`,
     `Price-sensitivity Read: ${field('Price-sensitivity Read')}`,
-    lead.freeText ? `Notes: ${lead.freeText}` : null,
+    lead.freeText ? `Job Description: ${lead.freeText}` : null,
     renderHistorySection(lead.history),
   ]
 

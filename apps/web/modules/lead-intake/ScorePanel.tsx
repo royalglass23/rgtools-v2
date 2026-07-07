@@ -1,6 +1,11 @@
 'use client'
 
-import { scoreLead, type ScoringConfig } from '@/modules/lead-intake/scoring/score-lead'
+import {
+  DECISION_MATRIX,
+  optionPoints,
+  scoreLead,
+  type DecisionMatrixAnswers,
+} from '@/modules/lead-intake/scoring/score-lead'
 
 type ScoredFields = {
   clientProfileKey: string
@@ -12,11 +17,15 @@ type ScoredFields = {
   priceSensitivityRead?: string
   decisionMakers?: string
   distanceBand?: string | null
+  leadSource?: string
+  paymentHistory?: string
+  siteAccess?: string
+  installationHeight?: string
 }
 
 type Props = {
   input: ScoredFields
-  config: ScoringConfig
+  config?: unknown
   lastUpdated?: string | null
   followUpDate?: string | null
 }
@@ -25,87 +34,44 @@ const tierStyles: Record<string, string> = {
   A: 'bg-green-100 text-green-800',
   B: 'bg-blue-100 text-blue-800',
   C: 'bg-amber-100 text-amber-800',
-  D: 'bg-red-100 text-red-800',
+  D: 'bg-orange-100 text-orange-800',
+  E: 'bg-red-100 text-red-800',
 }
 
-const CONSENT_CATEGORY_KEYS = new Set(['8', '9', '10'])
-const EMPTY_MARK = '—'
+const EMPTY_MARK = '-'
 
-export function ScorePanel({ input, config, lastUpdated, followUpDate }: Props) {
-  const answers = {
-    cat1: input.clientProfileKey || undefined,
-    cat2: input.budgetBand || undefined,
-    cat4: input.cat4 || undefined,
-    cat5: input.priceSensitivityRead || undefined,
-    cat6: input.decisionMakers || undefined,
-    cat7: input.distanceBand || undefined,
-    cat8: input.rcStatus || undefined,
-    cat9: input.bcStatus || undefined,
-    cat10: input.buildingStage || undefined,
+export function ScorePanel({ input, lastUpdated, followUpDate }: Props) {
+  const answers: DecisionMatrixAnswers = {
+    clientType: input.clientProfileKey || undefined,
+    budgetBand: input.budgetBand || undefined,
+    resourceConsent: input.rcStatus || undefined,
+    buildingConsent: input.bcStatus || undefined,
+    buildingStage: input.buildingStage || undefined,
+    projectType: input.cat4 || undefined,
+    priceSensitivity: input.priceSensitivityRead || undefined,
+    decisionMakers: input.decisionMakers || undefined,
+    source: input.leadSource || undefined,
+    distanceBand: input.distanceBand || undefined,
+    paymentHistory: input.paymentHistory || undefined,
+    siteAccess: input.siteAccess || undefined,
+    installationHeight: input.installationHeight || undefined,
   }
 
-  const result = scoreLead(answers, config)
-  const sortedCategories = Object.entries(config.categories).sort(([a], [b]) => Number(a) - Number(b))
-  const regularCategories = sortedCategories.filter(([key]) => !CONSENT_CATEGORY_KEYS.has(key))
-  const consentCategories = sortedCategories.filter(([key]) => CONSENT_CATEGORY_KEYS.has(key))
-  const consentPoints = consentCategories.reduce((total, [key]) => {
-    const row = result.categoryRows.find((r) => r.category === Number(key))
-    return total + (row?.points ?? 0)
-  }, 0)
+  const result = scoreLead(answers)
+  const summaryText = `Score ${result.score}/100 | Question ${result.completeness.answered}/${result.completeness.total}`
 
   return (
     <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${tierStyles[result.tier]}`}>
-          Tier {result.tier}
-        </span>
-        <span className="text-2xl font-bold text-gray-900">{result.score}</span>
-        <span className="text-sm text-gray-500">/ 100</span>
-      </div>
-      {result.flagNote && (
-        <div className="mt-2 mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-          ⚑ {result.flagNote}
-        </div>
-      )}
-      {!result.flagNote && <div className="mb-4" />}
-      <div className="grid gap-2 lg:grid-cols-2 lg:gap-x-6">
-        {regularCategories.map(([key, category]) => {
-          const row = result.categoryRows.find((r) => r.category === Number(key))
-          return <ScoreRow key={key} label={category.label} points={row?.points ?? 0} max={category.max} />
-        })}
-
-        {consentCategories.length > 0 && (
-          <div className="space-y-1.5 border-t border-gray-100 pt-2">
-            <div className="flex items-center gap-3">
-              <span className="w-44 truncate text-xs font-semibold text-gray-700">Consent readiness</span>
-              <span className={`w-6 text-right text-xs font-semibold ${consentPoints > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                {consentPoints > 0 ? consentPoints : EMPTY_MARK}
-              </span>
-              <div className="h-1.5 flex-1 rounded-full bg-gray-100">
-                {consentPoints > 0 && (
-                  <div className="h-1.5 rounded-full bg-blue-600" style={{ width: `${Math.round((consentPoints / 19) * 100)}%` }} />
-                )}
-              </div>
-              <span className="w-8 text-right text-xs text-gray-500">/ 19</span>
-            </div>
-            <div className="space-y-1 pl-3">
-              {consentCategories.map(([key, category]) => {
-                const row = result.categoryRows.find((r) => r.category === Number(key))
-                return (
-                  <ScoreRow
-                    key={key}
-                    label={category.label}
-                    points={row?.points ?? 0}
-                    max={category.max}
-                    compact
-                  />
-                )
-              })}
-            </div>
+      <div className="grid gap-4 md:grid-cols-2 md:items-center">
+        <div className="flex flex-col items-center justify-center rounded border border-gray-100 bg-gray-50 px-4 py-5 text-center">
+          <span className={`rounded-full px-4 py-1.5 text-sm font-semibold ${tierStyles[result.tier]}`}>
+            Tier {result.tier}
+          </span>
+          <div className="mt-3 text-sm font-medium text-gray-700">
+            {summaryText}
           </div>
-        )}
-
-        <div className="grid gap-1 border-t border-gray-100 pt-2 text-xs text-gray-500">
+        </div>
+        <div className="grid content-center gap-1 text-xs text-gray-500">
           <div>
             <span className="font-medium text-gray-600">Last update:</span>{' '}
             <span>{formatMetaDate(lastUpdated)}</span>
@@ -116,6 +82,19 @@ export function ScorePanel({ input, config, lastUpdated, followUpDate }: Props) 
           </div>
         </div>
       </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 md:gap-x-6">
+        {DECISION_MATRIX.fields.map((field) => {
+          const answerKey = answers[field.key]
+          return (
+            <ScoreRow
+              key={field.key}
+              label={field.label}
+              points={answerKey ? optionPoints(field.key, answerKey) : 0}
+              max={field.maxPoints}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -124,17 +103,15 @@ function ScoreRow({
   label,
   points,
   max,
-  compact = false,
 }: {
   label: string
   points: number
   max: number
-  compact?: boolean
 }) {
   const pct = max > 0 ? Math.round((points / max) * 100) : 0
   return (
     <div className="flex items-center gap-3">
-      <span className={`${compact ? 'w-40' : 'w-44'} truncate text-xs text-gray-600`}>{label}</span>
+      <span className="w-44 truncate text-xs text-gray-600">{label}</span>
       <span className={`w-6 text-right text-xs font-medium ${points > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
         {points > 0 ? points : EMPTY_MARK}
       </span>

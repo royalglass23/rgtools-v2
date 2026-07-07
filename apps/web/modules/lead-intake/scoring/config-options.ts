@@ -1,12 +1,4 @@
-import { eq } from 'drizzle-orm'
-import { scoringConfigVersions } from '@rgtools/db/schema-leads'
-import { db } from '@/lib/db'
-import type { ScoringConfig } from './score-lead'
-
-export type ActiveScoringConfigRow = {
-  id: string
-  config: ScoringConfig
-}
+import { DECISION_MATRIX, type MatrixFieldKey } from './score-lead'
 
 export type FormOption = {
   key: string
@@ -19,52 +11,46 @@ export type ScoringCategoryOptions = {
 }
 
 export type ActiveScoringOptionLists = {
-  configVersionId: string
+  configVersionId: null
   categories: Record<string, ScoringCategoryOptions>
-  config: ScoringConfig
+  config: typeof DECISION_MATRIX
+}
+
+const legacyCategoryByField: Record<MatrixFieldKey, string> = {
+  clientType: '1',
+  budgetBand: '2',
+  projectType: '4',
+  priceSensitivity: '5',
+  decisionMakers: '6',
+  distanceBand: '7',
+  resourceConsent: '8',
+  buildingConsent: '9',
+  buildingStage: '10',
+  source: '11',
+  paymentHistory: '12',
+  siteAccess: '13',
+  installationHeight: '14',
 }
 
 export async function getActiveScoringOptionLists(): Promise<ActiveScoringOptionLists> {
-  const [activeConfig] = await db
-    .select({
-      id: scoringConfigVersions.id,
-      config: scoringConfigVersions.config,
-    })
-    .from(scoringConfigVersions)
-    .where(eq(scoringConfigVersions.isActive, true))
-    .limit(1)
-
-  if (!activeConfig) {
-    throw new Error('No active scoring config version found')
-  }
-
-  return scoringConfigToOptionLists({
-    id: activeConfig.id,
-    config: activeConfig.config as ScoringConfig,
-  })
+  return decisionMatrixToOptionLists()
 }
 
-export function scoringConfigToOptionLists(
-  activeConfig: ActiveScoringConfigRow,
-): ActiveScoringOptionLists {
+export function decisionMatrixToOptionLists(): ActiveScoringOptionLists {
   return {
-    configVersionId: activeConfig.id,
-    config: activeConfig.config,
+    configVersionId: null,
+    config: DECISION_MATRIX,
     categories: Object.fromEntries(
-      Object.entries(activeConfig.config.categories).map(([categoryKey, category]) => [
-        categoryKey,
+      DECISION_MATRIX.fields.map((field) => [
+        legacyCategoryByField[field.key],
         {
-          label: category.label,
-          options: (category.optionOrder ?? Object.keys(category.options)).map((optionKey) => ({
-            key: optionKey,
-            label: category.optionLabels?.[optionKey] ?? formatOptionLabel(optionKey),
+          label: field.label,
+          options: field.options.map((option) => ({
+            key: option.key,
+            label: option.label,
           })),
         },
       ]),
     ),
   }
-}
-
-function formatOptionLabel(optionKey: string): string {
-  return optionKey.replaceAll('_', ' ')
 }

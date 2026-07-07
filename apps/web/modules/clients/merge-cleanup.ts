@@ -1,6 +1,6 @@
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, leads } from '@rgtools/db/schema-leads'
+import { clientDuplicateDismissals, clients, leads } from '@rgtools/db/schema-leads'
 import { createServiceM8RequestFromEnv, type ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { mergeClients } from './client-resolver'
 import { planClientMerges, type ClientMergePlanRow, type MergePlan } from './merge-planner'
@@ -55,7 +55,7 @@ export function createClientMergeCleanupDeps(options: {
 }
 
 export async function loadClientMergeRows(request: ServiceM8FetchRequest): Promise<ClientMergePlanRow[]> {
-  const clientRows = await db.select().from(clients)
+  const clientRows = await db.select().from(clients).where(eq(clients.isMerged, false))
   const clientIds = clientRows.map((row) => row.id)
   const leadRows = clientIds.length === 0
     ? []
@@ -95,6 +95,14 @@ export async function loadClientMergeRows(request: ServiceM8FetchRequest): Promi
     resolvedServiceM8CompanyUuid: client.servicem8CompanyUuid ?? await resolveFromJobs(client.id),
     createdAt: client.createdAt,
   })))
+}
+
+export async function loadDismissedDuplicateSuggestionKeys(): Promise<Set<string>> {
+  const rows = await db
+    .select({ suggestionKey: clientDuplicateDismissals.suggestionKey })
+    .from(clientDuplicateDismissals)
+
+  return new Set(rows.map((row) => row.suggestionKey))
 }
 
 async function fetchJobCompanyUuid(request: ServiceM8FetchRequest, jobUuid: string): Promise<string | null> {

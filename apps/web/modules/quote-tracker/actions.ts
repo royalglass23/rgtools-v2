@@ -23,6 +23,7 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
   if (!session?.user?.id) {
     return { ok: false, message: 'You must be signed in to create a tracked quote.' }
   }
+  await requireModule('quote-tracker')
 
   const trimmed = jobNumber.trim()
   if (!trimmed) {
@@ -62,6 +63,7 @@ export async function expireQuoteLinkAction(quoteId: string): Promise<ExpireQuot
   if (!session?.user?.id) {
     return { ok: false, message: 'You must be signed in.' }
   }
+  await requireModule('quote-tracker')
 
   const result = await expireQuoteLink(quoteId)
   if (!result.ok) {

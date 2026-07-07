@@ -20,7 +20,6 @@ describe('buildDashboardNavigation', () => {
   it('keeps regular modules top-level and moves admin modules into the Admin menu', () => {
     const nav = buildDashboardNavigation([
       moduleRow('m1', 'lead-intake', 'Lead Intake', 0),
-      moduleRow('m2', 'admin/lead-scoring', 'Lead Scoring', 101, true),
       moduleRow('m3', 'leads', 'Leads', 1),
       moduleRow('m4', 'admin/calculator-pricing', 'Cost Calculator Price', 102, true),
       moduleRow('m5', 'admin', 'Administration', 99, true),
@@ -41,7 +40,6 @@ describe('buildDashboardNavigation', () => {
     ])
     expect(nav.adminItems).toEqual([
       { id: 'm5', slug: 'admin', name: 'Administration', href: '/admin/administration' },
-      { id: 'm2', slug: 'admin/lead-scoring', name: 'Lead Scoring', href: '/admin/lead-scoring' },
       {
         id: 'm4',
         slug: 'admin/calculator-pricing',
@@ -149,5 +147,16 @@ describe('buildDashboardNavigation', () => {
         href: '/ps-generator/configuration',
       },
     ])
+  })
+
+  it('does not render removed lead admin modules even when stale rows remain active', () => {
+    const nav = buildDashboardNavigation([
+      moduleRow('lead-scoring', 'admin/lead-scoring', 'Lead Scoring', 101, true),
+      moduleRow('lead-import', 'admin/lead-import', 'Lead Import', 102, true),
+      moduleRow('clients', 'clients', 'Clients', 2),
+    ], { isAdmin: true })
+
+    expect(nav.primaryModules.map((mod) => mod.slug)).toEqual(['clients'])
+    expect(nav.adminItems).toEqual([])
   })
 })

@@ -80,7 +80,7 @@ describe('buildSuggestionPrompt', () => {
 
     // Sales signals
     expect(prompt).toContain('Price-sensitivity Read: Low')
-    expect(prompt).toContain('Notes: Client wants a site measure next week.')
+    expect(prompt).toContain('Job Description: Client wants a site measure next week.')
   })
 
   it('detects B2B segment when company name is present', () => {

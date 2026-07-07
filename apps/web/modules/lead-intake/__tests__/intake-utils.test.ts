@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCategoryAnswers,
   normalizeInput,
+  repairMatrixFieldAliases,
   validateScoredOptions,
   type IntakeCategoryOptions,
 } from '../intake-utils'
@@ -56,6 +57,16 @@ describe('intake-utils v4 scoring fields', () => {
       { category: 9, answerKey: 'not_required' },
       { category: 10, answerKey: 'fitout_complete' },
     ])
+  })
+
+  it('repairs project type values submitted in the building stage field', () => {
+    const normalized = repairMatrixFieldAliases(normalizeInput(input({
+      cat4: '',
+      buildingStage: 'new_build_commercial_fit_out',
+    })))
+
+    expect(normalized.cat4).toBe('new_build_commercial_fit_out')
+    expect(normalized.buildingStage).toBe('')
   })
 
   it('validates RC, BC, and building stage against active options', () => {

@@ -14,6 +14,7 @@ const adminOnlyModule = { id: 'm1', slug: 'admin-panel', adminOnly: true,  isAct
 const normalModule    = { id: 'm2', slug: 'quotes',      adminOnly: false, isActive: true }
 const menuLockedModule = { id: 'm3', slug: 'work-orders', adminOnly: false, isActive: true }
 const menuLockedSubmodule = { id: 'm4', slug: 'ps-generator/history', adminOnly: false, isActive: true }
+const clientsModule = { id: 'm5', slug: 'clients', adminOnly: false, isActive: true }
 
 // ── canAccessModule ────────────────────────────────────────────────────────────
 
@@ -55,6 +56,21 @@ describe('canAccessModule', () => {
 
   it('protected admin + menu disabled module -> true', () => {
     expect(canAccessModule(superAdmin, menuLockedModule, new Set(), DEFAULT_MENU_AVAILABILITY)).toBe(true)
+  })
+
+  it('admin + Clients enabled for admin -> true', () => {
+    expect(canAccessModule(admin, clientsModule, new Set(), {
+      ...DEFAULT_MENU_AVAILABILITY,
+      admin: { ...DEFAULT_MENU_AVAILABILITY.admin, clients: true },
+    })).toBe(true)
+  })
+
+  it('staff + Clients disabled for staff -> false even with grant', () => {
+    expect(canAccessModule(staff, clientsModule, new Set([clientsModule.id]), {
+      ...DEFAULT_MENU_AVAILABILITY,
+      admin: { ...DEFAULT_MENU_AVAILABILITY.admin, clients: true },
+      staff: { ...DEFAULT_MENU_AVAILABILITY.staff, clients: false },
+    })).toBe(false)
   })
 })
 

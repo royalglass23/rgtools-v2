@@ -22,7 +22,7 @@ This repo is a pnpm workspace:
 | **Quote Tracker** | Pull a ServiceM8 quote into a tracked short link, share it, inspect client engagement, and generate AI follow-up guidance |
 | **Work Orders** | Staff summary for active installation work orders from ServiceM8, including operational fields and portal-safe timeline candidates |
 | **PS Generator** | Generate PS1 and PS3 Producer Statement PDF packages from published system, option, template, mapping, and wording configuration |
-| **Admin** | User/module access, scoring/pricing/tracking settings, lead import, dashboard tables, audit/error exports, and client merge review |
+| **Admin** | User/module access, pricing/tracking settings, dashboard tables, audit/error exports, and client merge review |
 
 ## Tech stack
 
@@ -39,7 +39,7 @@ This repo is a pnpm workspace:
 ## Developer docs
 
 - [Local setup](docs/dev/setup.md) - prerequisites, env vars, DB migration, seeding, testing
-- [Architecture](docs/dev/architecture.md) - system design, modules, auth, scoring engine
+- [Architecture](docs/dev/architecture.md) - system design, modules, auth, and lead scoring
 - [Deployment](docs/dev/deployment.md) - Vercel + Cloudflare Worker deployment
 - [Branch workflow](docs/dev/branch-workflow.md) - feature to staging and staging to production flow
 - [Changelog](docs/CHANGELOG.md) - release history and unreleased notes
@@ -59,8 +59,7 @@ This repo is a pnpm workspace:
 - [Leads dashboard](docs/how-to/leads.md) - list, filters, detail view, ServiceM8 fetch
 - [RG Leads manual checklist](apps/web/tests/rg-leads-test-plan.md) - safe human verification for Quote-status lead workflows
 - [Client records](docs/how-to/clients.md) - client list, detail, links, and merge review
-- [Bulk lead import](docs/how-to/lead-import.md) - admin spreadsheet import
-- [Scoring guide](docs/user/scoring-guide.md) - categories, tiers A-D, strike flags
+- [Scoring guide](docs/user/scoring-guide.md) - Decision Matrix fields, tiers A-E, and follow-up actions
 - [Phone script](docs/user/phone-script-lead-intake.md) - call structure for consistent lead capture
 - [Quote Tracker how-to](docs/how-to/quotes.md) - create tracked quotes, share links, read engagement, troubleshooting
 - [PS Generator how-to](docs/how-to/ps-generator.md) - generate PS packages, understand configuration, and seed prerequisites

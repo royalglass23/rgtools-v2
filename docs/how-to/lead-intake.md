@@ -1,94 +1,64 @@
 # Lead Intake Form
 
-The lead intake form is at `/lead-intake`. Use it to record every new enquiry you receive — phone calls, emails, WeChat messages, or any other channel.
+The lead intake form is at `/lead-intake`. Use it to record new enquiries from phone, email, WeChat, calculator, contact forms, or other channels.
 
-## Opening the form
+## Opening the Form
 
-Click **Lead Intake** in the top navigation bar. If you don't see it, ask an admin to grant you access.
+Click **Lead Intake** in the navigation. If you do not see it, ask an admin to grant module access.
 
-## The Score Panel
+## Score Panel
 
-At the top of the page, above the form, is the **Score Panel**. It updates live as you fill in the dropdowns — you'll see the tier (A/B/C/D) and total score change in real time. You don't need to submit the form to see the score.
+The score panel updates live as you fill in the Decision Matrix fields. It shows:
 
-## Filling in the form
+- Tier A-E
+- Current score and completeness
+- Last update and follow-up date
 
-### Client details
+The follow-up date is prefilled from the tier cadence until you type your own date.
 
-| Field | Notes |
-|-------|-------|
-| **Client Name / Business Name** | Full name or trading name. Required. |
-| **Phone** | Used for client matching. At least one of phone or email is required. |
-| **Email** | Also used for client matching. At least one of phone or email is required. |
+## Required Fields
 
-If a client with the same phone number or email already exists, their record will be updated rather than a new one created. The result banner will tell you if an existing client was matched.
+The minimum save is:
 
-### Job Address
+- Client Name / Business Name
+- Phone
+- Email
+- Job Address
 
-Required. Start typing the address — Google Places autocomplete will suggest matches (New Zealand addresses only). Select a suggestion to confirm.
+If a client with the same phone number or email already exists, their record is reused and updated.
 
-Once an address is selected, the **Driving Distance** field below it auto-computes the distance from Royal Glass's location and shows the distance band and its scoring impact:
+## First-Call Fields
 
-| Band | Distance | Points |
-|------|----------|--------|
-| Within 30 km | ≤ 30 km | +6 pts |
-| 30 – 80 km | 31–80 km | +4 pts |
-| Over 80 km | > 80 km | +2 pts |
+Use **Product** for the actual glass product, such as pool fence, balustrade, shower, handrail, or other.
 
-If you clear the address, the distance resets.
+Use **Job Description** for a short project summary from the call.
 
-### Scored dropdowns
+Use **Channel** for how the enquiry arrived, such as phone, email, WeChat, calculator, contact form, or other.
 
-These seven dropdowns feed into the scoring engine. Each choice adds a different number of points. See the [Scoring Guide](../user/scoring-guide.md) for full point values.
+## Decision Matrix Fields
 
-| Field | What to assess |
-|-------|---------------|
-| **Client type** | What best describes this client? Builder with repeat orders, homeowner, landlord, etc. |
-| **Budget band** | Estimated total project value |
-| **Consent status** | How far along is their building consent / project stage? |
-| **Complexity** | Is the glass work standard, or does it involve custom/laminated/switchable glass? |
-| **Price-sensitivity read** | How price-sensitive did they seem on the call? |
-| **Decision-makers** | Who needs to sign off? One person, a couple, or a corporate board? |
+The score comes from the hardcoded Decision Matrix:
 
-Driving Distance is the seventh scored field and is auto-computed — you don't select it manually.
+- Client Type
+- Budget Band
+- Resource Consent
+- Building Consent
+- Building Stage
+- Project Type
+- Price-sensitivity Read
+- Decision-makers
+- Distance
+- Source
+- Payment History
+- Site Access
+- Installation Height
 
-### Project type
+Distance is computed from the job address. Do not guess answers for fields the customer has not provided.
 
-Required. Select the type of glass work: Pool fence, Balustrade, Shower, Handrail, or Other.
+## Saving a Lead
 
-### Source
+Click **Save and score**. The form validates the required fields, saves the client and lead, computes the score/tier/completeness, audit-logs the change, and attempts to sync the lead to ServiceM8.
 
-Where did the enquiry come from? Phone, Email, WeChat, Calculator, Contact form, or Other.
+## Editing a Lead
 
-### Anything else
-
-Free text for any extra notes — site access details, special requests, things to follow up on.
-
-## Saving a lead
-
-Click **Save and score** when ready. The button shows "Saving…" while the form submits. The form will:
-
-1. Validate the required fields
-2. Create or update the client record
-3. Save the lead with all scored answers
-4. Run the scoring engine
-5. Attempt to sync the lead to ServiceM8
-
-### Result banner
-
-After saving, a green banner shows:
-
-- **Tier** and **score** (e.g. "Tier A · 78 points")
-- A plain-English reason summarising the scored answers
-- An amber **blocker flag** if any strike options were selected (see [Scoring Guide](../user/scoring-guide.md#blocker-flags))
-- Whether this matched an existing client or created a new one
-- ServiceM8 sync status ("sent to inbox" or "queued for retry")
-
-If there's a validation error, a red banner appears instead with a description of what's missing.
-
-## Editing an existing lead
-
-To edit an existing lead, open it from the **Leads** list (`/leads`) and click the **Edit** button at the top right of the detail page. The intake form opens pre-filled with all previous answers.
-
-A **Reason for edit** field appears at the bottom of the form — this is required before you can save. Enter a brief description of what changed and why (e.g. "Customer corrected the project address"). This is recorded in the audit log.
-
-Click **Save and score** to update the lead and refresh the score.
+Open a lead from `/leads` and click **Edit**. A reason for edit is required before saving changes; this reason is recorded in the audit log.

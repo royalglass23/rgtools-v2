@@ -7,13 +7,64 @@ import { users } from './schema'
 export const leadClientTypeEnum = pgEnum('lead_client_type', [
   'homeowner', 'builder', 'developer', 'investor', 'repeat_exclusive',
 ])
-export const leadSourceEnum = pgEnum('lead_source', [
+export const leadChannelEnum = pgEnum('lead_channel', [
   'phone', 'email', 'wechat', 'calculator', 'contact_form', 'other',
+])
+export const leadMatrixClientTypeEnum = pgEnum('lead_matrix_client_type', [
+  'builder_developer_pool_builder_landscaper', 'homeowner',
+])
+export const leadBudgetBandEnum = pgEnum('lead_budget_band', [
+  '50k_plus', '20k_50k', '5k_20k', 'lt_5k',
+])
+export const leadConsentStatusEnum = pgEnum('lead_consent_status', [
+  'approved_not_required', 'submitted_pending', 'not_available',
+])
+export const leadBuildingStageEnum = pgEnum('lead_building_stage', [
+  'ready_for_glazing', 'interior_finish', 'gib_plastering_framing_complete',
+  'foundation_early_construction', 'planning',
+])
+export const leadProjectTypeEnum = pgEnum('lead_project_type', [
+  'new_build_commercial_fit_out', 'high_end_residential_multi_unit_residential',
+  'renovation_replacement',
+])
+export const leadPriceSensitivityEnum = pgEnum('lead_price_sensitivity', [
+  'not_price_sensitive', 'value_focused', 'normal', 'price_sensitive', 'cheapest_only',
+])
+export const leadDecisionMakersEnum = pgEnum('lead_decision_makers', [
+  'decision_maker_confirmed_owner_director', 'project_manager_site_manager',
+  'multiple_decision_makers_unknown',
+])
+export const leadWarmthSourceEnum = pgEnum('lead_warmth_source', [
+  'existing_client_referral_repeat_builder_architect', 'website_google_walk_in_cold_lead',
+])
+export const leadDistanceBandEnum = pgEnum('lead_distance_band', [
+  'lt_15km', '15_50km', 'gt_50km',
+])
+export const leadPaymentHistoryEnum = pgEnum('lead_payment_history', [
+  'always_on_time_good', 'new_client', 'slow_payment_poor_history',
+])
+export const leadSiteAccessEnum = pgEnum('lead_site_access', [
+  'easy', 'normal', 'tight', 'very_difficult',
+])
+export const leadInstallationHeightEnum = pgEnum('lead_installation_height', [
+  'ground_floor_ladder', 'scaffold_ewp_crane',
 ])
 export const leadSyncStatusEnum = pgEnum('lead_sync_status', [
   'pending_sync', 'synced', 'sync_failed',
 ])
-export const leadTierEnum = pgEnum('lead_tier', ['A', 'B', 'C', 'D'])
+export const leadTierEnum = pgEnum('lead_tier', ['A', 'B', 'C', 'D', 'E'])
+export const clientIdentityTypeEnum = pgEnum('client_identity_type', [
+  'company', 'individual_homeowner', 'household', 'contractor', 'sole_trader', 'other',
+])
+export const clientReviewStatusEnum = pgEnum('client_review_status', [
+  'pending_review', 'reviewed', 'dismissed',
+])
+export const clientCanonicalSourceEnum = pgEnum('client_canonical_source', [
+  'import', 'manual', 'system',
+])
+export const clientAliasSourceEnum = pgEnum('client_alias_source', [
+  'servicem8_import', 'manual', 'merge',
+])
 export const leadOutcomeEnum = pgEnum('lead_outcome', [
   'won', 'lost_outside_rubric', 'lost_score_wrong', 'lost_served_late',
   'lost_silence', 'disqualified',
@@ -28,6 +79,24 @@ export const clients = pgTable('clients', {
   phone: text('phone'),
   phoneNormalized: text('phone_normalized'),
   clientType: leadClientTypeEnum('client_type'),
+  identityType: clientIdentityTypeEnum('identity_type'),
+  canonicalSource: clientCanonicalSourceEnum('canonical_source').default('import').notNull(),
+  canonicalUpdatedBy: uuid('canonical_updated_by').references(() => users.id),
+  canonicalUpdatedAt: timestamp('canonical_updated_at', { withTimezone: true }).defaultNow().notNull(),
+  servicem8Name: text('servicem8_name'),
+  servicem8CompanyName: text('servicem8_company_name'),
+  servicem8Email: text('servicem8_email'),
+  servicem8Phone: text('servicem8_phone'),
+  servicem8PhoneNormalized: text('servicem8_phone_normalized'),
+  servicem8SourceSnapshot: jsonb('servicem8_source_snapshot'),
+  servicem8LastSyncedAt: timestamp('servicem8_last_synced_at', { withTimezone: true }),
+  reviewStatus: clientReviewStatusEnum('review_status').default('pending_review').notNull(),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNote: text('review_note'),
+  isMerged: boolean('is_merged').default(false).notNull(),
+  mergedIntoClientId: uuid('merged_into_client_id'),
+  mergedAt: timestamp('merged_at', { withTimezone: true }),
   isRepeatClient: boolean('is_repeat_client').default(false).notNull(),
   lifetimeJobs: integer('lifetime_jobs').default(0).notNull(),
   notes: text('notes'),
@@ -36,10 +105,43 @@ export const clients = pgTable('clients', {
 }, (t) => [
   index('clients_phone_norm_idx').on(t.phoneNormalized),
   index('clients_email_idx').on(t.email),
+  index('clients_identity_type_idx').on(t.identityType),
+  index('clients_review_status_idx').on(t.reviewStatus),
+  index('clients_is_merged_idx').on(t.isMerged),
+  index('clients_merged_into_idx').on(t.mergedIntoClientId),
   // Canonical identity for a "linked" client. The partial UNIQUE index
   // (WHERE servicem8_company_uuid IS NOT NULL) is added by hand in the
   // migration — Drizzle cannot express the partial WHERE clause.
   index('clients_servicem8_company_uuid_idx').on(t.servicem8CompanyUuid),
+])
+
+export const clientMergedReferences = pgTable('client_merged_references', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  survivorClientId: uuid('survivor_client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  mergedClientId: uuid('merged_client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  servicem8CompanyUuid: text('servicem8_company_uuid'),
+  name: text('name').notNull(),
+  companyName: text('company_name'),
+  email: text('email'),
+  phoneNormalized: text('phone_normalized'),
+  mergedAt: timestamp('merged_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_merged_refs_survivor_idx').on(t.survivorClientId),
+  uniqueIndex('client_merged_refs_merged_client_uq').on(t.mergedClientId),
+  index('client_merged_refs_servicem8_idx').on(t.servicem8CompanyUuid),
+  index('client_merged_refs_email_idx').on(t.email),
+  index('client_merged_refs_phone_idx').on(t.phoneNormalized),
+])
+
+export const clientDuplicateDismissals = pgTable('client_duplicate_dismissals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suggestionKey: text('suggestion_key').notNull(),
+  reason: text('reason'),
+  dismissedBy: uuid('dismissed_by').notNull().references(() => users.id),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('client_duplicate_dismissals_key_uq').on(t.suggestionKey),
+  index('client_duplicate_dismissals_by_idx').on(t.dismissedBy),
 ])
 
 export const clientContacts = pgTable('client_contacts', {
@@ -55,6 +157,18 @@ export const clientContacts = pgTable('client_contacts', {
   index('client_contacts_client_idx').on(t.clientId),
   index('client_contacts_phone_norm_idx').on(t.phoneNormalized),
   index('client_contacts_email_idx').on(t.email),
+])
+
+export const clientAliases = pgTable('client_aliases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  alias: text('alias').notNull(),
+  source: clientAliasSourceEnum('source').default('manual').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_aliases_client_idx').on(t.clientId),
+  index('client_aliases_alias_idx').on(t.alias),
+  uniqueIndex('client_aliases_client_alias_uq').on(t.clientId, t.alias),
 ])
 
 export const scoringConfigVersions = pgTable('scoring_config_versions', {
@@ -88,26 +202,42 @@ export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientId: uuid('client_id').notNull().references(() => clients.id),
   contactId: uuid('contact_id').references(() => clientContacts.id, { onDelete: 'set null' }),
-  source: leadSourceEnum('source').notNull(),
+  channel: leadChannelEnum('channel').notNull(),
   externalRef: text('external_ref'),
   syncStatus: leadSyncStatusEnum('sync_status').default('pending_sync').notNull(),
   servicem8JobUuid: text('servicem8_job_uuid'),
   servicem8JobNumber: text('servicem8_job_number'),
   servicem8Status: text('servicem8_status'),
   syncError: text('sync_error'),
-  projectType: text('project_type'),
+  clientTypeAnswer: leadMatrixClientTypeEnum('client_type_answer'),
+  budgetBand: leadBudgetBandEnum('budget_band'),
+  resourceConsent: leadConsentStatusEnum('resource_consent'),
+  buildingConsent: leadConsentStatusEnum('building_consent'),
+  buildingStage: leadBuildingStageEnum('building_stage'),
+  projectType: leadProjectTypeEnum('project_type'),
+  priceSensitivity: leadPriceSensitivityEnum('price_sensitivity'),
+  decisionMakers: leadDecisionMakersEnum('decision_makers'),
+  source: leadWarmthSourceEnum('source'),
+  distanceBand: leadDistanceBandEnum('distance_band'),
+  rawDrivingDistanceKm: numeric('raw_driving_distance_km', { precision: 8, scale: 2 }),
+  paymentHistory: leadPaymentHistoryEnum('payment_history'),
+  siteAccess: leadSiteAccessEnum('site_access'),
+  installationHeight: leadInstallationHeightEnum('installation_height'),
+  jobDescription: text('job_description'),
+  product: text('product'),
+  legacyBudgetBand: text('legacy_budget_band'),
+  legacyBuildingStage: text('legacy_building_stage'),
+  legacyProjectType: text('legacy_project_type'),
+  legacyDecisionMakers: text('legacy_decision_makers'),
   location: text('location'),
   suburb: text('suburb'),
-  budgetBand: text('budget_band'),
   timeline: text('timeline'),
   consentStatus: text('consent_status'),
   rcStatus: text('rc_status'),
   bcStatus: text('bc_status'),
-  buildingStage: text('building_stage'),
   followUpDate: date('follow_up_date'),
   aiSuggestion: text('ai_suggestion'),
   aiSuggestionAt: timestamp('ai_suggestion_at', { withTimezone: true }),
-  decisionMakers: text('decision_makers'),
   priceSensitivityRead: text('price_sensitivity_read'),
   hasOtherQuotes: boolean('has_other_quotes'),
   freeText: text('free_text'),
@@ -131,17 +261,15 @@ export const leads = pgTable('leads', {
   uniqueIndex('leads_external_ref_uq').on(t.externalRef),
 ])
 
-export const leadCategoryScores = pgTable('lead_category_scores', {
+export const leadReviewerNotes = pgTable('lead_reviewer_notes', {
   id: uuid('id').primaryKey().defaultRandom(),
   leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
-  category: integer('category').notNull(),
-  answerKey: text('answer_key'),
-  points: integer('points').notNull(),
-  configVersionId: uuid('config_version_id').references(() => scoringConfigVersions.id),
+  authorId: uuid('author_id').notNull().references(() => users.id),
+  text: text('text').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
-  index('lead_cat_scores_lead_idx').on(t.leadId),
-  uniqueIndex('lead_cat_uq').on(t.leadId, t.category),
+  index('lead_reviewer_notes_lead_idx').on(t.leadId),
+  index('lead_reviewer_notes_author_idx').on(t.authorId),
 ])
 
 export const userTablePrefs = pgTable('user_table_prefs', {
@@ -189,6 +317,7 @@ export const leadSubmitAttempts = pgTable('lead_submit_attempts', {
 export const leadSubmitFailures = pgTable('lead_submit_failures', {
   id: uuid('id').primaryKey().defaultRandom(),
   correlationId: text('correlation_id').notNull(),
+  submissionRef: text('submission_ref'),
   ip: text('ip').notNull(),
   stage: text('stage').notNull(),
   error: text('error').notNull(),
@@ -197,6 +326,7 @@ export const leadSubmitFailures = pgTable('lead_submit_failures', {
 }, (t) => [
   index('lead_submit_failures_created_at_idx').on(t.createdAt),
   index('lead_submit_failures_correlation_idx').on(t.correlationId),
+  index('lead_submit_failures_submission_ref_idx').on(t.submissionRef),
 ])
 
 export const leadEmailLog = pgTable('lead_email_log', {
