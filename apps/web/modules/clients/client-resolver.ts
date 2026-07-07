@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { quotes } from '@rgtools/db/schema'
-import { clientAliases, clients, clientContacts, leads } from '@rgtools/db/schema-leads'
+import { workOrders } from '@rgtools/db/schema-workorders'
+import { clientAliases, clientMergedReferences, clients, clientContacts, leads } from '@rgtools/db/schema-leads'
 import { buildClientIdentityUpsert } from './client-identity'
 import { collectClientAliases } from './client-aliases'
 
@@ -34,8 +35,15 @@ export async function resolveClient(tx: Tx, input: ResolveClientInput): Promise<
     const [existing] = await tx
       .select()
       .from(clients)
-      .where(eq(clients.servicem8CompanyUuid, companyUuid))
+      .where(and(eq(clients.servicem8CompanyUuid, companyUuid), eq(clients.isMerged, false)))
       .limit(1)
+    if (!existing) {
+      const mergedMatch = await findMergedReferenceMatch(tx, companyUuid, null, null)
+      if (mergedMatch) {
+        const contactId = await resolveContact(tx, mergedMatch.survivorClientId, input)
+        return { clientId: mergedMatch.survivorClientId, contactId, matchedExistingClient: true, linked: true }
+      }
+    }
     const identityUpdate = buildClientIdentityUpsert({
       existing: existing ? {
         name: existing.name,
@@ -93,6 +101,11 @@ export async function resolveClient(tx: Tx, input: ResolveClientInput): Promise<
       .where(eq(clients.id, matched.id))
     const contactId = await resolveContact(tx, matched.id, input)
     return { clientId: matched.id, contactId, matchedExistingClient: true, linked: false }
+  }
+  const mergedMatch = await findMergedReferenceMatch(tx, null, input.phoneNormalized || null, input.email || null)
+  if (mergedMatch) {
+    const contactId = await resolveContact(tx, mergedMatch.survivorClientId, input)
+    return { clientId: mergedMatch.survivorClientId, contactId, matchedExistingClient: true, linked: false }
   }
 
   const [created] = await tx
@@ -158,7 +171,28 @@ async function findProvisionalMatch(tx: Tx, phoneNormalized: string | null, emai
   const [row] = await tx
     .select()
     .from(clients)
-    .where(and(isNull(clients.servicem8CompanyUuid), matchers.length === 1 ? matchers[0] : or(...matchers)))
+    .where(and(eq(clients.isMerged, false), isNull(clients.servicem8CompanyUuid), matchers.length === 1 ? matchers[0] : or(...matchers)))
+    .limit(1)
+
+  return row ?? null
+}
+
+async function findMergedReferenceMatch(
+  tx: Tx,
+  servicem8CompanyUuid: string | null,
+  phoneNormalized: string | null,
+  email: string | null,
+) {
+  const matchers: SQL[] = []
+  if (servicem8CompanyUuid) matchers.push(eq(clientMergedReferences.servicem8CompanyUuid, servicem8CompanyUuid))
+  if (phoneNormalized) matchers.push(eq(clientMergedReferences.phoneNormalized, phoneNormalized))
+  if (email) matchers.push(eq(clientMergedReferences.email, email))
+  if (matchers.length === 0) return null
+
+  const [row] = await tx
+    .select({ survivorClientId: clientMergedReferences.survivorClientId })
+    .from(clientMergedReferences)
+    .where(matchers.length === 1 ? matchers[0] : or(...matchers))
     .limit(1)
 
   return row ?? null
@@ -177,8 +211,13 @@ export async function mergeClients(tx: Tx, survivorId: string, loserIds: string[
   // otherwise drop their contacts.
   const loserRows = await tx
     .select({
+      id: clients.id,
       name: clients.name,
       companyName: clients.companyName,
+      notes: clients.notes,
+      email: clients.email,
+      phoneNormalized: clients.phoneNormalized,
+      servicem8CompanyUuid: clients.servicem8CompanyUuid,
       servicem8Name: clients.servicem8Name,
       servicem8CompanyName: clients.servicem8CompanyName,
     })
@@ -190,15 +229,60 @@ export async function mergeClients(tx: Tx, survivorId: string, loserIds: string[
     row.servicem8Name,
     row.servicem8CompanyName,
   ]))
+  const [survivor] = await tx
+    .select({ notes: clients.notes })
+    .from(clients)
+    .where(eq(clients.id, survivorId))
+    .limit(1)
+  const loserAliasRows = await tx
+    .select({ alias: clientAliases.alias, source: clientAliases.source })
+    .from(clientAliases)
+    .where(inArray(clientAliases.clientId, losers))
+  const mergedNotes = collectClientAliases(loserRows.map((row) => row.notes))
   if (aliases.length > 0) {
     await tx
       .insert(clientAliases)
       .values(aliases.map((alias) => ({ clientId: survivorId, alias, source: 'merge' as const })))
       .onConflictDoNothing()
   }
+  if (loserRows.length > 0) {
+    await tx
+      .insert(clientMergedReferences)
+      .values(loserRows.map((row) => ({
+        survivorClientId: survivorId,
+        mergedClientId: row.id,
+        servicem8CompanyUuid: row.servicem8CompanyUuid,
+        name: row.name,
+        companyName: row.companyName,
+        email: row.email,
+        phoneNormalized: row.phoneNormalized,
+        mergedAt: now,
+      })))
+      .onConflictDoNothing()
+  }
 
   await tx.update(clientContacts).set({ clientId: survivorId, updatedAt: now }).where(inArray(clientContacts.clientId, losers))
+  if (loserAliasRows.length > 0) {
+    await tx
+      .insert(clientAliases)
+      .values(loserAliasRows.map((row) => ({ clientId: survivorId, alias: row.alias, source: row.source })))
+      .onConflictDoNothing()
+    await tx.delete(clientAliases).where(inArray(clientAliases.clientId, losers))
+  }
   await tx.update(leads).set({ clientId: survivorId, updatedAt: now }).where(inArray(leads.clientId, losers))
   await tx.update(quotes).set({ clientId: survivorId, updatedAt: now }).where(inArray(quotes.clientId, losers))
-  await tx.delete(clients).where(inArray(clients.id, losers))
+  await tx.update(workOrders).set({ clientId: survivorId, updatedAt: now }).where(inArray(workOrders.clientId, losers))
+  if (mergedNotes.length > 0) {
+    await tx
+      .update(clients)
+      .set({
+        notes: [survivor?.notes, ...mergedNotes].filter(Boolean).join('\n\n'),
+        updatedAt: now,
+      })
+      .where(eq(clients.id, survivorId))
+  }
+  await tx
+    .update(clients)
+    .set({ isMerged: true, mergedIntoClientId: survivorId, mergedAt: now, updatedAt: now })
+    .where(inArray(clients.id, losers))
 }

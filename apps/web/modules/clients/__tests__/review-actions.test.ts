@@ -8,6 +8,7 @@ const transaction = vi.fn()
 const revalidatePath = vi.fn()
 const logAudit = vi.fn()
 const mergeClients = vi.fn()
+const insert = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
 vi.mock('@/lib/access-db', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/lib/access-db', () => ({
 vi.mock('@/lib/db', () => ({
   db: {
     transaction: (...args: unknown[]) => transaction(...args),
+    insert: (...args: unknown[]) => insert(...args),
   },
 }))
 vi.mock('@/lib/audit-db', () => ({
@@ -28,7 +30,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: (path: string) => revalidatePath(path),
 }))
 
-import { confirmClientMergeReviewGroup } from '../review-actions'
+import { confirmClientMergeReviewGroup, dismissClientDuplicateSuggestion } from '../review-actions'
 
 const adminId = '11111111-1111-4111-8111-111111111111'
 
@@ -47,6 +49,7 @@ describe('confirmClientMergeReviewGroup', () => {
     revalidatePath.mockReset()
     logAudit.mockReset()
     mergeClients.mockReset()
+    insert.mockReset()
 
     auth.mockResolvedValue({ user: { id: adminId, role: 'admin' } })
     userCanAccessSlug.mockResolvedValue(true)
@@ -87,5 +90,42 @@ describe('confirmClientMergeReviewGroup', () => {
       targetId: survivorId,
     }), tx)
     expect(revalidatePath).toHaveBeenCalledWith('/admin/client-merge-review')
+  })
+
+  it('records duplicate dismissal metadata for admins and revalidates merge review', async () => {
+    const onConflictDoNothing = vi.fn(async () => [])
+    const values = vi.fn(() => ({ onConflictDoNothing }))
+    insert.mockReturnValue({ values })
+    const data = new FormData()
+    data.set('suggestionKey', 'contact:+64210000001')
+    data.set('reason', 'same_contact')
+
+    await dismissClientDuplicateSuggestion(data)
+
+    expect(userCanAccessSlug).toHaveBeenCalledWith(adminId, 'clients')
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      suggestionKey: 'contact:+64210000001',
+      reason: 'same_contact',
+      dismissedBy: adminId,
+      dismissedAt: expect.any(Date),
+    }))
+    expect(onConflictDoNothing).toHaveBeenCalled()
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: adminId,
+      action: 'client.duplicate.dismissed',
+      targetId: 'contact:+64210000001',
+    }))
+    expect(revalidatePath).toHaveBeenCalledWith('/admin/client-merge-review')
+  })
+
+  it('denies duplicate dismissal for non-admin users', async () => {
+    auth.mockResolvedValue({ user: { id: 'staff-1', role: 'staff' } })
+    const data = new FormData()
+    data.set('suggestionKey', 'contact:+64210000001')
+
+    await expect(dismissClientDuplicateSuggestion(data)).rejects.toThrow('Forbidden')
+
+    expect(insert).not.toHaveBeenCalled()
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })

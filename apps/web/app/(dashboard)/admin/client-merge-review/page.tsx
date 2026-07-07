@@ -1,7 +1,7 @@
 import { requireModule } from '@/lib/guard'
-import { loadClientMergeRows } from '@/modules/clients/merge-cleanup'
+import { loadClientMergeRows, loadDismissedDuplicateSuggestionKeys } from '@/modules/clients/merge-cleanup'
 import { planClientMerges, type ClientMergePlanRow } from '@/modules/clients/merge-planner'
-import { confirmClientMergeReviewGroup } from '@/modules/clients/review-actions'
+import { confirmClientMergeReviewGroup, dismissClientDuplicateSuggestion } from '@/modules/clients/review-actions'
 import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
 
 const noExternalServiceM8: ServiceM8FetchRequest = async () => ({
@@ -14,8 +14,11 @@ export default async function ClientMergeReviewPage() {
   await requireModule('admin')
   await requireModule('clients')
 
-  const rows = await loadClientMergeRows(noExternalServiceM8)
-  const plan = planClientMerges(rows)
+  const [rows, dismissedSuggestionKeys] = await Promise.all([
+    loadClientMergeRows(noExternalServiceM8),
+    loadDismissedDuplicateSuggestionKeys(),
+  ])
+  const plan = planClientMerges(rows, { dismissedSuggestionKeys })
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -43,6 +46,16 @@ export default async function ClientMergeReviewPage() {
               <div className="border-b border-slate-200 px-4 py-3">
                 <div className="text-sm font-medium text-slate-950">{group.reason.replace('_', ' ')}</div>
                 <div className="text-xs text-slate-500">{group.key}</div>
+                <form action={dismissClientDuplicateSuggestion} className="mt-2">
+                  <input type="hidden" name="suggestionKey" value={group.key} />
+                  <input type="hidden" name="reason" value={group.reason} />
+                  <button
+                    type="submit"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    Dismiss
+                  </button>
+                </form>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-200 text-sm">

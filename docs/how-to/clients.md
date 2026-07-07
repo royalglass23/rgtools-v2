@@ -45,6 +45,8 @@ Duplicate client records can happen when contact details are missing, typed diff
 
 Admins review suspected duplicates from **Admin -> Client Merge Review**. Merge cleanup is intentionally admin-controlled because client records connect multiple workflows.
 
+Strong ServiceM8 identity matches can be planned for safe auto-merge. Ambiguous matches stay in the review queue, where admins can either choose the survivor client or dismiss a false match. Merged duplicates are hidden from normal client lists but kept as merged references so old imports and links can still resolve to the survivor.
+
 ## Developer reference
 
 | Thing | Location |

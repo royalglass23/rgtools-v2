@@ -201,7 +201,7 @@ export function shapeClientDetail(row: ClientDetailShapeInput | null): ClientDet
 }
 
 export async function getClientsList(filters: ClientListFilters = {}): Promise<ClientListRow[]> {
-  const clientRows = await db.select().from(clients).orderBy(clients.name)
+  const clientRows = await db.select().from(clients).where(eq(clients.isMerged, false)).orderBy(clients.name)
   const shaped = await Promise.all(clientRows.map(async (client) => {
     const [aliasesRows, contactsRows, leadRows, quoteRows] = await Promise.all([
       db

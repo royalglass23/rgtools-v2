@@ -6,10 +6,10 @@ import { auth } from '@/lib/auth'
 import { userCanAccessSlug } from '@/lib/access-db'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
-import { clients } from '@rgtools/db/schema-leads'
+import { clientDuplicateDismissals, clients } from '@rgtools/db/schema-leads'
 import { mergeClients } from './client-resolver'
 
-export async function confirmClientMergeReviewGroup(formData: FormData): Promise<void> {
+async function requireClientMergeAdmin() {
   const session = await auth()
   if (session?.user?.role !== 'admin' || !session.user.id) {
     throw new Error('Forbidden')
@@ -17,6 +17,11 @@ export async function confirmClientMergeReviewGroup(formData: FormData): Promise
   if (!await userCanAccessSlug(session.user.id, 'clients')) {
     throw new Error('Forbidden')
   }
+  return session
+}
+
+export async function confirmClientMergeReviewGroup(formData: FormData): Promise<void> {
+  const session = await requireClientMergeAdmin()
 
   const survivorId = String(formData.get('survivorId') ?? '')
   const loserIds = formData
@@ -42,6 +47,33 @@ export async function confirmClientMergeReviewGroup(formData: FormData): Promise
       before: { loserIds },
       after: { survivorId },
     }, tx)
+  })
+
+  revalidatePath('/admin/client-merge-review')
+}
+
+export async function dismissClientDuplicateSuggestion(formData: FormData): Promise<void> {
+  const session = await requireClientMergeAdmin()
+  const suggestionKey = String(formData.get('suggestionKey') ?? '').trim()
+  const reason = String(formData.get('reason') ?? '').trim() || null
+  if (!suggestionKey) throw new Error('Duplicate suggestion key is required')
+
+  await db
+    .insert(clientDuplicateDismissals)
+    .values({
+      suggestionKey,
+      reason,
+      dismissedBy: session.user.id as string,
+      dismissedAt: new Date(),
+    })
+    .onConflictDoNothing()
+
+  await logAudit({
+    actorId: session.user.id as string,
+    action: 'client.duplicate.dismissed',
+    targetId: suggestionKey,
+    before: null,
+    after: { suggestionKey, reason },
   })
 
   revalidatePath('/admin/client-merge-review')
