@@ -14,7 +14,7 @@ import { updateMenuAvailability } from '@/modules/admin/actions'
 import { MENU_DEFINITIONS, type MenuKey, type MenuRole } from '@/lib/menu-availability'
 import { getMenuAvailability } from '@/lib/menu-availability-db'
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100] as const
 const AUDIT_ENTITY_TYPES = ['user', 'access', 'lead', 'quote', 'scoring', 'pricing'] as const
 
 function parsePage(value: string | string[] | undefined) {
@@ -23,10 +23,10 @@ function parsePage(value: string | string[] | undefined) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
-function parsePageSize(value: string | string[] | undefined) {
+function parsePageSize(value: string | string[] | undefined, fallback = 10) {
   const raw = Array.isArray(value) ? value[0] : value
-  const parsed = Number(raw ?? '10')
-  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : 10
+  const parsed = Number(raw ?? String(fallback))
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : fallback
 }
 
 function parseString(value: string | string[] | undefined) {
@@ -198,7 +198,7 @@ export default async function AdminPage({
   const errorPage = parsePage(params.errorPage)
   const auditPage = parsePage(params.auditPage)
   const errorSize = parsePageSize(params.errorSize)
-  const auditSize = parsePageSize(params.auditSize)
+  const auditSize = parsePageSize(params.auditSize, 5)
   const auditActorId = parseString(params.auditActorId)
   const auditEntityType = parseString(params.auditEntityType)
   const auditAction = parseString(params.auditAction)
@@ -286,10 +286,15 @@ export default async function AdminPage({
       <h1 className="text-2xl font-semibold text-gray-900">Admin Panel</h1>
 
       {/* ── User List ─────────────────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Users</h2>
+      <details className="order-10" open>
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Users</summary>
 
-        <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
+        <div className="mb-4 rounded border border-gray-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900">Create User</h3>
+          <CreateUserForm />
+        </div>
+
+        <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -336,11 +341,11 @@ export default async function AdminPage({
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
       {isProtectedActor && (
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-800">Menu Availability</h2>
+        <details className="order-20">
+          <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Menu Availability</summary>
           {parseString(params.menuSaved) === '1' && (
             <div className="mb-4 rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
               Menu availability saved.
@@ -398,16 +403,8 @@ export default async function AdminPage({
               </button>
             </div>
           </form>
-        </section>
+        </details>
       )}
-
-      {/* ── Create User ───────────────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Create User</h2>
-        <div className="bg-white border border-gray-200 rounded shadow-sm p-5">
-          <CreateUserForm />
-        </div>
-      </section>
 
       {/* ── Audit Log ─────────────────────────────────────────────────────── */}
       <details className="order-[60]">
@@ -502,12 +499,12 @@ export default async function AdminPage({
         </div>
       </details>
 
-      <section className="order-10">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Audit Log
-            <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
-          </h2>
+      <details className="order-40">
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">
+          Audit Log
+          <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
+        </summary>
+        <div className="mb-3 flex justify-end">
           <ExportDropdown kind="audit" query={auditExportQuery} />
         </div>
 
@@ -672,7 +669,7 @@ export default async function AdminPage({
             searchParams={params}
           />
         </div>
-      </section>
+      </details>
 
       <details className="order-50">
         <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Diagnostics</summary>
