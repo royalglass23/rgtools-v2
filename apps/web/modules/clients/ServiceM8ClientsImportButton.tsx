@@ -25,7 +25,7 @@ export function ServiceM8ClientsImportButton() {
       </form>
       {state && 'success' in state && (
         <p className="text-sm text-gray-600">
-          Imported {state.summary.created} new, updated {state.summary.sourceUpdated}, needs review {state.summary.needsReview}, skipped {state.summary.skipped}, errors {state.summary.errors}.
+          Checked {state.summary.scanned} of {state.summary.batchLimit ?? state.summary.scanned} eligible clients. Contacts found {state.summary.contactsFound}, missing {state.summary.contactsMissing}. Imported {state.summary.created} new, updated {state.summary.sourceUpdated}, needs review {state.summary.needsReview}, skipped {state.summary.skipped}, errors {state.summary.errors}.
         </p>
       )}
       {state && 'error' in state && (

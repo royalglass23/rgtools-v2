@@ -43,10 +43,13 @@ describe('refreshServiceM8ClientsAction', () => {
     userCanAccessSlug.mockResolvedValue(true)
     logError.mockResolvedValue('error-1')
     refreshServiceM8Clients.mockResolvedValue({
+      batchLimit: 20,
       scanned: 2,
       created: 1,
       sourceUpdated: 1,
       needsReview: 2,
+      contactsFound: 2,
+      contactsMissing: 0,
       skipped: 0,
       errors: 0,
       errorMessages: [],
@@ -59,10 +62,13 @@ describe('refreshServiceM8ClientsAction', () => {
     expect(result).toEqual({
       success: true,
       summary: {
+        batchLimit: 20,
         scanned: 2,
         created: 1,
         sourceUpdated: 1,
         needsReview: 2,
+        contactsFound: 2,
+        contactsMissing: 0,
         skipped: 0,
         errors: 0,
         errorMessages: [],
@@ -80,10 +86,13 @@ describe('refreshServiceM8ClientsAction', () => {
 
   it('logs row-level import errors as warnings while returning the summary', async () => {
     refreshServiceM8Clients.mockResolvedValue({
+      batchLimit: 20,
       scanned: 2,
       created: 1,
       sourceUpdated: 0,
       needsReview: 1,
+      contactsFound: 1,
+      contactsMissing: 1,
       skipped: 0,
       errors: 1,
       errorMessages: ['company-1: duplicate key'],
