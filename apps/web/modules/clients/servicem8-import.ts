@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { createServiceM8RequestFromEnv, type ServiceM8FetchRequest } from '@/lib/servicem8/client'
-import { clients } from '@rgtools/db/schema-leads'
+import {
+  createServiceM8RequestFromEnv,
+  getCompanyContact,
+  getJobContact,
+  type ServiceM8FetchRequest,
+  type ServiceM8JobContact,
+} from '@/lib/servicem8/client'
+import { clientContacts, clients } from '@rgtools/db/schema-leads'
 import {
   buildClientIdentityUpsert,
   type ClientCanonicalSource,
@@ -15,7 +21,21 @@ export type ServiceM8CompanyImportRecord = {
   email?: string | null
   phone?: string | null
   mobile?: string | null
+  contactName?: string | null
+  contactEmail?: string | null
+  contactPhone?: string | null
+  contactMobile?: string | null
   active?: number | string | boolean | null
+  edit_date?: string | null
+  eligibleJobStatuses?: string[]
+  eligibleJobUuids?: string[]
+}
+
+export type ServiceM8ClientImportJobRecord = {
+  uuid?: string | null
+  active?: number | string | boolean | null
+  status?: string | null
+  company_uuid?: string | null
   edit_date?: string | null
 }
 
@@ -32,6 +52,11 @@ export type ExistingImportedClient = {
 }
 
 export type ClientImportValues = ReturnType<typeof buildClientIdentityUpsert>
+export type ClientImportContact = {
+  name: string | null
+  email: string | null
+  phone: string | null
+}
 
 export type ClientImportDeps = {
   now: () => Date
@@ -39,6 +64,7 @@ export type ClientImportDeps = {
   createClient: (values: ClientImportValues) => Promise<{ id: string; reviewStatus: ClientReviewStatus }>
   updateClient: (id: string, values: ClientImportValues) => Promise<{ id: string; reviewStatus: ClientReviewStatus }>
   addClientAliases: (clientId: string, aliases: string[], source: ClientAliasSource) => Promise<void>
+  upsertPrimaryContact: (clientId: string, contact: ClientImportContact) => Promise<void>
 }
 
 export type ServiceM8ClientImportSummary = {
@@ -54,8 +80,44 @@ export type ServiceM8ClientImportSummary = {
 export async function refreshServiceM8Clients(
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<ServiceM8ClientImportSummary> {
-  const rows = await readServiceM8Array<ServiceM8CompanyImportRecord>(request, '/company.json')
+  const rows = await readServiceM8ClientImportRecords(request)
   return importServiceM8CompaniesFromRows(rows, createDbImportDeps())
+}
+
+export async function readServiceM8ClientImportRecords(
+  request: ServiceM8FetchRequest,
+): Promise<ServiceM8CompanyImportRecord[]> {
+  const jobs = (await readServiceM8Array<ServiceM8ClientImportJobRecord>(
+    request,
+    `/job.json${odataFilter("active eq 1 and (status eq 'Work Order' or status eq 'Completed')")}`,
+  )).filter(isEligibleClientImportJob)
+
+  const jobsByCompanyUuid = new Map<string, ServiceM8ClientImportJobRecord[]>()
+  for (const job of jobs) {
+    const companyUuid = clean(job.company_uuid)
+    if (!companyUuid) continue
+    jobsByCompanyUuid.set(companyUuid, [...(jobsByCompanyUuid.get(companyUuid) ?? []), job])
+  }
+
+  return Promise.all([...jobsByCompanyUuid.entries()].map(async ([companyUuid, companyJobs]) => {
+    const company = await readServiceM8Object<ServiceM8CompanyImportRecord>(request, `/company/${companyUuid}.json`)
+    const contact = await bestContactForCompanyJobs(companyUuid, companyJobs, request)
+    const contactPhone = contact?.mobile ?? contact?.phone ?? null
+
+    return {
+      ...company,
+      uuid: clean(company.uuid) ?? companyUuid,
+      email: contact?.email ?? company.email ?? null,
+      phone: contactPhone ?? company.phone ?? null,
+      mobile: contact?.mobile ?? company.mobile ?? null,
+      contactName: contact?.name ?? null,
+      contactEmail: contact?.email ?? null,
+      contactPhone: contact?.phone ?? null,
+      contactMobile: contact?.mobile ?? null,
+      eligibleJobStatuses: [...new Set(companyJobs.map((job) => clean(job.status)).filter((status): status is string => Boolean(status)))],
+      eligibleJobUuids: companyJobs.map((job) => clean(job.uuid)).filter((uuid): uuid is string => Boolean(uuid)),
+    }
+  }))
 }
 
 export async function importServiceM8CompaniesFromRows(
@@ -82,14 +144,15 @@ export async function importServiceM8CompaniesFromRows(
 
     try {
       const existing = await deps.findByServiceM8Uuid(uuid)
+      const contact = importContact(row)
       const values = buildClientIdentityUpsert({
         existing,
         source: {
           servicem8CompanyUuid: uuid,
           clientName: name,
           companyName: name,
-          phone: clean(row.mobile) ?? clean(row.phone),
-          email: clean(row.email),
+          phone: contact.phone ?? clean(row.mobile) ?? clean(row.phone),
+          email: contact.email ?? clean(row.email),
           sourceSnapshot: row,
           syncedAt: syncDate(row.edit_date) ?? deps.now(),
         },
@@ -99,11 +162,13 @@ export async function importServiceM8CompaniesFromRows(
       if (existing) {
         const updated = await deps.updateClient(existing.id, values)
         await deps.addClientAliases(existing.id, importAliases(existing, values), 'servicem8_import')
+        await deps.upsertPrimaryContact(existing.id, contact)
         summary.sourceUpdated += 1
         if (updated.reviewStatus === 'pending_review') summary.needsReview += 1
       } else {
         const created = await deps.createClient(values)
         await deps.addClientAliases(created.id, importAliases(null, values), 'servicem8_import')
+        await deps.upsertPrimaryContact(created.id, contact)
         summary.created += 1
         if (created.reviewStatus === 'pending_review') summary.needsReview += 1
       }
@@ -156,6 +221,27 @@ function createDbImportDeps(): ClientImportDeps {
       return updated
     },
     addClientAliases,
+    upsertPrimaryContact: async (clientId, contact) => {
+      if (!contact.name && !contact.email && !contact.phone) return
+
+      const [existingContact] = await db
+        .select({ id: clientContacts.id })
+        .from(clientContacts)
+        .where(eq(clientContacts.clientId, clientId))
+        .orderBy(clientContacts.createdAt)
+        .limit(1)
+
+      if (existingContact) {
+        await db
+          .update(clientContacts)
+          .set({ ...contact, updatedAt: new Date() })
+          .where(eq(clientContacts.id, existingContact.id))
+      } else {
+        await db
+          .insert(clientContacts)
+          .values({ clientId, ...contact })
+      }
+    },
   }
 }
 
@@ -177,13 +263,59 @@ async function readServiceM8Array<T>(request: ServiceM8FetchRequest, path: strin
   return Array.isArray(rows) ? rows as T[] : []
 }
 
+async function readServiceM8Object<T>(request: ServiceM8FetchRequest, path: string): Promise<T> {
+  const res = await request(path)
+  if (!res.ok) throw new Error(`ServiceM8 request failed with HTTP ${res.status}`)
+  const row = await res.json()
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw new Error('ServiceM8 returned an unexpected object response')
+  }
+  return row as T
+}
+
+async function bestContactForCompanyJobs(
+  companyUuid: string,
+  jobs: ServiceM8ClientImportJobRecord[],
+  request: ServiceM8FetchRequest,
+): Promise<ServiceM8JobContact | null> {
+  for (const job of jobs) {
+    const jobUuid = clean(job.uuid)
+    if (!jobUuid) continue
+    const contact = await getJobContact(jobUuid, request)
+    if (contact?.name || contact?.email || contact?.phone || contact?.mobile) return contact
+  }
+
+  return getCompanyContact(companyUuid, request)
+}
+
 function isActive(value: ServiceM8CompanyImportRecord['active']) {
   return value === undefined || value === null || value === true || value === 1 || value === '1'
+}
+
+function isEligibleClientImportJob(job: ServiceM8ClientImportJobRecord): boolean {
+  const status = normalizeStatus(job.status)
+  return isActive(job.active) && Boolean(clean(job.company_uuid)) && (status === 'work order' || status === 'completed')
 }
 
 function clean(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+function importContact(row: ServiceM8CompanyImportRecord): ClientImportContact {
+  return {
+    name: clean(row.contactName),
+    email: clean(row.contactEmail) ?? clean(row.email),
+    phone: clean(row.contactMobile) ?? clean(row.contactPhone) ?? clean(row.mobile) ?? clean(row.phone),
+  }
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? ''
+}
+
+function odataFilter(expr: string): string {
+  return `?%24filter=${encodeURIComponent(expr)}`
 }
 
 function syncDate(value: string | null | undefined): Date | null {

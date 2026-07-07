@@ -21,7 +21,7 @@ export const AUDIT_ACTIONS = {
 } as const
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS]
-export type AuditEntityType = 'user' | 'access' | 'lead' | 'quote' | 'scoring' | 'pricing'
+export type AuditEntityType = 'user' | 'access' | 'lead' | 'quote' | 'work_order' | 'scoring' | 'pricing'
 export type AuditDiffEntry = { from?: unknown; to?: unknown }
 export type AuditDiff = Record<string, AuditDiffEntry>
 
@@ -40,7 +40,7 @@ type ActionDetailMap = {
 }
 type LegacyAuditAction = keyof ActionDetailMap
 
-const ENTITY_TYPES: AuditEntityType[] = ['user', 'access', 'lead', 'quote', 'scoring', 'pricing']
+const ENTITY_TYPES: AuditEntityType[] = ['user', 'access', 'lead', 'quote', 'work_order', 'scoring', 'pricing']
 
 export function buildAuditDiff(
   before: Record<string, unknown> | null | undefined,

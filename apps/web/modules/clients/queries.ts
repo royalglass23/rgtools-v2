@@ -473,14 +473,14 @@ function normalizeSearch(value: string | null | undefined): string {
 }
 
 function normalizePageSize(value: number | null | undefined): ClientListPageSize {
-  if (!Number.isFinite(value)) return DEFAULT_CLIENT_LIST_PAGE_SIZE
-  const pageSize = Math.trunc(Number(value))
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_CLIENT_LIST_PAGE_SIZE
+  const pageSize = Math.trunc(value)
   return CLIENT_LIST_PAGE_SIZE_OPTIONS.includes(pageSize as ClientListPageSize)
     ? pageSize as ClientListPageSize
     : DEFAULT_CLIENT_LIST_PAGE_SIZE
 }
 
 function clampPage(value: number | null | undefined, pageCount: number): number {
-  if (!Number.isFinite(value)) return 1
-  return Math.min(Math.max(Math.trunc(Number(value)), 1), pageCount)
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1
+  return Math.min(Math.max(Math.trunc(value), 1), pageCount)
 }
