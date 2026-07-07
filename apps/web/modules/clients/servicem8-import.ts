@@ -15,8 +15,6 @@ import {
 } from './client-identity'
 import { addClientAliases, collectClientAliases, type ClientAliasSource } from './client-aliases'
 
-export const SERVICE_M8_CLIENT_REFRESH_LIMIT = 20
-
 export type ServiceM8CompanyImportRecord = {
   uuid?: string | null
   name?: string | null
@@ -70,13 +68,10 @@ export type ClientImportDeps = {
 }
 
 export type ServiceM8ClientImportSummary = {
-  batchLimit: number | null
   scanned: number
   created: number
   sourceUpdated: number
   needsReview: number
-  contactsFound: number
-  contactsMissing: number
   skipped: number
   errors: number
   errorMessages: string[]
@@ -85,21 +80,16 @@ export type ServiceM8ClientImportSummary = {
 export async function refreshServiceM8Clients(
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
 ): Promise<ServiceM8ClientImportSummary> {
-  const rows = await readServiceM8ClientImportRecords(request, { limit: SERVICE_M8_CLIENT_REFRESH_LIMIT })
-  return importServiceM8CompaniesFromRows(rows, createDbImportDeps(), { batchLimit: SERVICE_M8_CLIENT_REFRESH_LIMIT })
+  const rows = await readServiceM8ClientImportRecords(request)
+  return importServiceM8CompaniesFromRows(rows, createDbImportDeps())
 }
 
 export async function readServiceM8ClientImportRecords(
   request: ServiceM8FetchRequest,
-  options: { limit?: number } = {},
 ): Promise<ServiceM8CompanyImportRecord[]> {
-  const limit = normalizeLimit(options.limit)
   const jobs = (await readServiceM8Array<ServiceM8ClientImportJobRecord>(
     request,
-    `/job.json${odataQuery({
-      filter: "active eq 1 and (status eq 'Work Order' or status eq 'Completed')",
-      top: limit,
-    })}`,
+    `/job.json${odataFilter("active eq 1 and (status eq 'Work Order' or status eq 'Completed')")}`,
   )).filter(isEligibleClientImportJob)
 
   const jobsByCompanyUuid = new Map<string, ServiceM8ClientImportJobRecord[]>()
@@ -109,9 +99,7 @@ export async function readServiceM8ClientImportRecords(
     jobsByCompanyUuid.set(companyUuid, [...(jobsByCompanyUuid.get(companyUuid) ?? []), job])
   }
 
-  const companyEntries = [...jobsByCompanyUuid.entries()].slice(0, limit ?? undefined)
-
-  return Promise.all(companyEntries.map(async ([companyUuid, companyJobs]) => {
+  return Promise.all([...jobsByCompanyUuid.entries()].map(async ([companyUuid, companyJobs]) => {
     const company = await readServiceM8Object<ServiceM8CompanyImportRecord>(request, `/company/${companyUuid}.json`)
     const contact = await bestContactForCompanyJobs(companyUuid, companyJobs, request)
     const contactPhone = contact?.mobile ?? contact?.phone ?? null
@@ -135,17 +123,12 @@ export async function readServiceM8ClientImportRecords(
 export async function importServiceM8CompaniesFromRows(
   rows: ServiceM8CompanyImportRecord[],
   deps: ClientImportDeps,
-  options: { batchLimit?: number | null } = {},
 ): Promise<ServiceM8ClientImportSummary> {
-  const contactsFound = rows.filter(hasImportContactDetails).length
   const summary: ServiceM8ClientImportSummary = {
-    batchLimit: options.batchLimit ?? null,
     scanned: rows.length,
     created: 0,
     sourceUpdated: 0,
     needsReview: 0,
-    contactsFound,
-    contactsMissing: rows.length - contactsFound,
     skipped: 0,
     errors: 0,
     errorMessages: [],
@@ -327,26 +310,12 @@ function importContact(row: ServiceM8CompanyImportRecord): ClientImportContact {
   }
 }
 
-function hasImportContactDetails(row: ServiceM8CompanyImportRecord): boolean {
-  const contact = importContact(row)
-  return Boolean(contact.name || contact.email || contact.phone)
-}
-
 function normalizeStatus(value: string | null | undefined): string {
   return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? ''
 }
 
-function normalizeLimit(value: number | undefined): number | null {
-  if (value === undefined) return null
-  if (!Number.isFinite(value)) return null
-  const normalized = Math.floor(value)
-  return normalized > 0 ? normalized : null
-}
-
-function odataQuery(options: { filter: string; top?: number | null }): string {
-  const params = [`%24filter=${encodeURIComponent(options.filter)}`]
-  if (options.top) params.push(`%24top=${options.top}`)
-  return `?${params.join('&')}`
+function odataFilter(expr: string): string {
+  return `?%24filter=${encodeURIComponent(expr)}`
 }
 
 function syncDate(value: string | null | undefined): Date | null {
