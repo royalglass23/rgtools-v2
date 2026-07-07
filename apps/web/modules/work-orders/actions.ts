@@ -1,9 +1,10 @@
 'use server'
 
-import { eq, notInArray, or, sql } from 'drizzle-orm'
+import { eq, inArray, notInArray, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
+import { logAudit } from '@/lib/audit-db'
 import { db } from '@/lib/db'
 import { createServiceM8RequestFromEnv, type ServiceM8FetchRequest } from '@/lib/servicem8/client'
 import { quotes, settings } from '@rgtools/db/schema'
@@ -41,6 +42,37 @@ export async function refreshWorkOrdersAction() {
     redirect(`/work-orders?refreshError=${encodeURIComponent(errorMessage(error))}`)
   }
 
+  revalidatePath('/work-orders')
+}
+
+export async function batchDeleteWorkOrdersAction(formData: FormData): Promise<void> {
+  await assertCurrentUserCanManageWorkOrders()
+  const session = await auth()
+
+  const workOrderIds = formData
+    .getAll('workOrderId')
+    .map((value) => String(value))
+    .filter(Boolean)
+
+  if (workOrderIds.length === 0) return
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(workOrders)
+      .where(inArray(workOrders.id, workOrderIds))
+
+    await Promise.all(workOrderIds.map((workOrderId) =>
+      logAudit({
+        actorId: session?.user?.id ?? null,
+        entityType: 'work_order',
+        action: 'work_order.deleted',
+        targetId: workOrderId,
+        detail: { batch: true },
+      }, tx),
+    ))
+  })
+
+  revalidatePath('/')
   revalidatePath('/work-orders')
 }
 

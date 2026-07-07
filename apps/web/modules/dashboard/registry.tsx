@@ -49,7 +49,7 @@ const leadsTable: ServerTable = {
 }
 
 const quotesTable: ServerTable = {
-  async render({ searchParams, filter }) {
+  async render({ searchParams, filter, isAdmin }) {
     const meta = getTableMeta('quotes')!
     const filters = parseQuoteListFilters(searchParams, {
       prefix: meta.paramPrefix,
@@ -65,13 +65,14 @@ const quotesTable: ServerTable = {
         pageCount={pageCount}
         basePath="/"
         paramPrefix={meta.paramPrefix}
+        isAdmin={isAdmin}
       />
     )
   },
 }
 
 const workOrdersTable: ServerTable = {
-  async render({ searchParams, filter }) {
+  async render({ searchParams, filter, isAdmin }) {
     const meta = getTableMeta('work_orders')!
     const filters = parseWorkOrderListFilters(searchParams, {
       prefix: meta.paramPrefix,
@@ -93,6 +94,7 @@ const workOrdersTable: ServerTable = {
         pageCount={pageCount}
         basePath="/"
         paramPrefix={meta.paramPrefix}
+        isAdmin={isAdmin}
       />
     )
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterClientListRows, shapeClientDetail, shapeClientListRows } from '../queries'
+import { filterClientListRows, paginateClientListRows, shapeClientDetail, shapeClientListRows, type ClientListRow } from '../queries'
 
 describe('client query shaping', () => {
   it('lists each company once with contact count, project count, and last activity', () => {
@@ -68,6 +68,9 @@ describe('client query shaping', () => {
       canonicalSource: 'manual',
       reviewStatus: 'reviewed',
       identityType: 'individual_homeowner',
+      clientType: null,
+      notes: null,
+      reviewNote: null,
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-02T00:00:00Z'),
       aliases: [],
@@ -247,9 +250,32 @@ describe('client query shaping', () => {
     expect(filterClientListRows(rows, { cleanupFilter: 'no_client_type' }).map((row) => row.id)).toEqual(['imported-needs-review', 'duplicate-a', 'duplicate-b'])
     expect(filterClientListRows(rows, { cleanupFilter: 'servicem8_linked' }).map((row) => row.id)).toEqual(['imported-needs-review'])
   })
+
+  it('paginates client rows with a default size of 10 and allowed page sizes', () => {
+    const rows = Array.from({ length: 12 }, (_, index) => clientListRow(`client-${index + 1}`))
+
+    const defaultPage = paginateClientListRows(rows)
+    expect(defaultPage).toMatchObject({
+      rows: rows.slice(0, 10),
+      total: 12,
+      page: 1,
+      pageSize: 10,
+      pageCount: 2,
+    })
+
+    const fivePerPage = paginateClientListRows(rows, { page: 2, pageSize: 5 })
+    expect(fivePerPage.rows.map((row) => row.id)).toEqual(['client-6', 'client-7', 'client-8', 'client-9', 'client-10'])
+    expect(fivePerPage).toMatchObject({ total: 12, page: 2, pageSize: 5, pageCount: 3 })
+
+    const clampedPage = paginateClientListRows(rows, { page: 99, pageSize: 13 })
+    expect(clampedPage.rows.map((row) => row.id)).toEqual(['client-11', 'client-12'])
+    expect(clampedPage).toMatchObject({ total: 12, page: 2, pageSize: 10, pageCount: 2 })
+  })
 })
 
-function clientFixture(overrides: Partial<Parameters<typeof shapeClientListRows>[0][number]> & { id: string; name: string }) {
+function clientFixture(
+  overrides: Partial<Parameters<typeof shapeClientListRows>[0][number]> & { id: string; name: string },
+): Parameters<typeof shapeClientListRows>[0][number] {
   return {
     companyName: null,
     email: null,
@@ -265,5 +291,27 @@ function clientFixture(overrides: Partial<Parameters<typeof shapeClientListRows>
     leads: [],
     quotes: [],
     ...overrides,
+  }
+}
+
+function clientListRow(id: string): ClientListRow {
+  return {
+    id,
+    companyName: id,
+    servicem8CompanyUuid: null,
+    reviewStatus: 'reviewed',
+    aliasNames: [],
+    cleanupFlags: {
+      imported: false,
+      needsReview: false,
+      reviewed: true,
+      possibleDuplicate: false,
+      noContactDetails: false,
+      noClientType: false,
+      servicem8Linked: false,
+    },
+    contactCount: 0,
+    projectCount: 0,
+    lastActivityAt: new Date('2026-01-01T00:00:00Z'),
   }
 }

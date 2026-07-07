@@ -7,7 +7,10 @@ const mockRedirect = vi.hoisted(() => vi.fn())
 const mockInsert = vi.hoisted(() => vi.fn())
 const mockUpdate = vi.hoisted(() => vi.fn())
 const mockSelect = vi.hoisted(() => vi.fn())
+const mockDelete = vi.hoisted(() => vi.fn())
+const mockTransaction = vi.hoisted(() => vi.fn())
 const mockAuth = vi.hoisted(() => vi.fn())
+const mockLogAudit = vi.hoisted(() => vi.fn())
 
 vi.mock('../permissions', () => ({
   assertCurrentUserCanConfigureWorkOrders: mockAssertCanConfigure,
@@ -22,14 +25,18 @@ vi.mock('@/lib/db', () => ({
     insert: mockInsert,
     update: mockUpdate,
     select: mockSelect,
+    delete: mockDelete,
+    transaction: mockTransaction,
   },
 }))
+vi.mock('@/lib/audit-db', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/lib/servicem8/client', () => ({
   createServiceM8RequestFromEnv: vi.fn(),
 }))
 
 import {
   addWorkOrderTimelineNoteAction,
+  batchDeleteWorkOrdersAction,
   createWorkOrderInstallerAction,
   deactivateWorkOrderInstallerAction,
   generateWorkOrderAiSuggestionAction,
@@ -64,6 +71,12 @@ beforeEach(() => {
     })),
   })
   mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+  mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => callback({
+    delete: mockDelete,
+  }))
+  mockDelete.mockReturnValue({
+    where: vi.fn(async () => []),
+  })
 })
 
 describe('work order action permissions', () => {
@@ -83,6 +96,41 @@ describe('work order action permissions', () => {
     )
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('requires manage access before bulk deleting Work Orders', async () => {
+    mockAssertCanManage.mockRejectedValue(new Error('Forbidden: Work Orders manage access is required.'))
+    const formData = new FormData()
+    formData.append('workOrderId', 'work-order-1')
+
+    await expect(batchDeleteWorkOrdersAction(formData)).rejects.toThrow(
+      'Forbidden: Work Orders manage access is required.',
+    )
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('lets manage users bulk delete selected Work Orders', async () => {
+    const formData = new FormData()
+    formData.append('workOrderId', 'work-order-1')
+    formData.append('workOrderId', 'work-order-2')
+
+    await batchDeleteWorkOrdersAction(formData)
+
+    expect(mockDelete).toHaveBeenCalledTimes(1)
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'user-1',
+      entityType: 'work_order',
+      action: 'work_order.deleted',
+      targetId: 'work-order-1',
+      detail: { batch: true },
+    }), expect.anything())
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+      targetId: 'work-order-2',
+    }), expect.anything())
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/')
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/work-orders')
   })
 
   it('requires manage access before marking timeline entries as client-visible candidates', async () => {

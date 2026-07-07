@@ -4,8 +4,20 @@ const auth = vi.fn()
 const createTrackedQuote = vi.fn()
 const revalidatePath = vi.fn()
 const getExpirySettings = vi.fn()
+const logAudit = vi.fn()
+const dbDelete = vi.fn()
+const dbTransaction = vi.fn()
+const requireModule = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
+vi.mock('@/lib/audit-db', () => ({ logAudit: (input: unknown, tx?: unknown) => logAudit(input, tx) }))
+vi.mock('@/lib/db', () => ({
+  db: {
+    delete: (...args: unknown[]) => dbDelete(...args),
+    transaction: (...args: unknown[]) => dbTransaction(...args),
+  },
+}))
+vi.mock('@/lib/guard', () => ({ requireModule: (slug: string) => requireModule(slug) }))
 vi.mock('../create-tracked-quote', () => ({
   createTrackedQuote: (opts: unknown) => createTrackedQuote(opts),
 }))
@@ -14,7 +26,7 @@ vi.mock('../settings-query', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
 
-import { createTrackedQuoteAction } from '../actions'
+import { batchDeleteQuotesAction, createTrackedQuoteAction } from '../actions'
 
 describe('createTrackedQuoteAction', () => {
   beforeEach(() => {
@@ -22,8 +34,19 @@ describe('createTrackedQuoteAction', () => {
     createTrackedQuote.mockReset()
     revalidatePath.mockReset()
     getExpirySettings.mockReset()
+    logAudit.mockReset()
+    dbDelete.mockReset()
+    dbTransaction.mockReset()
+    requireModule.mockReset()
     auth.mockResolvedValue({ user: { id: 'user-1' } })
     getExpirySettings.mockResolvedValue({ defaultPreset: '30d' })
+    requireModule.mockResolvedValue(undefined)
+    dbTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => callback({
+      delete: dbDelete,
+    }))
+    dbDelete.mockReturnValue({
+      where: vi.fn(async () => []),
+    })
   })
 
   it('rejects an unauthenticated caller', async () => {
@@ -136,6 +159,40 @@ describe('createTrackedQuoteAction', () => {
       link: 'https://quotes-worker.example/q/EXISTING1',
       expiresAt,
     })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('lets admins bulk delete selected quote rows', async () => {
+    auth.mockResolvedValue({ user: { id: 'admin-1', role: 'admin' } })
+    const formData = new FormData()
+    formData.append('quoteId', 'quote-1')
+    formData.append('quoteId', 'quote-2')
+
+    await batchDeleteQuotesAction(formData)
+
+    expect(dbDelete).toHaveBeenCalledTimes(1)
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'admin-1',
+      entityType: 'quote',
+      action: 'quote.deleted',
+      targetId: 'quote-1',
+      detail: { batch: true },
+    }), expect.anything())
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      targetId: 'quote-2',
+    }), expect.anything())
+    expect(revalidatePath).toHaveBeenCalledWith('/')
+    expect(revalidatePath).toHaveBeenCalledWith('/quote-tracker')
+  })
+
+  it('denies quote bulk delete for non-admin users', async () => {
+    auth.mockResolvedValue({ user: { id: 'staff-1', role: 'staff' } })
+    const formData = new FormData()
+    formData.append('quoteId', 'quote-1')
+
+    await expect(batchDeleteQuotesAction(formData)).rejects.toThrow('Forbidden')
+
+    expect(dbDelete).not.toHaveBeenCalled()
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 })

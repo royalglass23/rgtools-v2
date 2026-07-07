@@ -53,6 +53,7 @@ describe('deriveAuditEntityType', () => {
   it('derives known entity types from action prefixes', () => {
     expect(deriveAuditEntityType('lead.edited')).toBe('lead')
     expect(deriveAuditEntityType('quote.created')).toBe('quote')
+    expect(deriveAuditEntityType('work_order.deleted')).toBe('work_order')
     expect(deriveAuditEntityType('access.grant')).toBe('access')
   })
 
