@@ -37,6 +37,8 @@ The detail page is the best place to answer:
 
 Use the linked lead and quote rows to move into the workflow that needs action.
 
+Admins can use **Client cleanup** on the detail page to edit the canonical client name, type/classification, primary contact, manual aliases, review status, review note, and shared client notes. Source aliases from imports and merges are preserved separately so cleanup does not overwrite the raw ServiceM8 context.
+
 ## Duplicate clients
 
 Duplicate client records can happen when contact details are missing, typed differently, or imported from older jobs.

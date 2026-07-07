@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { auth } from '@/lib/auth'
+import { updateClientDashboardAction } from '@/modules/clients/dashboard-actions'
 import { getClientDetail } from '@/modules/clients/queries'
 
 export default async function ClientDetailPage({
@@ -8,8 +10,14 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const client = await getClientDetail(id)
+  const [client, session] = await Promise.all([
+    getClientDetail(id),
+    auth(),
+  ])
   if (!client) notFound()
+  const canEdit = session?.user?.role === 'admin'
+  const updateAction = updateClientDashboardAction.bind(null, client.id)
+  const primaryContact = client.contacts[0]
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -27,6 +35,75 @@ export default async function ClientDetailPage({
           {client.contactCount} contacts · {client.projectCount} projects · Last activity {formatDateTime(client.lastActivityAt)}
         </p>
       </div>
+
+      {canEdit && (
+        <Section title="Client cleanup">
+          <form action={updateAction} className="grid gap-4 sm:grid-cols-2">
+            <Field label="Display name" name="name" defaultValue={client.name} required />
+            <Field label="Company name" name="companyName" defaultValue={client.companyName} />
+            <Field label="Client email" name="email" defaultValue={client.email} type="email" />
+            <Field label="Client phone" name="phone" defaultValue={client.phone} />
+            <SelectField
+              label="Client type"
+              name="clientType"
+              defaultValue={client.clientType}
+              options={[
+                ['', 'Not set'],
+                ['homeowner', 'Homeowner'],
+                ['builder', 'Builder'],
+                ['developer', 'Developer'],
+                ['investor', 'Investor'],
+                ['repeat_exclusive', 'Repeat exclusive'],
+              ]}
+            />
+            <SelectField
+              label="Identity type"
+              name="identityType"
+              defaultValue={client.identityType}
+              options={[
+                ['', 'Not set'],
+                ['company', 'Company'],
+                ['individual_homeowner', 'Individual homeowner'],
+                ['household', 'Household'],
+                ['contractor', 'Contractor'],
+                ['sole_trader', 'Sole trader'],
+                ['other', 'Other'],
+              ]}
+            />
+            <Field label="Primary contact name" name="primaryContactName" defaultValue={primaryContact?.name} />
+            <Field label="Primary contact email" name="primaryContactEmail" defaultValue={primaryContact?.email} type="email" />
+            <Field label="Primary contact phone" name="primaryContactPhone" defaultValue={primaryContact?.phone ?? primaryContact?.phoneNormalized} />
+            <SelectField
+              label="Review status"
+              name="reviewStatus"
+              defaultValue={client.reviewStatus}
+              options={[
+                ['pending_review', 'Needs review'],
+                ['reviewed', 'Reviewed'],
+                ['dismissed', 'Dismissed'],
+              ]}
+            />
+            <TextAreaField label="Client notes" name="notes" defaultValue={client.notes} className="sm:col-span-2" />
+            <TextAreaField label="Review note" name="reviewNote" defaultValue={client.reviewNote} className="sm:col-span-2" />
+            <TextAreaField
+              label="Manual aliases"
+              name="aliases"
+              defaultValue={client.manualAliasNames.join('\n')}
+              className="sm:col-span-2"
+            />
+            {client.sourceAliasNames.length > 0 && (
+              <div className="sm:col-span-2 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                Preserved import and merge aliases: {client.sourceAliasNames.join(', ')}
+              </div>
+            )}
+            <div className="sm:col-span-2">
+              <button type="submit" className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                Save client
+              </button>
+            </div>
+          </form>
+        </Section>
+      )}
 
       <Section title="Contacts">
         <div className="overflow-hidden rounded border border-gray-200">
@@ -159,6 +236,84 @@ function EmptyRow({ colSpan, label }: { colSpan: number; label: string }) {
     <tr>
       <td colSpan={colSpan} className="px-4 py-6 text-center text-gray-500">{label}</td>
     </tr>
+  )
+}
+
+function Field({
+  label,
+  name,
+  defaultValue,
+  type = 'text',
+  required = false,
+}: {
+  label: string
+  name: string
+  defaultValue?: string | null
+  type?: string
+  required?: boolean
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        defaultValue={defaultValue ?? ''}
+        className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+      />
+    </label>
+  )
+}
+
+function SelectField({
+  label,
+  name,
+  defaultValue,
+  options,
+}: {
+  label: string
+  name: string
+  defaultValue?: string | null
+  options: Array<[string, string]>
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <select
+        name={name}
+        defaultValue={defaultValue ?? ''}
+        className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+      >
+        {options.map(([value, labelText]) => (
+          <option key={value} value={value}>{labelText}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function TextAreaField({
+  label,
+  name,
+  defaultValue,
+  className = '',
+}: {
+  label: string
+  name: string
+  defaultValue?: string | null
+  className?: string
+}) {
+  return (
+    <label className={`block text-sm ${className}`}>
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</span>
+      <textarea
+        name={name}
+        defaultValue={defaultValue ?? ''}
+        rows={3}
+        className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+      />
+    </label>
   )
 }
 

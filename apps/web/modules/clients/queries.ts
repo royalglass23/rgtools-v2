@@ -62,7 +62,10 @@ export type ClientListFilters = {
 }
 
 type ClientDetailShapeInput = ClientShapeBase & {
-  aliases: Array<{ alias: string }>
+  clientType: string | null
+  notes: string | null
+  reviewNote: string | null
+  aliases: Array<{ alias: string; source: string }>
   contacts: Array<{
     id: string
     name: string | null
@@ -93,6 +96,15 @@ type ClientDetailShapeInput = ClientShapeBase & {
 }
 
 export type ClientDetail = ClientListRow & {
+  name: string
+  email: string | null
+  phone: string | null
+  identityType: string | null
+  clientType: string | null
+  notes: string | null
+  reviewNote: string | null
+  sourceAliasNames: string[]
+  manualAliasNames: string[]
   contacts: ClientDetailShapeInput['contacts']
   leads: ClientDetailShapeInput['leads']
   quotes: ClientDetailShapeInput['quotes']
@@ -172,6 +184,15 @@ export function shapeClientDetail(row: ClientDetailShapeInput | null): ClientDet
 
   return {
     ...summary,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    identityType: row.identityType,
+    clientType: row.clientType,
+    notes: row.notes,
+    reviewNote: row.reviewNote,
+    sourceAliasNames: row.aliases.filter((alias) => alias.source !== 'manual').map((alias) => alias.alias),
+    manualAliasNames: row.aliases.filter((alias) => alias.source === 'manual').map((alias) => alias.alias),
     contacts: row.contacts,
     leads: row.leads,
     quotes: row.quotes,
@@ -221,7 +242,12 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
   const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1)
   if (!client) return null
 
-  const [contactsRows, leadRows, quoteRows] = await Promise.all([
+  const [aliasesRows, contactsRows, leadRows, quoteRows] = await Promise.all([
+    db
+      .select({ alias: clientAliases.alias, source: clientAliases.source })
+      .from(clientAliases)
+      .where(eq(clientAliases.clientId, client.id))
+      .orderBy(clientAliases.alias),
     db
       .select({
         id: clientContacts.id,
@@ -265,7 +291,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
 
   return shapeClientDetail({
     ...client,
-    aliases: [],
+    aliases: aliasesRows,
     contacts: contactsRows,
     leads: leadRows,
     quotes: quoteRows,
