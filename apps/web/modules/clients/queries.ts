@@ -63,6 +63,24 @@ export type ClientListFilters = {
   cleanupFilter?: ClientCleanupFilter | null
 }
 
+export const CLIENT_LIST_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const
+export const DEFAULT_CLIENT_LIST_PAGE_SIZE = 10
+
+export type ClientListPageSize = typeof CLIENT_LIST_PAGE_SIZE_OPTIONS[number]
+
+export type ClientListPage = {
+  rows: ClientListRow[]
+  total: number
+  page: number
+  pageSize: ClientListPageSize
+  pageCount: number
+}
+
+export type ClientListPagination = {
+  page?: number | null
+  pageSize?: number | null
+}
+
 type ClientDetailShapeInput = ClientShapeBase & {
   clientType: string | null
   notes: string | null
@@ -273,6 +291,32 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
     .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
 }
 
+export async function getClientsListPage(
+  filters: ClientListFilters = {},
+  pagination: ClientListPagination = {},
+): Promise<ClientListPage> {
+  return paginateClientListRows(await getClientsList(filters), pagination)
+}
+
+export function paginateClientListRows(
+  rows: ClientListRow[],
+  pagination: ClientListPagination = {},
+): ClientListPage {
+  const pageSize = normalizePageSize(pagination.pageSize)
+  const total = rows.length
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const page = clampPage(pagination.page, pageCount)
+  const start = (page - 1) * pageSize
+
+  return {
+    rows: rows.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    pageCount,
+  }
+}
+
 export async function getClientDetail(clientId: string): Promise<ClientDetail | null> {
   if (!UUID_RE.test(clientId)) return null
 
@@ -426,4 +470,17 @@ function normalizedDisplayName(row: Pick<ClientShapeBase, 'name' | 'companyName'
 
 function normalizeSearch(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function normalizePageSize(value: number | null | undefined): ClientListPageSize {
+  if (!Number.isFinite(value)) return DEFAULT_CLIENT_LIST_PAGE_SIZE
+  const pageSize = Math.trunc(Number(value))
+  return CLIENT_LIST_PAGE_SIZE_OPTIONS.includes(pageSize as ClientListPageSize)
+    ? pageSize as ClientListPageSize
+    : DEFAULT_CLIENT_LIST_PAGE_SIZE
+}
+
+function clampPage(value: number | null | undefined, pageCount: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(Math.max(Math.trunc(Number(value)), 1), pageCount)
 }
