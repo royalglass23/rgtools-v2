@@ -183,16 +183,27 @@ describe('importServiceM8CompaniesFromRows', () => {
 })
 
 describe('readServiceM8ClientImportRecords', () => {
-  it('fetches only companies attached to Work Order or Completed jobs and enriches contacts', async () => {
+  it('fetches Work Order and Completed jobs with ServiceM8-safe filters and enriches contacts', async () => {
     const calls: string[] = []
     const request = vi.fn(async (path: string) => {
       calls.push(path)
 
-      if (path.startsWith('/job.json')) {
+      if (path.includes(' or ') || path.includes('%20or%20') || path.includes('(')) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ message: 'Bad Request' }),
+        }
+      }
+      if (path.includes("status%20eq%20'Work%20Order'")) {
         return jsonResponse([
           { uuid: 'job-1', active: 1, status: 'Work Order', company_uuid: 'company-1' },
-          { uuid: 'job-2', active: 1, status: 'Completed', company_uuid: 'company-1' },
           { uuid: 'job-3', active: 1, status: 'Quote', company_uuid: 'company-2' },
+        ])
+      }
+      if (path.includes("status%20eq%20'Completed'")) {
+        return jsonResponse([
+          { uuid: 'job-2', active: 1, status: 'Completed', company_uuid: 'company-1' },
           { uuid: 'job-4', active: 0, status: 'Completed', company_uuid: 'company-3' },
         ])
       }
@@ -209,7 +220,9 @@ describe('readServiceM8ClientImportRecords', () => {
 
     const rows = await readServiceM8ClientImportRecords(request)
 
-    expect(calls[0]).toContain("/job.json?%24filter=active%20eq%201%20and%20(status%20eq%20'Work%20Order'%20or%20status%20eq%20'Completed')")
+    expect(calls).toContain("/job.json?%24filter=active%20eq%201%20and%20status%20eq%20'Work%20Order'")
+    expect(calls).toContain("/job.json?%24filter=active%20eq%201%20and%20status%20eq%20'Completed'")
+    expect(calls.some((path) => path.includes('%20or%20') || path.includes('('))).toBe(false)
     expect(calls).toContain('/company/company-1.json')
     expect(calls.some((path) => path.includes('company-2'))).toBe(false)
     expect(calls.some((path) => path.includes('company-3'))).toBe(false)
