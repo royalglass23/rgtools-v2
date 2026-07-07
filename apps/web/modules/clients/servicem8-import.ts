@@ -87,10 +87,16 @@ export async function refreshServiceM8Clients(
 export async function readServiceM8ClientImportRecords(
   request: ServiceM8FetchRequest,
 ): Promise<ServiceM8CompanyImportRecord[]> {
-  const jobs = (await readServiceM8Array<ServiceM8ClientImportJobRecord>(
-    request,
-    `/job.json${odataFilter("active eq 1 and (status eq 'Work Order' or status eq 'Completed')")}`,
-  )).filter(isEligibleClientImportJob)
+  const jobs = (await Promise.all([
+    readServiceM8Array<ServiceM8ClientImportJobRecord>(
+      request,
+      `/job.json${odataFilter("active eq 1 and status eq 'Work Order'")}`,
+    ),
+    readServiceM8Array<ServiceM8ClientImportJobRecord>(
+      request,
+      `/job.json${odataFilter("active eq 1 and status eq 'Completed'")}`,
+    ),
+  ])).flat().filter(isEligibleClientImportJob)
 
   const jobsByCompanyUuid = new Map<string, ServiceM8ClientImportJobRecord[]>()
   for (const job of jobs) {
