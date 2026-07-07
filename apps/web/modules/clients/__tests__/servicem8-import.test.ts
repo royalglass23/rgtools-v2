@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   importServiceM8CompaniesFromRows,
   readServiceM8ClientImportRecords,
+  SERVICE_M8_CLIENT_REFRESH_LIMIT,
   type ClientImportDeps,
   type ExistingImportedClient,
   type ServiceM8CompanyImportRecord,
@@ -61,10 +62,13 @@ describe('importServiceM8CompaniesFromRows', () => {
     ], testDeps)
 
     expect(summary).toEqual({
+      batchLimit: null,
       scanned: 1,
       created: 1,
       sourceUpdated: 0,
       needsReview: 1,
+      contactsFound: 1,
+      contactsMissing: 0,
       skipped: 0,
       errors: 0,
       errorMessages: [],
@@ -102,6 +106,8 @@ describe('importServiceM8CompaniesFromRows', () => {
     ], testDeps)
 
     expect(summary.created).toBe(1)
+    expect(summary.contactsFound).toBe(1)
+    expect(summary.contactsMissing).toBe(0)
     expect(created[0]).toMatchObject({
       email: 'mia@topview.test',
       phone: '021 222 2222',
@@ -161,6 +167,7 @@ describe('importServiceM8CompaniesFromRows', () => {
     ], testDeps)
 
     expect(summary).toMatchObject({ scanned: 3, created: 0, sourceUpdated: 0, needsReview: 0, skipped: 3, errors: 0 })
+    expect(summary).toMatchObject({ contactsFound: 0, contactsMissing: 3 })
     expect(testDeps.createClient).not.toHaveBeenCalled()
     expect(testDeps.updateClient).not.toHaveBeenCalled()
   })
@@ -227,6 +234,56 @@ describe('readServiceM8ClientImportRecords', () => {
         eligibleJobUuids: ['job-1', 'job-2'],
       }),
     ])
+  })
+
+  it('limits the validation refresh to 20 eligible client companies', async () => {
+    const calls: string[] = []
+    const request = vi.fn(async (path: string) => {
+      calls.push(path)
+
+      if (path.startsWith('/job.json')) {
+        return jsonResponse(Array.from({ length: 25 }, (_, index) => ({
+          uuid: `job-${index + 1}`,
+          active: 1,
+          status: index % 2 === 0 ? 'Work Order' : 'Completed',
+          company_uuid: `company-${index + 1}`,
+        })))
+      }
+      const companyMatch = path.match(/^\/company\/(company-\d+)\.json$/)
+      if (companyMatch) {
+        return jsonResponse({
+          uuid: companyMatch[1],
+          name: `Client ${companyMatch[1]}`,
+          active: 1,
+        })
+      }
+      if (path.startsWith('/jobcontact.json')) {
+        const jobNumber = Number(path.match(/job-(\d+)/)?.[1] ?? '0')
+        return jsonResponse([
+          {
+            first: 'Contact',
+            last: String(jobNumber),
+            email: `contact-${jobNumber}@example.test`,
+            mobile: `021 000 00${jobNumber}`,
+            active: 1,
+            type: 'JOB',
+          },
+        ])
+      }
+      throw new Error(`Unexpected ServiceM8 path: ${path}`)
+    })
+
+    const rows = await readServiceM8ClientImportRecords(request, { limit: SERVICE_M8_CLIENT_REFRESH_LIMIT })
+
+    expect(calls[0]).toContain('%24top=20')
+    expect(rows).toHaveLength(20)
+    expect(rows[0]).toMatchObject({
+      uuid: 'company-1',
+      contactName: 'Contact 1',
+      contactEmail: 'contact-1@example.test',
+    })
+    expect(calls).toContain('/company/company-20.json')
+    expect(calls).not.toContain('/company/company-21.json')
   })
 })
 
