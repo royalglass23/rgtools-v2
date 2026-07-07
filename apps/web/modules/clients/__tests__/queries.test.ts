@@ -28,6 +28,9 @@ describe('client query shaping', () => {
         quotes: [
           { id: 'quote-1', updatedAt: new Date('2026-01-07T00:00:00Z') },
         ],
+        workOrders: [
+          { id: 'work-order-1', updatedAt: new Date('2026-01-08T00:00:00Z') },
+        ],
       },
     ])
 
@@ -48,8 +51,8 @@ describe('client query shaping', () => {
           servicem8Linked: true,
         },
         contactCount: 2,
-        projectCount: 3,
-        lastActivityAt: new Date('2026-01-07T00:00:00Z'),
+        projectCount: 4,
+        lastActivityAt: new Date('2026-01-08T00:00:00Z'),
       },
     ])
   })
@@ -110,6 +113,74 @@ describe('client query shaping', () => {
     expect(detail?.contacts).toHaveLength(1)
     expect(detail?.leads).toHaveLength(1)
     expect(detail?.quotes).toHaveLength(1)
+  })
+
+  it('includes linked work orders and orders recent activity across client records', () => {
+    const detail = shapeClientDetail({
+      id: 'client-activity',
+      name: 'Activity Client',
+      companyName: null,
+      email: null,
+      phone: null,
+      servicem8CompanyUuid: 'company-activity',
+      canonicalSource: 'import',
+      reviewStatus: 'pending_review',
+      identityType: null,
+      clientType: null,
+      notes: 'Shared relationship note',
+      reviewNote: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+      aliases: [],
+      contacts: [],
+      leads: [
+        {
+          id: 'lead-activity',
+          projectType: 'Shower',
+          location: '12 Lead St',
+          servicem8JobNumber: 'R260001',
+          tier: 'A',
+          updatedAt: new Date('2026-01-03T00:00:00Z'),
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+      ],
+      quotes: [
+        {
+          id: 'quote-activity',
+          shortCode: 'ABC123',
+          jobDescription: 'Shopfront replacement',
+          jobAddress: '34 Quote Rd',
+          quoteValue: '1234.50',
+          statusTag: 'hot',
+          updatedAt: new Date('2026-01-04T00:00:00Z'),
+          createdAt: new Date('2026-01-02T00:00:00Z'),
+        },
+      ],
+      workOrders: [
+        {
+          id: 'work-order-activity',
+          jobNumber: 'R260002',
+          jobDescription: 'Balustrade install',
+          jobAddress: '56 Work Rd',
+          servicem8Status: 'Ready',
+          isCurrent: true,
+          createdAt: new Date('2026-01-02T00:00:00Z'),
+          updatedAt: new Date('2026-01-05T00:00:00Z'),
+        },
+      ],
+    })
+
+    expect(detail?.notes).toBe('Shared relationship note')
+    expect(detail?.workOrders).toHaveLength(1)
+    expect(detail?.projects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'work_order', id: 'work-order-activity', address: '56 Work Rd' }),
+    ]))
+    expect(detail?.recentActivity.map((activity) => activity.kind)).toEqual([
+      'work_order',
+      'quote',
+      'lead',
+      'client',
+    ])
   })
 
   it('finds clients by canonical company name or aliases', () => {

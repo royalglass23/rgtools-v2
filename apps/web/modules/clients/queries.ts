@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { quotes } from '@rgtools/db/schema'
 import { clientAliases, clientContacts, clients, leads } from '@rgtools/db/schema-leads'
+import { workOrders } from '@rgtools/db/schema-workorders'
 import { db } from '@/lib/db'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -24,6 +25,7 @@ type ClientListShapeInput = ClientShapeBase & {
   contacts: Array<{ id: string; updatedAt: Date }>
   leads: Array<{ id: string; updatedAt: Date }>
   quotes: Array<{ id: string; updatedAt: Date }>
+  workOrders?: Array<{ id: string; updatedAt: Date }>
 }
 
 export type ClientListRow = {
@@ -93,6 +95,16 @@ type ClientDetailShapeInput = ClientShapeBase & {
     createdAt: Date
     updatedAt: Date
   }>
+  workOrders?: Array<{
+    id: string
+    jobNumber: string | null
+    jobDescription: string | null
+    jobAddress: string | null
+    servicem8Status: string
+    isCurrent: boolean
+    createdAt: Date
+    updatedAt: Date
+  }>
 }
 
 export type ClientDetail = ClientListRow & {
@@ -108,13 +120,21 @@ export type ClientDetail = ClientListRow & {
   contacts: ClientDetailShapeInput['contacts']
   leads: ClientDetailShapeInput['leads']
   quotes: ClientDetailShapeInput['quotes']
+  workOrders: NonNullable<ClientDetailShapeInput['workOrders']>
   projects: Array<{
-    kind: 'lead' | 'quote'
+    kind: 'lead' | 'quote' | 'work_order'
     id: string
     title: string
     address: string | null
     createdAt: Date
     updatedAt: Date
+  }>
+  recentActivity: Array<{
+    kind: 'client' | 'contact' | 'lead' | 'quote' | 'work_order'
+    id: string
+    title: string
+    detail: string | null
+    occurredAt: Date
   }>
 }
 
@@ -137,13 +157,14 @@ export function shapeClientListRows(rows: ClientListShapeInput[]): ClientListRow
       servicem8Linked: Boolean(row.servicem8CompanyUuid),
     },
     contactCount: row.contacts.length,
-    projectCount: row.leads.length + row.quotes.length,
+    projectCount: row.leads.length + row.quotes.length + (row.workOrders ?? []).length,
     lastActivityAt: latestDate([
       row.createdAt,
       row.updatedAt,
       ...row.contacts.map((contact) => contact.updatedAt),
       ...row.leads.map((lead) => lead.updatedAt),
       ...row.quotes.map((quote) => quote.updatedAt),
+      ...(row.workOrders ?? []).map((workOrder) => workOrder.updatedAt),
     ]),
   }))
 }
@@ -163,6 +184,7 @@ export function filterClientListRows(rows: ClientListRow[], filters: ClientListF
 export function shapeClientDetail(row: ClientDetailShapeInput | null): ClientDetail | null {
   if (!row) return null
   const [summary] = shapeClientListRows([row])
+  const workOrderRows = row.workOrders ?? []
   const projects: ClientDetail['projects'] = [
     ...row.leads.map((lead) => ({
       kind: 'lead' as const,
@@ -180,6 +202,14 @@ export function shapeClientDetail(row: ClientDetailShapeInput | null): ClientDet
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,
     })),
+    ...workOrderRows.map((workOrder) => ({
+      kind: 'work_order' as const,
+      id: workOrder.id,
+      title: workOrder.jobDescription ?? workOrder.jobNumber ?? 'Work order',
+      address: workOrder.jobAddress,
+      createdAt: workOrder.createdAt,
+      updatedAt: workOrder.updatedAt,
+    })),
   ].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
 
   return {
@@ -196,14 +226,16 @@ export function shapeClientDetail(row: ClientDetailShapeInput | null): ClientDet
     contacts: row.contacts,
     leads: row.leads,
     quotes: row.quotes,
+    workOrders: workOrderRows,
     projects,
+    recentActivity: shapeRecentActivity(row, workOrderRows),
   }
 }
 
 export async function getClientsList(filters: ClientListFilters = {}): Promise<ClientListRow[]> {
   const clientRows = await db.select().from(clients).where(eq(clients.isMerged, false)).orderBy(clients.name)
   const shaped = await Promise.all(clientRows.map(async (client) => {
-    const [aliasesRows, contactsRows, leadRows, quoteRows] = await Promise.all([
+    const [aliasesRows, contactsRows, leadRows, quoteRows, workOrderRows] = await Promise.all([
       db
         .select({ alias: clientAliases.alias })
         .from(clientAliases)
@@ -221,6 +253,10 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
         .select({ id: quotes.id, updatedAt: quotes.updatedAt })
         .from(quotes)
         .where(eq(quotes.clientId, client.id)),
+      db
+        .select({ id: workOrders.id, updatedAt: workOrders.updatedAt })
+        .from(workOrders)
+        .where(eq(workOrders.clientId, client.id)),
     ])
 
     return {
@@ -229,6 +265,7 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
       contacts: contactsRows,
       leads: leadRows,
       quotes: quoteRows,
+      workOrders: workOrderRows,
     }
   }))
 
@@ -242,7 +279,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
   const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1)
   if (!client) return null
 
-  const [aliasesRows, contactsRows, leadRows, quoteRows] = await Promise.all([
+  const [aliasesRows, contactsRows, leadRows, quoteRows, workOrderRows] = await Promise.all([
     db
       .select({ alias: clientAliases.alias, source: clientAliases.source })
       .from(clientAliases)
@@ -287,6 +324,20 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
       .from(quotes)
       .where(eq(quotes.clientId, client.id))
       .orderBy(desc(quotes.updatedAt)),
+    db
+      .select({
+        id: workOrders.id,
+        jobNumber: workOrders.jobNumber,
+        jobDescription: workOrders.jobDescription,
+        jobAddress: workOrders.jobAddress,
+        servicem8Status: workOrders.servicem8Status,
+        isCurrent: workOrders.isCurrent,
+        createdAt: workOrders.createdAt,
+        updatedAt: workOrders.updatedAt,
+      })
+      .from(workOrders)
+      .where(eq(workOrders.clientId, client.id))
+      .orderBy(desc(workOrders.updatedAt)),
   ])
 
   return shapeClientDetail({
@@ -295,7 +346,51 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
     contacts: contactsRows,
     leads: leadRows,
     quotes: quoteRows,
+    workOrders: workOrderRows,
   })
+}
+
+function shapeRecentActivity(
+  row: ClientDetailShapeInput,
+  workOrderRows: NonNullable<ClientDetailShapeInput['workOrders']>,
+): ClientDetail['recentActivity'] {
+  return [
+    {
+      kind: 'client' as const,
+      id: row.id,
+      title: 'Client updated',
+      detail: row.companyName || row.name,
+      occurredAt: row.updatedAt,
+    },
+    ...row.contacts.map((contact) => ({
+      kind: 'contact' as const,
+      id: contact.id,
+      title: contact.name ?? 'Contact updated',
+      detail: contact.email ?? contact.phone ?? contact.phoneNormalized,
+      occurredAt: contact.updatedAt,
+    })),
+    ...row.leads.map((lead) => ({
+      kind: 'lead' as const,
+      id: lead.id,
+      title: lead.projectType ?? lead.servicem8JobNumber ?? 'Lead',
+      detail: lead.location,
+      occurredAt: lead.updatedAt,
+    })),
+    ...row.quotes.map((quote) => ({
+      kind: 'quote' as const,
+      id: quote.id,
+      title: quote.jobDescription ?? quote.shortCode ?? 'Quote',
+      detail: quote.jobAddress,
+      occurredAt: quote.updatedAt,
+    })),
+    ...workOrderRows.map((workOrder) => ({
+      kind: 'work_order' as const,
+      id: workOrder.id,
+      title: workOrder.jobDescription ?? workOrder.jobNumber ?? 'Work order',
+      detail: workOrder.jobAddress ?? workOrder.servicem8Status,
+      occurredAt: workOrder.updatedAt,
+    })),
+  ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
 }
 
 function latestDate(dates: Date[]): Date {
