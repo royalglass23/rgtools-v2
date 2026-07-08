@@ -3,9 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockAuth = vi.hoisted(() => vi.fn())
+const mockUserCanAccessSlug = vi.hoisted(() => vi.fn())
 const mockImportLead = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({ auth: mockAuth }))
+vi.mock('@/lib/access-db', () => ({ userCanAccessSlug: mockUserCanAccessSlug }))
 vi.mock('@/modules/leads/servicem8-fetch', () => ({
   importLeadFromServiceM8JobNumber: mockImportLead,
 }))
@@ -22,6 +24,7 @@ beforeEach(() => {
   currentFakeTime += 11_000
   vi.setSystemTime(currentFakeTime)
   mockAuth.mockResolvedValue({ user: { id: 'actor-1' } })
+  mockUserCanAccessSlug.mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -35,6 +38,17 @@ describe('importServiceM8LeadAction', () => {
     const result = await importServiceM8LeadAction('Q260004')
 
     expect(result).toEqual({ ok: false, message: 'Sign in to import from ServiceM8.' })
+    expect(mockUserCanAccessSlug).not.toHaveBeenCalled()
+    expect(mockImportLead).not.toHaveBeenCalled()
+  })
+
+  it('rejects a signed-in user without the leads module grant', async () => {
+    mockUserCanAccessSlug.mockResolvedValue(false)
+
+    const result = await importServiceM8LeadAction('Q260004')
+
+    expect(mockUserCanAccessSlug).toHaveBeenCalledWith('actor-1', 'leads')
+    expect(result).toEqual({ ok: false, message: 'You do not have access to import ServiceM8 leads.' })
     expect(mockImportLead).not.toHaveBeenCalled()
   })
 
@@ -49,6 +63,7 @@ describe('importServiceM8LeadAction', () => {
 
     const result = await importServiceM8LeadAction('Q260004')
 
+    expect(mockUserCanAccessSlug).toHaveBeenCalledWith('actor-1', 'leads')
     expect(mockImportLead).toHaveBeenCalledWith('Q260004', 'actor-1')
     expect(result).toEqual({
       ok: true,

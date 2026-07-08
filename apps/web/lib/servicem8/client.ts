@@ -300,6 +300,14 @@ export type QuoteJobMeta = {
   companyUuid: string | null
   /** Company name, resolved via company_uuid. */
   clientName: string | null
+  leadJobCardFields: ServiceM8LeadJobCardFields
+}
+
+export type ServiceM8LeadJobCardFields = {
+  clientType: string | null
+  leadsQuality: string | null
+  projectType: string | null
+  note: string | null
 }
 
 type ServiceM8MaterialRecord = {
@@ -808,7 +816,28 @@ export async function getJobQuoteMeta(
     jobAddress: job.job_address ?? null,
     companyUuid,
     clientName,
+    leadJobCardFields: readLeadJobCardFields(job),
   }
+}
+
+function readLeadJobCardFields(job: ServiceM8JobRecord): ServiceM8LeadJobCardFields {
+  return {
+    clientType: readConfiguredJobField(job, process.env.SERVICEM8_CLIENT_TYPE_FIELD),
+    leadsQuality: readConfiguredJobField(job, process.env.SERVICEM8_LEAD_QUALITY_FIELD),
+    projectType: readConfiguredJobField(job, process.env.SERVICEM8_PROJECT_TYPE_FIELD),
+    note: readConfiguredJobField(job, process.env.SERVICEM8_NOTE_FIELD),
+  }
+}
+
+function readConfiguredJobField(
+  job: ServiceM8JobRecord,
+  configuredField: string | null | undefined,
+): string | null {
+  const fieldName = configuredField?.trim()
+  if (!fieldName) return null
+
+  const value = (job as Record<string, unknown>)[fieldName]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 export type ServiceM8AttachmentRecord = {

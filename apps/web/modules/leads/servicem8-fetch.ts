@@ -2,6 +2,8 @@ import { eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
 import { leads } from '@rgtools/db/schema-leads'
+import { DECISION_MATRIX, type MatrixFieldKey } from '@/modules/lead-intake/scoring/score-lead'
+import { persistLeadScore } from '@/modules/lead-intake/scoring/persist-score'
 import {
   createServiceM8RequestFromEnv,
   createServiceM8WriteRequestFromEnv,
@@ -11,7 +13,7 @@ import {
   resolveJobUuid,
   setJobLeadCardFields,
 } from '@/lib/servicem8/client'
-import type { ServiceM8FetchRequest } from '@/lib/servicem8/client'
+import type { ServiceM8FetchRequest, ServiceM8LeadJobCardFields } from '@/lib/servicem8/client'
 import { resolveClient } from '@/modules/clients/client-resolver'
 import { normalizeNzPhone } from '@/modules/lead-intake/intake-utils'
 import { buildServiceM8LeadJobCardFields } from '@/modules/lead-intake/servicem8/payload'
@@ -33,6 +35,17 @@ type ServiceM8InboxMessage = {
   message_text?: string | null
   message_html?: string | null
   subject?: string | null
+}
+
+type ServiceM8QuoteMetaWithLeadFields = Omit<Awaited<ReturnType<typeof getJobQuoteMeta>>, 'leadJobCardFields'> & {
+  leadJobCardFields?: Partial<ServiceM8LeadJobCardFields> | null
+}
+
+type LeadInsert = typeof leads.$inferInsert
+type AutoFilledLeadFields = Partial<Pick<LeadInsert, 'clientTypeAnswer' | 'budgetBand' | 'projectType'>>
+type JobCardPrefillResult = {
+  autoFilledFields: AutoFilledLeadFields
+  unmappedJobCardFields: string[]
 }
 
 export type LeadServiceM8FetchResult =
@@ -221,7 +234,7 @@ export async function importLeadFromServiceM8JobNumber(
     }
   }
 
-  const meta = await getJobQuoteMeta(jobUuid, request)
+  const meta = await getJobQuoteMeta(jobUuid, request) as ServiceM8QuoteMetaWithLeadFields
   const resolvedJobNumber = meta.jobNumber ?? normalizedJobNumber
   if (!isServiceM8QuoteStatus(meta.status)) {
     return {
@@ -264,6 +277,8 @@ export async function importLeadFromServiceM8JobNumber(
   const missingContact = !phone && !email
   const clientName = meta.clientName || contact?.name || `ServiceM8 job ${resolvedJobNumber}`
   const projectType = deriveProjectType(meta.jobDescription)
+  const prefill = buildJobCardPrefill(meta)
+  const wasScored = hasAutoFilledFields(prefill.autoFilledFields)
   const freeText = missingContact
     ? '[Import flag] Missing phone/email in ServiceM8 at import time.'
     : null
@@ -303,6 +318,7 @@ export async function importLeadFromServiceM8JobNumber(
         servicem8JobNumber: resolvedJobNumber,
         servicem8Status: meta.status,
         product: projectType,
+        ...prefill.autoFilledFields,
         location: meta.jobAddress,
         jobDescription: freeText,
         freeText,
@@ -324,10 +340,16 @@ export async function importLeadFromServiceM8JobNumber(
         jobNumber: resolvedJobNumber,
         jobStatus: meta.status,
         missingContact,
-        needsScoring: true,
+        autoFilledFields: prefill.autoFilledFields,
+        unmappedJobCardFields: prefill.unmappedJobCardFields,
+        needsScoring: !wasScored,
       },
     }, tx)
   })
+
+  if (wasScored) {
+    await persistLeadScore(createdLeadId, actorId)
+  }
 
   return {
     ok: true,
@@ -337,9 +359,10 @@ export async function importLeadFromServiceM8JobNumber(
     jobStatus: meta.status,
     reusedExisting: false,
     missingContact,
-    message: missingContact
-      ? `Imported job ${resolvedJobNumber}. Contact details are missing and need manual follow-up.`
-      : `Imported job ${resolvedJobNumber}.`,
+    message: buildImportSuccessMessage(resolvedJobNumber, {
+      missingContact,
+      wasScored,
+    }),
   }
 }
 
@@ -452,6 +475,96 @@ function deriveProjectType(description: string | null | undefined) {
   if (normalized.includes('shower')) return 'shower'
   if (normalized.includes('handrail')) return 'handrail'
   return 'other'
+}
+
+function buildJobCardPrefill(meta: ServiceM8QuoteMetaWithLeadFields): JobCardPrefillResult {
+  const autoFilledFields: AutoFilledLeadFields = {}
+  const unmappedJobCardFields: string[] = []
+  const clientTypeAnswer = optionKeyForLabel('clientType', meta.leadJobCardFields?.clientType)
+  const projectTypeInput = meta.leadJobCardFields?.projectType ?? noteValueForLabel(meta.leadJobCardFields?.note, 'Project Type')
+  const projectType = optionKeyForLabel(
+    'projectType',
+    projectTypeInput,
+  )
+  const budgetBand = budgetBandForQuoteValue(meta.quoteValue)
+
+  if (clientTypeAnswer) {
+    autoFilledFields.clientTypeAnswer = clientTypeAnswer as AutoFilledLeadFields['clientTypeAnswer']
+  } else if (hasJobCardValue(meta.leadJobCardFields?.clientType)) {
+    unmappedJobCardFields.push('clientType')
+  }
+
+  if (budgetBand) autoFilledFields.budgetBand = budgetBand
+
+  if (projectType) {
+    autoFilledFields.projectType = projectType as AutoFilledLeadFields['projectType']
+  } else if (hasJobCardValue(projectTypeInput)) {
+    unmappedJobCardFields.push('projectType')
+  }
+
+  return { autoFilledFields, unmappedJobCardFields }
+}
+
+function hasAutoFilledFields(fields: AutoFilledLeadFields): boolean {
+  return Object.keys(fields).length > 0
+}
+
+function hasJobCardValue(value: string | null | undefined): boolean {
+  return Boolean(normalizeMatrixValue(value))
+}
+
+function optionKeyForLabel(fieldKey: MatrixFieldKey, label: string | null | undefined): string | undefined {
+  const normalizedLabel = normalizeMatrixValue(label)
+  if (!normalizedLabel) return undefined
+
+  return DECISION_MATRIX.fields
+    .find((field) => field.key === fieldKey)
+    ?.options.find((option) =>
+      normalizeMatrixValue(option.key) === normalizedLabel ||
+      normalizeMatrixValue(option.label) === normalizedLabel
+    )?.key
+}
+
+function budgetBandForQuoteValue(value: string | null | undefined): AutoFilledLeadFields['budgetBand'] | undefined {
+  const quoteValue = Number(value)
+  if (!Number.isFinite(quoteValue) || quoteValue <= 0) return undefined
+  if (quoteValue >= 50000) return '50k_plus'
+  if (quoteValue >= 20000) return '20k_50k'
+  if (quoteValue >= 5000) return '5k_20k'
+  return 'lt_5k'
+}
+
+function normalizeMatrixValue(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, ' ')
+  return normalized || undefined
+}
+
+function noteValueForLabel(note: string | null | undefined, label: string): string | undefined {
+  const cleanedNote = note?.trim()
+  if (!cleanedNote) return undefined
+
+  const labelPattern = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`${labelPattern}\\s*:\\s*([^|\\n\\r]+)`, 'i').exec(cleanedNote)
+  return match?.[1]?.trim() || undefined
+}
+
+function buildImportSuccessMessage(
+  jobNumber: string,
+  result: { missingContact: boolean; wasScored: boolean },
+): string {
+  if (result.missingContact && result.wasScored) {
+    return `Imported and scored job ${jobNumber}. Contact details are missing and need manual follow-up.`
+  }
+
+  if (result.missingContact) {
+    return `Imported job ${jobNumber}. Contact details are missing and need manual follow-up.`
+  }
+
+  if (result.wasScored) {
+    return `Imported and scored job ${jobNumber}.`
+  }
+
+  return `Imported job ${jobNumber}.`
 }
 
 async function fetchJobByUuid(

@@ -4,8 +4,10 @@ const auth = vi.fn()
 const expireQuoteLink = vi.fn()
 const logAudit = vi.fn()
 const revalidatePath = vi.fn()
+const requireModule = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
+vi.mock('@/lib/guard', () => ({ requireModule: (slug: string) => requireModule(slug) }))
 vi.mock('../expire-quote-link', () => ({
   expireQuoteLink: (...args: unknown[]) => expireQuoteLink(...args),
 }))
@@ -22,7 +24,9 @@ describe('expireQuoteLinkAction', () => {
     expireQuoteLink.mockReset()
     logAudit.mockReset()
     revalidatePath.mockReset()
+    requireModule.mockReset()
     auth.mockResolvedValue({ user: { id: 'user-1' } })
+    requireModule.mockResolvedValue(undefined)
   })
 
   it('expires an active quote, logs the audit entry, and revalidates the detail page', async () => {
@@ -31,6 +35,7 @@ describe('expireQuoteLinkAction', () => {
     const result = await expireQuoteLinkAction('quote-1')
 
     expect(result).toEqual({ ok: true })
+    expect(requireModule).toHaveBeenCalledWith('quote-tracker')
     expect(expireQuoteLink).toHaveBeenCalledWith('quote-1')
     expect(logAudit).toHaveBeenCalledWith(
       expect.objectContaining({
