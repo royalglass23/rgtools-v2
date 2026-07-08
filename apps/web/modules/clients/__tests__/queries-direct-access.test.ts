@@ -46,6 +46,7 @@ vi.mock('@rgtools/db/schema-leads', () => ({
   clients: {
     id: { name: 'clients.id' },
     name: { name: 'clients.name' },
+    isMerged: { name: 'clients.is_merged' },
   },
   leads: {
     id: { name: 'leads.id' },
@@ -94,7 +95,7 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { getClientDetail } from '../queries'
+import { getClientDetail, getClientsList } from '../queries'
 
 const clientId = 'd1a658e4-bc26-47b8-8dfa-535f86545991'
 
@@ -105,13 +106,18 @@ beforeEach(() => {
 })
 
 describe('getClientDetail direct access', () => {
-  it('returns null when a client has no active lead or quote projects', async () => {
+  it('lists imported clients before their projects are linked', async () => {
     queryResults.push([
       {
         id: clientId,
-        name: 'Deleted Lead Client',
+        name: 'Imported Projectless Client',
         companyName: null,
-        servicem8CompanyUuid: null,
+        email: null,
+        phone: null,
+        servicem8CompanyUuid: 'company-projectless',
+        canonicalSource: 'import',
+        reviewStatus: 'pending_review',
+        identityType: null,
         createdAt: new Date('2026-07-01T00:00:00Z'),
         updatedAt: new Date('2026-07-01T00:00:00Z'),
       },
@@ -122,7 +128,46 @@ describe('getClientDetail direct access', () => {
     queryResults.push([])
     queryResults.push([])
 
-    await expect(getClientDetail(clientId)).resolves.toBeNull()
+    await expect(getClientsList()).resolves.toEqual([
+      expect.objectContaining({
+        id: clientId,
+        companyName: 'Imported Projectless Client',
+        projectCount: 0,
+      }),
+    ])
+  })
+
+  it('returns detail for an imported client with no linked projects yet', async () => {
+    queryResults.push([
+      {
+        id: clientId,
+        name: 'Imported Projectless Client',
+        companyName: null,
+        email: null,
+        phone: null,
+        servicem8CompanyUuid: null,
+        canonicalSource: 'import',
+        reviewStatus: 'pending_review',
+        identityType: null,
+        clientType: null,
+        notes: null,
+        reviewNote: null,
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+        updatedAt: new Date('2026-07-01T00:00:00Z'),
+      },
+    ])
+    queryResults.push([])
+    queryResults.push([])
+    queryResults.push([])
+    queryResults.push([])
+    queryResults.push([])
+
+    await expect(getClientDetail(clientId)).resolves.toEqual(expect.objectContaining({
+      id: clientId,
+      companyName: 'Imported Projectless Client',
+      projectCount: 0,
+      projects: [],
+    }))
 
     expect(whereCalls).toEqual(expect.arrayContaining([
       {

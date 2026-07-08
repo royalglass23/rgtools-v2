@@ -288,7 +288,7 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
   }))
 
   return filterClientListRows(
-    shapeClientListRows(shaped).filter((client) => client.projectCount > 0),
+    shapeClientListRows(shaped),
     filters,
   )
     .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
@@ -386,8 +386,6 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
       .where(eq(workOrders.clientId, client.id))
       .orderBy(desc(workOrders.updatedAt)),
   ])
-
-  if (leadRows.length === 0 && quoteRows.length === 0 && workOrderRows.length === 0) return null
 
   return shapeClientDetail({
     ...client,
