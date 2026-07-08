@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { quotes } from '@rgtools/db/schema'
 import { clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import { db } from '@/lib/db'
@@ -132,11 +132,11 @@ export async function getClientsList(): Promise<ClientListRow[]> {
       db
         .select({ id: leads.id, updatedAt: leads.updatedAt })
         .from(leads)
-        .where(eq(leads.clientId, client.id)),
+        .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt))),
       db
         .select({ id: quotes.id, updatedAt: quotes.updatedAt })
         .from(quotes)
-        .where(eq(quotes.clientId, client.id)),
+        .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt))),
     ])
 
     return {
@@ -147,7 +147,9 @@ export async function getClientsList(): Promise<ClientListRow[]> {
     }
   }))
 
-  return shapeClientListRows(shaped).sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
+  return shapeClientListRows(shaped)
+    .filter((client) => client.projectCount > 0)
+    .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
 }
 
 export async function getClientDetail(clientId: string): Promise<ClientDetail | null> {
@@ -180,7 +182,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: leads.updatedAt,
       })
       .from(leads)
-      .where(eq(leads.clientId, client.id))
+      .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt)))
       .orderBy(desc(leads.updatedAt)),
     db
       .select({
@@ -194,9 +196,11 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: quotes.updatedAt,
       })
       .from(quotes)
-      .where(eq(quotes.clientId, client.id))
+      .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt)))
       .orderBy(desc(quotes.updatedAt)),
   ])
+
+  if (leadRows.length === 0 && quoteRows.length === 0) return null
 
   return shapeClientDetail({
     ...client,
