@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { auth } from '@/lib/auth'
 import {
   CLIENT_LIST_PAGE_SIZE_OPTIONS,
   DEFAULT_CLIENT_LIST_PAGE_SIZE,
@@ -7,7 +6,6 @@ import {
   type ClientCleanupFilter,
   type ClientListPageSize,
 } from '@/modules/clients/queries'
-import { ServiceM8ClientsImportButton } from '@/modules/clients/ServiceM8ClientsImportButton'
 
 const cleanupFilters: Array<{ value: ClientCleanupFilter; label: string }> = [
   { value: 'all', label: 'All clients' },
@@ -30,12 +28,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const cleanupFilter = parseCleanupFilter(firstParam(params?.filter))
   const requestedPage = parsePositiveInt(firstParam(params?.page))
   const requestedPageSize = parsePageSize(firstParam(params?.pageSize))
-  const [clientPage, session] = await Promise.all([
-    getClientsListPage({ search, cleanupFilter }, { page: requestedPage, pageSize: requestedPageSize }),
-    auth(),
-  ])
+  const clientPage = await getClientsListPage({ search, cleanupFilter }, { page: requestedPage, pageSize: requestedPageSize })
   const clients = clientPage.rows
-  const canImportFromServiceM8 = session?.user?.role === 'admin'
   const resetHref = buildClientsHref({ pageSize: clientPage.pageSize })
 
   return (
@@ -45,7 +39,6 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <h1 className="text-2xl font-semibold text-gray-950">Clients</h1>
           <p className="mt-1 text-sm text-gray-600">Companies with their contacts, leads, and tracked quotes.</p>
         </div>
-        {canImportFromServiceM8 && <ServiceM8ClientsImportButton />}
       </div>
 
       <form className="flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-white p-3 shadow-sm">
