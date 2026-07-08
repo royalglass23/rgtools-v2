@@ -216,7 +216,7 @@ describe('fetchLeadFromServiceM8', () => {
 
   it('does not push Leads Quality when a fetched unlinked lead has no real tier yet', async () => {
     activeLeadRow.current = unscoredLeadRow
-    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
       if (path.startsWith('/job.json')) {
         return {
           ok: true,
