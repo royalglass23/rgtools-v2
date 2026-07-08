@@ -3,14 +3,15 @@
 // Usage from apps/web:
 //   pnpm tsx scripts/validate-servicem8-client-contacts.ts
 //   pnpm tsx scripts/validate-servicem8-client-contacts.ts --limit 20 --delay-ms 2000
+//   pnpm tsx scripts/validate-servicem8-client-contacts.ts --all --delay-ms 5000 --checkpoint-size 50
+//   pnpm tsx scripts/validate-servicem8-client-contacts.ts --all --resume --delay-ms 5000
 //
 // Requires SERVICEM8_API_KEY in the environment or apps/web/.env.local.
 
 import { config } from 'dotenv'
-config({ path: '.env.local' })
-
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   createServiceM8RequestFromEnv,
   getCompanyContact,
@@ -18,6 +19,13 @@ import {
   type ServiceM8FetchRequest,
   type ServiceM8JobContact,
 } from '../lib/servicem8/client'
+
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const appDir = resolve(scriptDir, '..')
+const repoRoot = resolve(appDir, '..', '..')
+
+config({ path: join(repoRoot, '.env.local') })
+config({ path: join(appDir, '.env.local') })
 
 type ServiceM8JobRecord = {
   uuid?: string | null
@@ -50,18 +58,29 @@ type ValidationRow = {
 }
 
 const DEFAULT_LIMIT = 20
-const DEFAULT_DELAY_MS = 2000
+const DEFAULT_DELAY_MS = 5000
+const DEFAULT_CHECKPOINT_SIZE = 50
 const DEFAULT_OUT_DIR = 'tmp'
 
 async function main() {
   const args = process.argv.slice(2)
-  const limit = parsePositiveInt(getArg(args, '--limit'), DEFAULT_LIMIT)
+  const limit = parseLimit(args)
   const delayMs = parsePositiveInt(getArg(args, '--delay-ms'), DEFAULT_DELAY_MS)
+  const checkpointSize = parsePositiveInt(getArg(args, '--checkpoint-size'), DEFAULT_CHECKPOINT_SIZE)
   const outDir = getArg(args, '--out-dir') ?? DEFAULT_OUT_DIR
+  const verbose = args.includes('--verbose')
+  const resume = args.includes('--resume')
   const request = throttleRequest(createServiceM8RequestFromEnv(), delayMs)
+  const limitLabel = limit ?? 'all'
 
-  console.log(`Checking up to ${limit} ServiceM8 clients with active Work Order or Completed jobs...`)
+  console.log(`Checking ${limitLabel} ServiceM8 clients with active Work Order or Completed jobs...`)
   console.log(`Using ${delayMs}ms delay between ServiceM8 requests.`)
+  console.log(`Writing a checkpoint every ${checkpointSize} clients.`)
+
+  const rows: ValidationRow[] = resume ? await readExistingRows(outDir) : []
+  if (resume && rows.length > 0) {
+    console.log(`Resuming from ${rows.length} rows in ${join(outDir, 'servicem8-clients-export.json')}.`)
+  }
 
   const jobs = [
     ...await readServiceM8Array<ServiceM8JobRecord>(
@@ -74,16 +93,22 @@ async function main() {
     ),
   ]
   const eligibleJobs = jobs.filter(isEligibleJob)
-  const selected = firstJobsByCompany(eligibleJobs, limit)
+  const existingCompanyUuids = new Set(rows.map((row) => row.companyUuid))
+  const selected = firstJobsByCompany(eligibleJobs, limit, existingCompanyUuids)
 
-  if (selected.length === 0) {
+  if (selected.length === 0 && rows.length === 0) {
     console.log('No eligible ServiceM8 clients found.')
     return
   }
 
-  const rows: ValidationRow[] = []
-  for (const [index, job] of selected.entries()) {
+  if (selected.length === 0) {
+    console.log('No remaining eligible ServiceM8 clients to fetch.')
+  }
+
+  for (const job of selected) {
+    const index = rows.length
     const companyUuid = clean(job.company_uuid)!
+    console.log(`Fetching ${index + 1}/${selected.length}: ${companyUuid}`)
     const company = await readServiceM8Object<ServiceM8CompanyRecord>(request, `/company/${companyUuid}.json`)
     const jobContact = await contactFromJob(job.uuid, request)
     const contact = jobContact ?? await getCompanyContact(companyUuid, request)
@@ -93,7 +118,7 @@ async function main() {
     const companyName = clean(company.name) ?? '(missing company name)'
 
     rows.push({
-      index: index + 1,
+      index: rows.length + 1,
       companyUuid,
       companyName,
       jobStatus: clean(job.status) ?? '(missing status)',
@@ -109,9 +134,19 @@ async function main() {
         contactSource: jobContact ? 'jobcontact' : 'companycontact/company',
       },
     })
+
+    if (rows.length % checkpointSize === 0) {
+      await writeOutputs(rows, outDir)
+      await writeCheckpoint(rows, outDir, rows.length)
+      console.log(`Checkpoint saved after ${rows.length} clients.`)
+    }
   }
 
-  printRows(rows)
+  if (verbose) {
+    printRows(rows)
+  } else {
+    console.log('\nRows are written to CSV/JSON/SQL. Re-run with --verbose to print every row.')
+  }
   await writeOutputs(rows, outDir)
 
   const withName = rows.filter((row) => row.contactName).length
@@ -131,7 +166,7 @@ async function main() {
   console.log(`${join(outDir, 'servicem8-clients-export.json')}`)
   console.log(`${join(outDir, 'servicem8-clients-neon.sql')}`)
 
-  if (rows.length < limit) {
+  if (limit != null && rows.length < limit) {
     console.log(`\nOnly ${rows.length} unique eligible client companies were available from ServiceM8.`)
   }
 }
@@ -144,8 +179,12 @@ async function contactFromJob(
   return uuid ? getJobContact(uuid, request) : null
 }
 
-function firstJobsByCompany(jobs: ServiceM8JobRecord[], limit: number): ServiceM8JobRecord[] {
-  const seen = new Set<string>()
+function firstJobsByCompany(
+  jobs: ServiceM8JobRecord[],
+  limit: number | null,
+  skippedCompanyUuids: Set<string> = new Set(),
+): ServiceM8JobRecord[] {
+  const seen = new Set(skippedCompanyUuids)
   const selected: ServiceM8JobRecord[] = []
 
   for (const job of jobs) {
@@ -153,7 +192,7 @@ function firstJobsByCompany(jobs: ServiceM8JobRecord[], limit: number): ServiceM
     if (!companyUuid || seen.has(companyUuid)) continue
     seen.add(companyUuid)
     selected.push(job)
-    if (selected.length >= limit) break
+    if (limit != null && selected.length >= limit) break
   }
 
   return selected
@@ -207,6 +246,13 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function parseLimit(args: string[]): number | null {
+  if (args.includes('--all')) return null
+  const value = getArg(args, '--limit')
+  if (value?.toLowerCase() === 'all') return null
+  return parsePositiveInt(value, DEFAULT_LIMIT)
+}
+
 function isActive(value: ServiceM8JobRecord['active']) {
   return value === undefined || value === null || value === true || value === 1 || value === '1'
 }
@@ -254,6 +300,36 @@ async function writeOutputs(rows: ValidationRow[], outDir: string) {
     writeFile(join(outDir, 'servicem8-clients-export.csv'), toCsv(rows)),
     writeFile(join(outDir, 'servicem8-clients-export.json'), `${JSON.stringify(rows, null, 2)}\n`),
     writeFile(join(outDir, 'servicem8-clients-neon.sql'), toNeonSql(rows)),
+  ])
+}
+
+async function readExistingRows(outDir: string): Promise<ValidationRow[]> {
+  try {
+    const raw = await readFile(join(outDir, 'servicem8-clients-export.json'), 'utf8')
+    const rows = JSON.parse(raw) as ValidationRow[]
+    return Array.isArray(rows) ? rows.filter(isValidationRow) : []
+  } catch {
+    return []
+  }
+}
+
+function isValidationRow(row: unknown): row is ValidationRow {
+  return Boolean(
+    row &&
+    typeof row === 'object' &&
+    typeof (row as ValidationRow).companyUuid === 'string' &&
+    typeof (row as ValidationRow).companyName === 'string',
+  )
+}
+
+async function writeCheckpoint(rows: ValidationRow[], outDir: string, count: number) {
+  const checkpointDir = join(outDir, 'servicem8-client-checkpoints')
+  const suffix = String(count).padStart(4, '0')
+  await mkdir(checkpointDir, { recursive: true })
+  await Promise.all([
+    writeFile(join(checkpointDir, `servicem8-clients-${suffix}.csv`), toCsv(rows)),
+    writeFile(join(checkpointDir, `servicem8-clients-${suffix}.json`), `${JSON.stringify(rows, null, 2)}\n`),
+    writeFile(join(checkpointDir, `servicem8-clients-${suffix}.sql`), toNeonSql(rows)),
   ])
 }
 
