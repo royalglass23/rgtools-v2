@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, lte, ne, or, 
 import { db } from '@/lib/db'
 import { clients, leads } from '@rgtools/db/schema-leads'
 import { getActiveScoringOptionLists } from '@/modules/lead-intake/scoring/config-options'
+import { optionPoints, type MatrixFieldKey } from '@/modules/lead-intake/scoring/score-lead'
 import { DEFAULT_LEADS_PREFS, LEADS_SORT_COLUMNS } from './table-prefs-shared'
 
 export const STALE_LEAD_DAYS = 7
@@ -183,17 +184,19 @@ export async function getLeadDetail(leadId: string) {
     13: lead.siteAccess,
     14: lead.installationHeight,
   }
-  const scoredFields = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((category) => {
+  const scoredFields = Object.keys(optionLists.categories).sort((left, right) => Number(left) - Number(right)).map((categoryKey) => {
+    const category = Number(categoryKey)
     const configCategory = optionLists.categories[String(category)]
     const label = configCategory?.label ?? categoryLabel(category)
     const answerKey = scoredFieldValues[category]
     const selected = configCategory?.options.find((option) => option.key === answerKey)?.label
+    const fieldKey = MATRIX_FIELD_BY_CATEGORY[category]
 
     return {
       category,
       label: cleanDisplayText(label),
       answer: cleanDisplayText(selected ?? answerKey ?? 'Not selected'),
-      points: 0,
+      points: fieldKey && answerKey ? optionPoints(fieldKey, answerKey) : 0,
     }
   })
 
@@ -203,6 +206,22 @@ export async function getLeadDetail(leadId: string) {
     projectType: lead.product ?? lead.projectType,
     distanceBand: scoredFields.find((field) => field.category === 7)?.answer ?? 'Not selected',
   }
+}
+
+const MATRIX_FIELD_BY_CATEGORY: Partial<Record<number, MatrixFieldKey>> = {
+  1: 'clientType',
+  2: 'budgetBand',
+  4: 'projectType',
+  5: 'priceSensitivity',
+  6: 'decisionMakers',
+  7: 'distanceBand',
+  8: 'resourceConsent',
+  9: 'buildingConsent',
+  10: 'buildingStage',
+  11: 'source',
+  12: 'paymentHistory',
+  13: 'siteAccess',
+  14: 'installationHeight',
 }
 
 function cleanDisplayText(value: string) {

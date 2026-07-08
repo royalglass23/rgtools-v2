@@ -7,6 +7,7 @@ import type { LeadsListFilters } from './queries'
 import { batchDeleteLeadsAction, restoreLeadAction } from './actions'
 import { saveTablePrefs } from './table-prefs-actions'
 import { DEFAULT_LEADS_PREFS, type TablePrefs } from './table-prefs-shared'
+import { formatAnswerKey, formatProjectType } from '../lead-intake/display-labels'
 
 type LeadRow = {
   id: string
@@ -48,14 +49,14 @@ const COLUMN_DEFS: ColumnDef[] = [
   ) },
   { key: 'jobNumber', label: 'Job Number', className: 'whitespace-nowrap text-gray-700', render: (lead) => lead.servicem8JobNumber ?? '-' },
   { key: 'address', label: 'Job Address', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.location ?? '-'}</span> },
-  { key: 'project', label: 'Project', className: 'text-gray-700', render: (lead) => lead.projectType ?? '-' },
+  { key: 'project', label: 'Project', className: 'text-gray-700', render: (lead) => formatProjectType(lead.projectType) },
   { key: 'tier', label: 'Tier', sortKey: 'tier', render: (lead) => <TierBadge tier={lead.tier} /> },
   { key: 'score', label: 'Score', sortKey: 'seedScore', className: 'text-gray-700', render: (lead) => lead.seedScore ?? '-' },
   { key: 'sm8', label: 'SM8', render: (lead) => <Sm8Badge linked={Boolean(lead.servicem8JobUuid)} status={lead.syncStatus} /> },
   { key: 'completeness', label: 'Completeness', sortKey: 'completeness', className: 'text-gray-700', render: (lead) => lead.completeness === null ? '-' : `${lead.completeness}%` },
-  { key: 'rcStatus', label: 'RC', className: 'text-gray-700', render: (lead) => lead.rcStatus ?? '-' },
-  { key: 'bcStatus', label: 'BC', className: 'text-gray-700', render: (lead) => lead.bcStatus ?? '-' },
-  { key: 'buildingStage', label: 'Building Stage', className: 'text-gray-700', render: (lead) => lead.buildingStage ?? '-' },
+  { key: 'rcStatus', label: 'RC', className: 'text-gray-700', render: (lead) => formatAnswerKey(lead.rcStatus) },
+  { key: 'bcStatus', label: 'BC', className: 'text-gray-700', render: (lead) => formatAnswerKey(lead.bcStatus) },
+  { key: 'buildingStage', label: 'Building Stage', className: 'text-gray-700', render: (lead) => formatAnswerKey(lead.buildingStage) },
   { key: 'followUpDate', label: 'Follow-up date', sortKey: 'followUpDate', className: 'whitespace-nowrap text-gray-700', render: (lead) => formatNullableDate(lead.followUpDate) },
   { key: 'updatedAt', label: 'Last update', sortKey: 'updatedAt', className: 'whitespace-nowrap text-gray-700', render: (lead) => formatDate(lead.updatedAt) },
   { key: 'aiSuggestion', label: 'AI suggestion', className: 'max-w-xs text-gray-700', render: (lead) => <span className="block truncate">{lead.aiSuggestion ?? '-'}</span> },

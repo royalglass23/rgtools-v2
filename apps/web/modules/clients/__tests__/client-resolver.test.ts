@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, clientContacts, leads } from '@rgtools/db/schema-leads'
+import { clientAliases, clientContacts, clientMergedReferences, clients, leads } from '@rgtools/db/schema-leads'
 import { resolveClient, mergeClients } from '../client-resolver'
 
 const createdClientIds = new Set<string>()
@@ -18,6 +18,8 @@ afterEach(async () => {
   for (const leadId of createdLeadIds) await db.delete(leads).where(eq(leads.id, leadId))
   createdLeadIds.clear()
   for (const clientId of createdClientIds) {
+    await db.delete(clientMergedReferences).where(eq(clientMergedReferences.survivorClientId, clientId))
+    await db.delete(clientAliases).where(eq(clientAliases.clientId, clientId))
     await db.delete(clientContacts).where(eq(clientContacts.clientId, clientId))
     await db.delete(clients).where(eq(clients.id, clientId))
   }
@@ -136,7 +138,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('resolveClient', () => {
 })
 
 describe.skipIf(!process.env.RUN_DB_TESTS)('mergeClients', () => {
-  it('re-points leads onto the survivor, folds contacts in, and deletes losers', async () => {
+  it('re-points leads onto the survivor, folds contacts in, and hides losers as merged references', async () => {
     const survivor = await db.transaction((tx) => resolveClient(tx, { clientName: 'Survivor', email: `survivor-${crypto.randomUUID()}@x.co` }))
     const loser = await db.transaction((tx) => resolveClient(tx, { clientName: 'Loser', email: `loser-${crypto.randomUUID()}@x.co` }))
     track(survivor.clientId)
@@ -153,9 +155,26 @@ describe.skipIf(!process.env.RUN_DB_TESTS)('mergeClients', () => {
     expect(movedLead.clientId).toBe(survivor.clientId)
 
     const loserRows = await db.select().from(clients).where(eq(clients.id, loser.clientId))
-    expect(loserRows).toHaveLength(0)
+    expect(loserRows).toHaveLength(1)
+    expect(loserRows[0]).toMatchObject({ mergedIntoClientId: survivor.clientId, isMerged: true })
 
     const survivorContacts = await db.select().from(clientContacts).where(eq(clientContacts.clientId, survivor.clientId))
     expect(survivorContacts.length).toBeGreaterThanOrEqual(2) // survivor's own + folded-in loser contact
+
+    const survivorAliases = await db.select().from(clientAliases).where(eq(clientAliases.clientId, survivor.clientId))
+    expect(survivorAliases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ alias: 'Loser', source: 'merge' }),
+    ]))
+
+    const references = await db
+      .select()
+      .from(clientMergedReferences)
+      .where(eq(clientMergedReferences.mergedClientId, loser.clientId))
+    expect(references).toEqual([
+      expect.objectContaining({
+        survivorClientId: survivor.clientId,
+        mergedClientId: loser.clientId,
+      }),
+    ])
   })
 })

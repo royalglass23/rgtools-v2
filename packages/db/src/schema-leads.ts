@@ -53,6 +53,18 @@ export const leadSyncStatusEnum = pgEnum('lead_sync_status', [
   'pending_sync', 'synced', 'sync_failed',
 ])
 export const leadTierEnum = pgEnum('lead_tier', ['A', 'B', 'C', 'D', 'E'])
+export const clientIdentityTypeEnum = pgEnum('client_identity_type', [
+  'company', 'individual_homeowner', 'household', 'contractor', 'sole_trader', 'other',
+])
+export const clientReviewStatusEnum = pgEnum('client_review_status', [
+  'pending_review', 'reviewed', 'dismissed',
+])
+export const clientCanonicalSourceEnum = pgEnum('client_canonical_source', [
+  'import', 'manual', 'system',
+])
+export const clientAliasSourceEnum = pgEnum('client_alias_source', [
+  'servicem8_import', 'manual', 'merge',
+])
 export const leadOutcomeEnum = pgEnum('lead_outcome', [
   'won', 'lost_outside_rubric', 'lost_score_wrong', 'lost_served_late',
   'lost_silence', 'disqualified',
@@ -67,6 +79,24 @@ export const clients = pgTable('clients', {
   phone: text('phone'),
   phoneNormalized: text('phone_normalized'),
   clientType: leadClientTypeEnum('client_type'),
+  identityType: clientIdentityTypeEnum('identity_type'),
+  canonicalSource: clientCanonicalSourceEnum('canonical_source').default('import').notNull(),
+  canonicalUpdatedBy: uuid('canonical_updated_by').references(() => users.id),
+  canonicalUpdatedAt: timestamp('canonical_updated_at', { withTimezone: true }).defaultNow().notNull(),
+  servicem8Name: text('servicem8_name'),
+  servicem8CompanyName: text('servicem8_company_name'),
+  servicem8Email: text('servicem8_email'),
+  servicem8Phone: text('servicem8_phone'),
+  servicem8PhoneNormalized: text('servicem8_phone_normalized'),
+  servicem8SourceSnapshot: jsonb('servicem8_source_snapshot'),
+  servicem8LastSyncedAt: timestamp('servicem8_last_synced_at', { withTimezone: true }),
+  reviewStatus: clientReviewStatusEnum('review_status').default('pending_review').notNull(),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNote: text('review_note'),
+  isMerged: boolean('is_merged').default(false).notNull(),
+  mergedIntoClientId: uuid('merged_into_client_id'),
+  mergedAt: timestamp('merged_at', { withTimezone: true }),
   isRepeatClient: boolean('is_repeat_client').default(false).notNull(),
   lifetimeJobs: integer('lifetime_jobs').default(0).notNull(),
   notes: text('notes'),
@@ -75,10 +105,43 @@ export const clients = pgTable('clients', {
 }, (t) => [
   index('clients_phone_norm_idx').on(t.phoneNormalized),
   index('clients_email_idx').on(t.email),
+  index('clients_identity_type_idx').on(t.identityType),
+  index('clients_review_status_idx').on(t.reviewStatus),
+  index('clients_is_merged_idx').on(t.isMerged),
+  index('clients_merged_into_idx').on(t.mergedIntoClientId),
   // Canonical identity for a "linked" client. The partial UNIQUE index
   // (WHERE servicem8_company_uuid IS NOT NULL) is added by hand in the
   // migration — Drizzle cannot express the partial WHERE clause.
   index('clients_servicem8_company_uuid_idx').on(t.servicem8CompanyUuid),
+])
+
+export const clientMergedReferences = pgTable('client_merged_references', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  survivorClientId: uuid('survivor_client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  mergedClientId: uuid('merged_client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  servicem8CompanyUuid: text('servicem8_company_uuid'),
+  name: text('name').notNull(),
+  companyName: text('company_name'),
+  email: text('email'),
+  phoneNormalized: text('phone_normalized'),
+  mergedAt: timestamp('merged_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_merged_refs_survivor_idx').on(t.survivorClientId),
+  uniqueIndex('client_merged_refs_merged_client_uq').on(t.mergedClientId),
+  index('client_merged_refs_servicem8_idx').on(t.servicem8CompanyUuid),
+  index('client_merged_refs_email_idx').on(t.email),
+  index('client_merged_refs_phone_idx').on(t.phoneNormalized),
+])
+
+export const clientDuplicateDismissals = pgTable('client_duplicate_dismissals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suggestionKey: text('suggestion_key').notNull(),
+  reason: text('reason'),
+  dismissedBy: uuid('dismissed_by').notNull().references(() => users.id),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('client_duplicate_dismissals_key_uq').on(t.suggestionKey),
+  index('client_duplicate_dismissals_by_idx').on(t.dismissedBy),
 ])
 
 export const clientContacts = pgTable('client_contacts', {
@@ -94,6 +157,18 @@ export const clientContacts = pgTable('client_contacts', {
   index('client_contacts_client_idx').on(t.clientId),
   index('client_contacts_phone_norm_idx').on(t.phoneNormalized),
   index('client_contacts_email_idx').on(t.email),
+])
+
+export const clientAliases = pgTable('client_aliases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  alias: text('alias').notNull(),
+  source: clientAliasSourceEnum('source').default('manual').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('client_aliases_client_idx').on(t.clientId),
+  index('client_aliases_alias_idx').on(t.alias),
+  uniqueIndex('client_aliases_client_alias_uq').on(t.clientId, t.alias),
 ])
 
 export const scoringConfigVersions = pgTable('scoring_config_versions', {

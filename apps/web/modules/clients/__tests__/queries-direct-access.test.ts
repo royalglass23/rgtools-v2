@@ -29,6 +29,11 @@ vi.mock('@rgtools/db/schema', () => ({
 }))
 
 vi.mock('@rgtools/db/schema-leads', () => ({
+  clientAliases: {
+    alias: { name: 'client_aliases.alias' },
+    clientId: { name: 'client_aliases.client_id' },
+    source: { name: 'client_aliases.source' },
+  },
   clientContacts: {
     id: { name: 'client_contacts.id' },
     clientId: { name: 'client_contacts.client_id' },
@@ -52,6 +57,20 @@ vi.mock('@rgtools/db/schema-leads', () => ({
     archivedAt: { name: 'leads.archived_at' },
     createdAt: { name: 'leads.created_at' },
     updatedAt: { name: 'leads.updated_at' },
+  },
+}))
+
+vi.mock('@rgtools/db/schema-workorders', () => ({
+  workOrders: {
+    id: { name: 'work_orders.id' },
+    clientId: { name: 'work_orders.client_id' },
+    jobNumber: { name: 'work_orders.job_number' },
+    jobDescription: { name: 'work_orders.job_description' },
+    jobAddress: { name: 'work_orders.job_address' },
+    servicem8Status: { name: 'work_orders.servicem8_status' },
+    isCurrent: { name: 'work_orders.is_current' },
+    createdAt: { name: 'work_orders.created_at' },
+    updatedAt: { name: 'work_orders.updated_at' },
   },
 }))
 
@@ -97,6 +116,8 @@ describe('getClientDetail direct access', () => {
         updatedAt: new Date('2026-07-01T00:00:00Z'),
       },
     ])
+    queryResults.push([])
+    queryResults.push([])
     queryResults.push([])
     queryResults.push([])
     queryResults.push([])

@@ -2,7 +2,7 @@
 
 import bcrypt from 'bcryptjs'
 import { revalidatePath } from 'next/cache'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { type Session } from 'next-auth'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -14,6 +14,7 @@ import { logAudit } from '@/lib/audit-db'
 import { logError } from '@/lib/logger'
 import {
   DEFAULT_MENU_AVAILABILITY,
+  MENU_DEFINITIONS,
   MENU_AVAILABILITY_SETTING_KEY,
   MENU_KEYS,
   serializeMenuAvailability,
@@ -414,6 +415,8 @@ export async function updateMenuAvailability(
           },
         })
 
+      await syncStaffMenuGrants(tx, nextAvailability, session.user.id as string)
+
       await logAudit({
         actorId: session.user.id as string,
         entityType: 'access',
@@ -435,6 +438,58 @@ export async function updateMenuAvailability(
       userId: actorId,
     })
     return { error: `Failed to update menu availability. Please try again. Ref: ${errorId}` }
+  }
+}
+
+async function syncStaffMenuGrants(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  availability: MenuAvailability,
+  actorId: string,
+) {
+  const [staffUsers, activeModules] = await Promise.all([
+    tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'staff')),
+    tx
+      .select({
+        id: modules.id,
+        slug: modules.slug,
+        adminOnly: modules.adminOnly,
+      })
+      .from(modules)
+      .where(eq(modules.isActive, true)),
+  ])
+
+  if (staffUsers.length === 0) return
+
+  const staffUserIds = staffUsers.map((user) => user.id)
+
+  for (const menu of MENU_DEFINITIONS) {
+    const moduleIds = activeModules
+      .filter((moduleRow) => !moduleRow.adminOnly && menu.slugs.includes(moduleRow.slug))
+      .map((moduleRow) => moduleRow.id)
+
+    if (moduleIds.length === 0) continue
+
+    if (availability.staff[menu.key]) {
+      for (const userId of staffUserIds) {
+        for (const moduleId of moduleIds) {
+          await tx
+            .insert(userModuleAccess)
+            .values({ userId, moduleId, grantedBy: actorId })
+            .onConflictDoNothing()
+        }
+      }
+      continue
+    }
+
+    await tx
+      .delete(userModuleAccess)
+      .where(and(
+        inArray(userModuleAccess.userId, staffUserIds),
+        inArray(userModuleAccess.moduleId, moduleIds),
+      ))
   }
 }
 

@@ -5,27 +5,9 @@ import { useRouter } from 'next/navigation'
 import type { ActiveScoringOptionLists, FormOption } from '@/modules/lead-intake/scoring/config-options'
 import { optionTeamNote, scoreLead, tierAction, type DecisionMatrixAnswers } from '@/modules/lead-intake/scoring/score-lead'
 import { submitLeadIntake, computeLeadDistance, type LeadIntakeInput, type LeadIntakeResult } from './actions'
+import { PROJECT_TYPES, SOURCES } from './display-labels'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'
-
-const PROJECT_TYPES = [
-  { key: 'ground_level', label: 'Ground Level Balustrade' },
-  { key: 'balcony_balustrade', label: 'Balcony Balustrade' },
-  { key: 'stair_balustrade', label: 'Stair Balustrade' },
-  { key: 'pool_fence', label: 'Pool Fence' },
-  { key: 'shower', label: 'Shower' },
-  { key: 'handrail', label: 'Handrail' },
-  { key: 'other', label: 'Other' },
-]
-
-const SOURCES: Array<{ key: LeadIntakeInput['source']; label: string }> = [
-  { key: 'phone', label: 'Phone' },
-  { key: 'email', label: 'Email' },
-  { key: 'wechat', label: 'WeChat' },
-  { key: 'calculator', label: 'Calculator' },
-  { key: 'contact_form', label: 'Contact form' },
-  { key: 'other', label: 'Other' },
-]
 
 const initialState: LeadIntakeInput = {
   editReason: '',
@@ -43,7 +25,6 @@ const initialState: LeadIntakeInput = {
   buildingStage: '',
   followUpDate: '',
   budgetBand: '',
-  jobDescription: '',
   decisionMakers: '',
   priceSensitivityRead: '',
   leadSource: '',
@@ -170,13 +151,6 @@ export function LeadIntakeForm({
             teamNote={optionTeamNote('projectType', input.cat4)}
             onChange={(value) => update('cat4', value)}
           />
-          <div className="md:col-span-2">
-            <TextAreaField
-              label="Job Description"
-              value={input.jobDescription ?? ''}
-              onChange={(value) => update('jobDescription', value)}
-            />
-          </div>
           <SelectField
             label="Budget Band"
             value={input.budgetBand ?? ''}

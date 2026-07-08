@@ -116,4 +116,26 @@ describe('planClientMerges', () => {
       },
     ])
   })
+
+  it('omits dismissed review suggestions while preserving other duplicate candidates', () => {
+    const plan = planClientMerges([
+      row({ id: 'rapid-one', name: 'Rapid Solutions', phoneNormalized: '+64210000001' }),
+      row({ id: 'rapid-two', name: 'Rapid Solutions NZ', phoneNormalized: '+64210000001' }),
+      row({ id: 'glass-a', name: 'Glass House' }),
+      row({ id: 'glass-b', name: 'Glass House' }),
+    ], {
+      dismissedSuggestionKeys: new Set(['contact:+64210000001']),
+    })
+
+    expect(plan.reviewGroups).toEqual([
+      {
+        key: 'name:glass house',
+        reason: 'same_name',
+        rows: expect.arrayContaining([
+          expect.objectContaining({ id: 'glass-a' }),
+          expect.objectContaining({ id: 'glass-b' }),
+        ]),
+      },
+    ])
+  })
 })

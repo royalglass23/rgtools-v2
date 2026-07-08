@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import { batchDeleteWorkOrdersAction } from './actions'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection, WorkOrderSortKey } from './list-filters'
 import type { WorkOrderRow } from './queries'
@@ -23,6 +25,7 @@ export function WorkOrdersTableControls({
   pageCount,
   basePath = '/work-orders',
   paramPrefix = '',
+  isAdmin = false,
 }: {
   rows: WorkOrderRow[]
   filters: WorkOrderListFilters
@@ -32,7 +35,24 @@ export function WorkOrdersTableControls({
   pageCount: number
   basePath?: string
   paramPrefix?: string
+  isAdmin?: boolean
 }) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedSet.has(row.id))
+
+  function toggleWorkOrder(workOrderId: string) {
+    setSelectedIds((current) => (
+      current.includes(workOrderId)
+        ? current.filter((id) => id !== workOrderId)
+        : [...current, workOrderId]
+    ))
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds(allVisibleSelected ? [] : rows.map((row) => row.id))
+  }
+
   return (
     <>
       <WorkOrderFilters
@@ -42,7 +62,53 @@ export function WorkOrdersTableControls({
         basePath={basePath}
         paramPrefix={paramPrefix}
       />
-      <WorkOrdersTable rows={rows} filters={filters} fields={fields} basePath={basePath} paramPrefix={paramPrefix} />
+      {isAdmin && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500">{selectedIds.length} selected</span>
+          <button
+            type="submit"
+            form="batch-delete-work-orders-form"
+            disabled={selectedIds.length === 0}
+            className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Delete selected
+          </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <form
+          id="batch-delete-work-orders-form"
+          action={batchDeleteWorkOrdersAction}
+          onSubmit={(event) => {
+            if (selectedIds.length === 0) {
+              event.preventDefault()
+              return
+            }
+
+            if (!window.confirm(`Delete ${selectedIds.length} selected Work Order${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)) {
+              event.preventDefault()
+            }
+          }}
+        >
+          {selectedIds.map((workOrderId) => (
+            <input key={workOrderId} type="hidden" name="workOrderId" value={workOrderId} />
+          ))}
+        </form>
+      )}
+
+      <WorkOrdersTable
+        rows={rows}
+        filters={filters}
+        fields={fields}
+        basePath={basePath}
+        paramPrefix={paramPrefix}
+        isAdmin={isAdmin}
+        selectedSet={selectedSet}
+        allVisibleSelected={allVisibleSelected}
+        onToggleWorkOrder={toggleWorkOrder}
+        onToggleAllVisible={toggleAllVisible}
+      />
 
       <div className="grid grid-cols-1 items-center gap-3 text-sm text-gray-600 md:grid-cols-3">
         <span>{total} work orders</span>
@@ -141,12 +207,22 @@ function WorkOrdersTable({
   fields,
   basePath,
   paramPrefix,
+  isAdmin,
+  selectedSet,
+  allVisibleSelected,
+  onToggleWorkOrder,
+  onToggleAllVisible,
 }: {
   rows: WorkOrderRow[]
   filters: WorkOrderListFilters
   fields: WorkOrderSummaryFieldConfig[]
   basePath: string
   paramPrefix: string
+  isAdmin: boolean
+  selectedSet: Set<string>
+  allVisibleSelected: boolean
+  onToggleWorkOrder: (workOrderId: string) => void
+  onToggleAllVisible: () => void
 }) {
   const searchParams = useSearchParams()
   const emptyMessage = hasActiveListFilters(filters)
@@ -160,6 +236,17 @@ function WorkOrdersTable({
         <table className="w-full min-w-[1280px] table-auto divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
             <tr>
+              {isAdmin && (
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={onToggleAllVisible}
+                    aria-label="Select all visible Work Orders"
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </th>
+              )}
               {visibleFields.map((field) => (
                 <SortHeader
                   key={field.id}
@@ -175,12 +262,23 @@ function WorkOrdersTable({
           <tbody className="divide-y divide-gray-100">
             {rows.map((row) => (
               <tr key={row.id} className="hover:bg-gray-50">
+                {isAdmin && (
+                  <td className="px-4 py-3 align-top">
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(row.id)}
+                      onChange={() => onToggleWorkOrder(row.id)}
+                      aria-label={`Select Work Order for ${row.clientName}`}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </td>
+                )}
                 {visibleFields.map((field) => <SummaryCell key={field.id} field={field} row={row} />)}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={visibleFields.length} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={visibleFields.length + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">
                   {emptyMessage}
                 </td>
               </tr>

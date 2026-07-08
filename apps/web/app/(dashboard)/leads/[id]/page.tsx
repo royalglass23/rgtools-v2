@@ -9,6 +9,7 @@ import { AiSuggestionButton } from '@/modules/leads/AiSuggestionButton'
 import { ReviewerNotesSection } from '@/modules/leads/ReviewerNotesSection'
 import { getLeadReviewerNotes } from '@/modules/leads/reviewer-notes'
 import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
+import { formatAnswerKey, formatLeadSource, formatProjectType } from '@/modules/lead-intake/display-labels'
 import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
 import { addReviewerNoteAction } from './reviewer-notes-actions'
 
@@ -30,6 +31,14 @@ export default async function LeadDetailPage({
   const intakeSaved = notices.intakeSaved === 'updated' ? 'updated' : notices.intakeSaved === 'added' ? 'added' : null
   const canUseLeads = session?.user?.id ? await userCanAccessSlug(session.user.id, 'leads') : false
   const reviewerNotes = canUseLeads ? await getLeadReviewerNotes(lead.id) : []
+  const projectTypeLabel = findScoredFieldAnswer(lead.scoredFields, ['Project Type']) ?? formatAnswerKey(lead.projectType)
+  const productLabel = formatProjectType(lead.product ?? lead.projectType)
+  const sourceDetail = findScoredFieldAnswer(lead.scoredFields, ['Source']) ?? formatLeadSource(lead.source)
+  const jobDescription = buildJobDescription({
+    projectType: projectTypeLabel,
+    product: productLabel,
+    address: lead.location,
+  })
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -76,20 +85,20 @@ export default async function LeadDetailPage({
           <Field label="Job Number" value={lead.servicem8JobNumber ?? '-'} />
           <Field label="Name" value={lead.clientName} />
           <Field label="Company" value={lead.companyName ?? '-'} />
-          <Field label="Project Type" value={lead.projectType ?? '-'} />
+          <Field label="Project Type" value={projectTypeLabel} />
           <Field label="Job Address" value={lead.location ?? '-'} className="sm:col-span-2" />
           <Field label="Email" value={lead.email ?? '-'} />
           <Field label="Phone" value={lead.phone ?? '-'} />
-          <Field label="Channel" value={formatEnumValue(lead.channel)} />
-          <Field label="Source" value={formatEnumValue(lead.source)} className="sm:col-span-2" />
+          <Field label="Source" value={sourceDetail} />
         </dl>
       </Section>
 
       <Section title="Notes">
         <dl className="grid gap-4 sm:grid-cols-2">
+          <Field label="Job Description" value={jobDescription} className="sm:col-span-2" />
           <Field label="Follow-up date" value={formatNullableDate(lead.followUpDate)} />
           <Field label="Last update" value={formatDateTime(lead.updatedAt)} />
-          <Field label="Job Description" value={lead.freeText ?? '-'} className="sm:col-span-2" />
+          <Field label="Free notes" value={lead.freeText ?? '-'} className="sm:col-span-2" />
         </dl>
       </Section>
 
@@ -130,12 +139,10 @@ export default async function LeadDetailPage({
       </Section>
 
       <Section title="Score Summary">
-        <dl className="grid gap-4 sm:grid-cols-4">
+        <dl className="grid gap-4 sm:grid-cols-3">
           <Field label="Tier" value={scoreSummaryTier} />
           <Field label="Score" value={lead.seedScore === null ? '-' : String(lead.seedScore)} />
           <Field label="Completeness" value={lead.completeness === null ? '-' : `${lead.completeness}%`} />
-          <Field label="Flag note" value={lead.strikeFlag ?? '-'} />
-          <Field label="Score reason" value={lead.scoreReason ?? '-'} className="sm:col-span-4" />
         </dl>
       </Section>
 
@@ -195,6 +202,30 @@ function formatDateTime(date: Date | string) {
   }).format(new Date(date))
 }
 
+function findScoredFieldAnswer(fields: Array<{ label: string; answer: string }>, labels: string[]) {
+  const normalizedLabels = labels.map((label) => label.toLowerCase())
+  const field = fields.find((candidate) => normalizedLabels.includes(candidate.label.toLowerCase()))
+  if (!field || field.answer === 'Not selected') return null
+  return formatAnswerKey(field.answer)
+}
+
+function buildJobDescription({
+  projectType,
+  product,
+  address,
+}: {
+  projectType: string
+  product: string | null
+  address: string | null
+}) {
+  const parts = [projectType === '-' ? null : projectType]
+  if (product && product !== projectType) parts.push(product)
+  const description = parts.filter(Boolean).join(' ')
+  if (!description && !address) return '-'
+  if (!description) return address ?? '-'
+  return address ? `${description} in ${address}` : description
+}
+
 function TierBadge({ tier }: { tier: string | null }) {
   if (!tier) {
     return <span className="inline-flex rounded px-2 py-1 text-xs font-semibold bg-gray-100 text-gray-700">Needs scoring</span>
@@ -209,8 +240,4 @@ function TierBadge({ tier }: { tier: string | null }) {
   }[tier] ?? 'bg-gray-100 text-gray-700'
 
   return <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${classes}`}>{tier}</span>
-}
-
-function formatEnumValue(value: string | null | undefined) {
-  return value ? value.replaceAll('_', ' ') : '-'
 }

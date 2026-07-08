@@ -28,7 +28,12 @@ export type MergePlan = {
   reviewGroups: ReviewGroup[]
 }
 
-export function planClientMerges(rows: ClientMergePlanRow[]): MergePlan {
+export type MergePlanOptions = {
+  dismissedSuggestionKeys?: Set<string>
+}
+
+export function planClientMerges(rows: ClientMergePlanRow[], options: MergePlanOptions = {}): MergePlan {
+  const dismissedSuggestionKeys = options.dismissedSuggestionKeys ?? new Set<string>()
   const autoMergeGroups = groupBy(
     rows.filter((row) => row.resolvedServiceM8CompanyUuid),
     (row) => row.resolvedServiceM8CompanyUuid!,
@@ -54,7 +59,9 @@ export function planClientMerges(rows: ClientMergePlanRow[]): MergePlan {
     (row) => row.phoneNormalized!,
   )) {
     if (group.rows.length < 2) continue
-    reviewGroups.push({ key: `contact:${group.key}`, reason: 'same_contact', rows: group.rows })
+    const key = `contact:${group.key}`
+    if (dismissedSuggestionKeys.has(key)) continue
+    reviewGroups.push({ key, reason: 'same_contact', rows: group.rows })
     for (const row of group.rows) reviewedIds.add(row.id)
   }
 
@@ -64,7 +71,9 @@ export function planClientMerges(rows: ClientMergePlanRow[]): MergePlan {
   )) {
     const groupRows = group.rows.filter((row) => !reviewedIds.has(row.id))
     if (groupRows.length < 2) continue
-    reviewGroups.push({ key: `name:${group.key}`, reason: 'same_name', rows: groupRows })
+    const key = `name:${group.key}`
+    if (dismissedSuggestionKeys.has(key)) continue
+    reviewGroups.push({ key, reason: 'same_name', rows: groupRows })
   }
 
   return {

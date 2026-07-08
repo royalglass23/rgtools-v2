@@ -5,16 +5,14 @@ import { users, modules, userModuleAccess, auditLog, errorLog } from '@rgtools/d
 import { and, count, desc, eq, gte, isNull, like, lte, or } from 'drizzle-orm'
 import { deriveAuditEntityType, formatAuditDetail } from '@/lib/audit'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { CreateUserForm } from '@/modules/admin/CreateUserForm'
 import { TestErrorButton } from '@/modules/admin/TestErrorButton'
 import { UserRow } from '@/modules/admin/UserRow'
 import { ExportDropdown } from '@/modules/admin/ExportDropdown'
-import { updateMenuAvailability } from '@/modules/admin/actions'
-import { MENU_DEFINITIONS, type MenuKey, type MenuRole } from '@/lib/menu-availability'
+import { MenuAvailabilityForm } from '@/modules/admin/MenuAvailabilityForm'
 import { getMenuAvailability } from '@/lib/menu-availability-db'
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100] as const
 const AUDIT_ENTITY_TYPES = ['user', 'access', 'lead', 'quote', 'scoring', 'pricing'] as const
 
 function parsePage(value: string | string[] | undefined) {
@@ -23,10 +21,10 @@ function parsePage(value: string | string[] | undefined) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
-function parsePageSize(value: string | string[] | undefined) {
+function parsePageSize(value: string | string[] | undefined, fallback = 10) {
   const raw = Array.isArray(value) ? value[0] : value
-  const parsed = Number(raw ?? '10')
-  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : 10
+  const parsed = Number(raw ?? String(fallback))
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed) ? parsed : fallback
 }
 
 function parseString(value: string | string[] | undefined) {
@@ -95,32 +93,6 @@ function HiddenSearchInputs({
         return <input key={key} type="hidden" name={key} value={val} />
       })}
     </>
-  )
-}
-
-function MenuAvailabilityCheckbox({
-  role,
-  menuKey,
-  checked,
-  disabled = false,
-}: {
-  role: MenuRole
-  menuKey: MenuKey
-  checked: boolean
-  disabled?: boolean
-}) {
-  const id = `menu-${role}-${menuKey}`
-
-  return (
-    <input
-      id={id}
-      name={`menu:${role}:${menuKey}`}
-      type="checkbox"
-      aria-label={`${role} ${menuKey} menu`}
-      defaultChecked={checked}
-      disabled={disabled}
-      className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-    />
   )
 }
 
@@ -198,7 +170,7 @@ export default async function AdminPage({
   const errorPage = parsePage(params.errorPage)
   const auditPage = parsePage(params.auditPage)
   const errorSize = parsePageSize(params.errorSize)
-  const auditSize = parsePageSize(params.auditSize)
+  const auditSize = parsePageSize(params.auditSize, 5)
   const auditActorId = parseString(params.auditActorId)
   const auditEntityType = parseString(params.auditEntityType)
   const auditAction = parseString(params.auditAction)
@@ -272,24 +244,20 @@ export default async function AdminPage({
     dateTo: parseString(params.auditDateTo) || undefined,
     showArchived: auditShowArchived ? '1' : undefined,
   }
-  async function updateMenuAvailabilityAction(formData: FormData) {
-    'use server'
-    const result = await updateMenuAvailability(formData)
-    if ('error' in result) {
-      redirect(`/admin/administration?menuError=${encodeURIComponent(result.error)}`)
-    }
-    redirect('/admin/administration?menuSaved=1')
-  }
-
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
       <h1 className="text-2xl font-semibold text-gray-900">Admin Panel</h1>
 
       {/* ── User List ─────────────────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Users</h2>
+      <details className="order-10" open>
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Users</summary>
 
-        <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
+        <div className="mb-4 rounded border border-gray-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900">Create User</h3>
+          <CreateUserForm />
+        </div>
+
+        <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -336,78 +304,14 @@ export default async function AdminPage({
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
       {isProtectedActor && (
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-800">Menu Availability</h2>
-          {parseString(params.menuSaved) === '1' && (
-            <div className="mb-4 rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              Menu availability saved.
-            </div>
-          )}
-          {parseString(params.menuError) && (
-            <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              Menu availability could not be saved. {parseString(params.menuError)}
-            </div>
-          )}
-          <form action={updateMenuAvailabilityAction} className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Menu
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Staff
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Admin
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {MENU_DEFINITIONS.map((menu) => (
-                  <tr key={menu.key} className="border-b border-gray-100 last:border-0">
-                    <td className="px-4 py-3 font-medium text-gray-900">{menu.label}</td>
-                    <td className="px-4 py-3">
-                      <MenuAvailabilityCheckbox
-                        role="staff"
-                        menuKey={menu.key}
-                        checked={menuAvailability.staff[menu.key]}
-                        disabled={menu.key === 'admin'}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <MenuAvailabilityCheckbox
-                        role="admin"
-                        menuKey={menu.key}
-                        checked={menuAvailability.admin[menu.key]}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="flex justify-end border-t border-gray-100 px-4 py-3">
-              <button
-                type="submit"
-                className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
-              >
-                Save menu availability
-              </button>
-            </div>
-          </form>
-        </section>
+        <details className="order-20">
+          <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Menu Availability</summary>
+          <MenuAvailabilityForm menuAvailability={menuAvailability} />
+        </details>
       )}
-
-      {/* ── Create User ───────────────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Create User</h2>
-        <div className="bg-white border border-gray-200 rounded shadow-sm p-5">
-          <CreateUserForm />
-        </div>
-      </section>
 
       {/* ── Audit Log ─────────────────────────────────────────────────────── */}
       <details className="order-[60]">
@@ -502,12 +406,12 @@ export default async function AdminPage({
         </div>
       </details>
 
-      <section className="order-10">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Audit Log
-            <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
-          </h2>
+      <details className="order-40">
+        <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">
+          Audit Log
+          <span className="ml-2 text-sm font-normal text-gray-400">({auditTotalRows} total)</span>
+        </summary>
+        <div className="mb-3 flex justify-end">
           <ExportDropdown kind="audit" query={auditExportQuery} />
         </div>
 
@@ -672,7 +576,7 @@ export default async function AdminPage({
             searchParams={params}
           />
         </div>
-      </section>
+      </details>
 
       <details className="order-50">
         <summary className="mb-4 cursor-pointer text-lg font-semibold text-gray-800">Diagnostics</summary>

@@ -25,6 +25,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 - Dashboard KPI cards now focus on active tracked quotes: tracked quote value, active tracked quote count, hot/warm quote count, and viewed quote count.
 
 ### Added
+- **Admin-only Clients v1 cleanup release** - ServiceM8 company/client import, canonical/source client identity metadata, aliases, cleanup filters, dashboard editing, duplicate dismissal/merge, grouped client detail sections, recent activity, audit/error logging, and release rollback notes for MT-176.
 - **PS Generator foundation** - `ps-generator` module routes, navigation, generate API, published configuration read model, seed data, PDF filling engine, and tests for PS1/PS3 package generation.
 - **PS Generator configuration schema** - migration 0026 adds systems, option categories/values, system option rules, template variants, field mappings, description templates, generation records, generated PDF object records, audit entries, and migration records.
 - **Work Orders portal-safe timeline candidates** - Work Order timeline events now default to internal visibility, while manage users can store separate customer-safe title/message copy for future client portal updates.

@@ -62,6 +62,47 @@ const CUSTOMER_TYPE_LABEL: Record<string, string> = {
   other: 'Other',
 }
 
+const SCENARIO_LABEL: Record<string, string> = {
+  ground_level: 'Ground Level Balustrade',
+  balcony_balustrade: 'Balcony Balustrade',
+  stair_balustrade: 'Stair Balustrade',
+  premium_pool_fence: 'Premium Pool Fence',
+}
+
+const FIXING_LABEL: Record<string, string> = {
+  spigot_round: 'Round Spigots',
+  spigot_square: 'Square Spigots',
+  standoff_posts: 'Stand-off Posts',
+  viking: 'Viking System',
+  jh_clamps: 'JH Clamps',
+  side_channel: 'Side Channel',
+  top_channel: 'Top Channel',
+  aluminium_1: 'Aluminium 1',
+  aluminium_2: 'Aluminium 2',
+  sed: 'SED (Special Engineer Design)',
+  not_sure: 'To be confirmed',
+}
+
+const HARDWARE_FINISH_LABEL: Record<string, string> = {
+  standard_chrome: 'Standard Chrome',
+  matte_black: 'Matte Black',
+  brushed_chrome: 'Brushed Chrome',
+  powder_coated: 'Powder Coated',
+  not_sure: 'To be confirmed',
+}
+
+const GLASS_TYPE_LABEL: Record<string, string> = {
+  toughened_12mm: '12mm Toughened',
+  laminated: 'Laminated Glass',
+}
+
+const GLASS_COLOUR_LABEL: Record<string, string> = {
+  clear: 'Clear',
+  low_iron: 'Low Iron / Ultra-Clear',
+  tinted: 'Tinted',
+  frosted: 'Frosted',
+}
+
 export function mapCalculatorSubmissionToIntakeInput(
   submission: CalculatorSubmission,
   options: { submittedAt: Date; submissionRef: string },
@@ -135,13 +176,16 @@ function buildJobDescription(
   const answers = submission.answers ?? {}
   const estimateText = `Estimate: $${estimate.low} - $${estimate.high}` +
     (estimate.subtotal !== null ? ` (subtotal $${estimate.subtotal})` : '')
-  const project = `Project: ${stringValue(answers.scenario)}, ${stringValue(answers.length)}m, ` +
+  const project = `Project: ${formatKnownValue(answers.scenario, SCENARIO_LABEL)}, ${stringValue(answers.length)}m, ` +
     `${stringValue(answers.corners)} corner(s), ${stringValue(answers.gates)} gate(s)` +
     (numberValue(answers.landingLength) > 0 ? `, landing ${stringValue(answers.landingLength)}m` : '')
   // WizardAnswers uses fixingMethod/hardwareFinish; older payloads used fixing/hardware.
   const fixing = stringValue(answers.fixingMethod) || stringValue(answers.fixing)
   const hardware = stringValue(answers.hardwareFinish) || stringValue(answers.hardware)
-  const glass = [stringValue(answers.glassType), stringValue(answers.glassColour)].filter(Boolean).join(' / ')
+  const glass = [
+    formatKnownValue(answers.glassType, GLASS_TYPE_LABEL),
+    formatKnownValue(answers.glassColour, GLASS_COLOUR_LABEL),
+  ].filter(Boolean).join(' / ')
   const customerType =
     CUSTOMER_TYPE_LABEL[stringValue(lead.customerType)] ?? (stringValue(lead.customerType) || 'not specified')
   const consultation = `Consultation needed: ${estimate.needsCallUs || estimate.consultationFlags.length > 0 ? 'yes' : 'no'}` +
@@ -151,7 +195,7 @@ function buildJobDescription(
     `[Calculator] submitted ${submittedAt.toISOString()}`,
     estimateText,
     project,
-    `Fixing: ${fixing || 'not specified'} | Substrate: ${stringValue(answers.substrate) || 'not specified'} | Hardware: ${hardware || 'not specified'}`,
+    `Fixing: ${formatKnownValue(fixing, FIXING_LABEL) || 'not specified'} | Substrate: ${formatAnswerKey(answers.substrate) || 'not specified'} | Hardware: ${formatKnownValue(hardware, HARDWARE_FINISH_LABEL) || 'not specified'}`,
     `Glass: ${glass || 'not specified'}`,
     `Customer type: ${customerType} | Call preference: ${stringValue(lead.callPreference)}`,
     consultation,
@@ -161,6 +205,21 @@ function buildJobDescription(
   const notes = stringValue(lead.notes)
   if (notes) lines.push(`Notes: ${notes}`)
   return lines.join('\n')
+}
+
+function formatKnownValue(value: unknown, labels: Record<string, string>): string {
+  const key = stringValue(value)
+  if (!key) return ''
+  return labels[key] ?? formatAnswerKey(key)
+}
+
+function formatAnswerKey(value: unknown): string {
+  const key = stringValue(value)
+  if (!key) return ''
+  return key
+    .replaceAll('_', ' ')
+    .replaceAll('/', ' / ')
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
 }
 
 function clampMoney(value: number): number {

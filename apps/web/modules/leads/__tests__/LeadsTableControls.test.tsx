@@ -160,6 +160,40 @@ describe('LeadsTableControls', () => {
     expect(within(table).queryByText('D')).not.toBeInTheDocument()
   })
 
+  it('renders coded lead values as human-readable labels', () => {
+    render(
+      <LeadsTableControls
+        filters={filters}
+        rows={[{
+          ...rows[0],
+          projectType: 'balcony_balustrade',
+          rcStatus: 'approved_not_required',
+          bcStatus: 'submitted_pending',
+          buildingStage: 'ready_for_glazing',
+        }]}
+        total={1}
+        pageCount={1}
+        isAdmin={false}
+        prefs={{
+          ...prefs,
+          columns: [
+            { key: 'project', visible: true },
+            { key: 'rcStatus', visible: true },
+            { key: 'bcStatus', visible: true },
+            { key: 'buildingStage', visible: true },
+          ],
+        }}
+      />,
+    )
+
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('Balcony Balustrade')).toBeInTheDocument()
+    expect(within(table).getByText('Approved Not Required')).toBeInTheDocument()
+    expect(within(table).getByText('Submitted Pending')).toBeInTheDocument()
+    expect(within(table).getByText('Ready For Glazing')).toBeInTheDocument()
+    expect(within(table).queryByText('balcony_balustrade')).not.toBeInTheDocument()
+  })
+
   it('offers Tier E filtering and A-E sort labels', () => {
     render(
       <LeadsTableControls

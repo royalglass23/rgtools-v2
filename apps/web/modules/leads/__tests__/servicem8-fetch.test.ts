@@ -5,25 +5,52 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const linkedLeadRow = vi.hoisted(() => ({
   id: 'lead-1',
   tier: 'B',
+  seedScore: 70,
+  scoreReason: 'Tier B (70): good fit',
+  strikeFlag: null,
+  completeness: 86,
+  clientProfileKey: 'builder_developer_pool_builder_landscaper',
+  projectType: 'pool_fence',
+  complexity: 'new_build_commercial_fit_out',
+  freeText: null,
   servicem8JobUuid: 'job-uuid-1',
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 const unlinkedLeadRow = vi.hoisted(() => ({
   id: 'lead-2',
   tier: 'A',
+  seedScore: 82,
+  scoreReason: 'Tier A (82): strong fit',
+  strikeFlag: null,
+  completeness: 100,
+  clientProfileKey: 'builder_developer_pool_builder_landscaper',
+  projectType: 'pool_fence',
+  complexity: 'standard_non_custom',
+  freeText: null,
   servicem8JobUuid: null,
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 const unscoredLeadRow = vi.hoisted(() => ({
   id: 'lead-3',
   tier: null,
+  seedScore: null,
+  scoreReason: null,
+  strikeFlag: null,
+  completeness: null,
+  clientProfileKey: null,
+  projectType: null,
+  complexity: null,
+  freeText: null,
   servicem8JobUuid: null,
   servicem8JobNumber: null,
   createdAt: new Date('2026-06-08T10:00:00Z'),
+  updatedAt: new Date('2026-07-06T00:00:00Z'),
 }))
 
 // Switch between lead rows per test
@@ -35,6 +62,9 @@ const resolveJobUuidMock = vi.hoisted(() => vi.fn())
 const getJobQuoteMetaMock = vi.hoisted(() => vi.fn())
 const getJobContactMock = vi.hoisted(() => vi.fn())
 const getCompanyContactMock = vi.hoisted(() => vi.fn())
+const writeRequestMock = vi.hoisted(() => vi.fn())
+const createServiceM8WriteRequestFromEnvMock = vi.hoisted(() => vi.fn(() => writeRequestMock))
+const setJobLeadCardFieldsMock = vi.hoisted(() => vi.fn())
 const resolveClientMock = vi.hoisted(() => vi.fn())
 const persistLeadScoreMock = vi.hoisted(() => vi.fn())
 const selectLimit = vi.hoisted(() => vi.fn())
@@ -51,10 +81,12 @@ const mockTransaction = vi.hoisted(() =>
 
 vi.mock('@/lib/servicem8/client', () => ({
   createServiceM8RequestFromEnv: vi.fn(),
+  createServiceM8WriteRequestFromEnv: createServiceM8WriteRequestFromEnvMock,
   resolveJobUuid: resolveJobUuidMock,
   getJobQuoteMeta: getJobQuoteMetaMock,
   getJobContact: getJobContactMock,
   getCompanyContact: getCompanyContactMock,
+  setJobLeadCardFields: setJobLeadCardFieldsMock,
 }))
 
 vi.mock('@/modules/clients/client-resolver', () => ({
@@ -106,6 +138,10 @@ describe('fetchLeadFromServiceM8', () => {
     getJobQuoteMetaMock.mockReset()
     getJobContactMock.mockReset()
     getCompanyContactMock.mockReset()
+    createServiceM8WriteRequestFromEnvMock.mockClear()
+    writeRequestMock.mockReset()
+    setJobLeadCardFieldsMock.mockReset()
+    setJobLeadCardFieldsMock.mockResolvedValue({ updated: ['jobDescription', 'clientType', 'leadsQuality', 'note'], skipped: [] })
     resolveClientMock.mockReset()
     persistLeadScoreMock.mockReset()
     insertReturning.mockClear()
@@ -211,14 +247,13 @@ describe('fetchLeadFromServiceM8', () => {
       leadsQuality: 'Not set',
       customFieldUpdated: false,
     })
-    expect(request).toHaveBeenCalledTimes(1)
+    expect(setJobLeadCardFieldsMock).not.toHaveBeenCalled()
   })
 
-  it('does not block the RG Tools link when ServiceM8 rejects a Leads Quality write', async () => {
-    const originalField = process.env.SERVICEM8_LEAD_QUALITY_FIELD
-    process.env.SERVICEM8_LEAD_QUALITY_FIELD = 'customfield_leads_quality'
+  it('does not block the RG Tools link when ServiceM8 rejects a job card write', async () => {
     activeLeadRow.current = unlinkedLeadRow
-    const request = vi.fn<ServiceM8FetchRequest>(async (path, init) => {
+    setJobLeadCardFieldsMock.mockRejectedValue(new Error('ServiceM8 lead job card write failed with HTTP 403'))
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
       if (path.startsWith('/job.json')) {
         return {
           ok: true,
@@ -233,9 +268,6 @@ describe('fetchLeadFromServiceM8', () => {
           ],
         }
       }
-      if (path === '/job/job-uuid-2.json' && init?.method === 'POST') {
-        return { ok: false, status: 403, json: async () => ({}) }
-      }
       throw new Error(`Unexpected request path: ${path}`)
     })
 
@@ -245,14 +277,13 @@ describe('fetchLeadFromServiceM8', () => {
       ok: true,
       jobUuid: 'job-uuid-2',
       customFieldUpdated: false,
-      customFieldError: 'ServiceM8 custom field update failed with HTTP 403',
+      customFieldError: 'ServiceM8 lead job card write failed with HTTP 403',
     })
     expect(capturedSetValues[0]).toMatchObject({
       servicem8JobUuid: 'job-uuid-2',
       servicem8Status: 'Quote',
       syncStatus: 'synced',
     })
-    process.env.SERVICEM8_LEAD_QUALITY_FIELD = originalField
   })
 })
 

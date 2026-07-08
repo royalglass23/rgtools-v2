@@ -3,16 +3,26 @@
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
+import { userCanAccessSlug } from '@/lib/access-db'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit-db'
-import { clients } from '@rgtools/db/schema-leads'
+import { logError } from '@/lib/logger'
+import { clientDuplicateDismissals, clients } from '@rgtools/db/schema-leads'
 import { mergeClients } from './client-resolver'
 
-export async function confirmClientMergeReviewGroup(formData: FormData): Promise<void> {
+async function requireClientMergeAdmin() {
   const session = await auth()
   if (session?.user?.role !== 'admin' || !session.user.id) {
     throw new Error('Forbidden')
   }
+  if (!await userCanAccessSlug(session.user.id, 'clients')) {
+    throw new Error('Forbidden')
+  }
+  return session
+}
+
+export async function confirmClientMergeReviewGroup(formData: FormData): Promise<void> {
+  const session = await requireClientMergeAdmin()
 
   const survivorId = String(formData.get('survivorId') ?? '')
   const loserIds = formData
@@ -22,23 +32,66 @@ export async function confirmClientMergeReviewGroup(formData: FormData): Promise
 
   if (!survivorId || loserIds.length === 0) return
 
-  await db.transaction(async (tx) => {
-    const rows = await tx
-      .select({ id: clients.id })
-      .from(clients)
-      .where(eq(clients.id, survivorId))
-      .limit(1)
-    if (rows.length === 0) throw new Error('Survivor client not found')
+  try {
+    await db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ id: clients.id })
+        .from(clients)
+        .where(eq(clients.id, survivorId))
+        .limit(1)
+      if (rows.length === 0) throw new Error('Survivor client not found')
 
-    await mergeClients(tx, survivorId, loserIds)
+      await mergeClients(tx, survivorId, loserIds)
+      await logAudit({
+        actorId: session.user.id as string,
+        action: 'client.review_merge.confirmed',
+        targetId: survivorId,
+        before: { loserIds },
+        after: { survivorId },
+      }, tx)
+    })
+  } catch (error) {
+    const errorId = await logError('clients.mergeReview.failed', error, {
+      userId: session.user.id as string,
+      metadata: { survivorId, loserCount: loserIds.length },
+    })
+    throw new Error(`Failed to merge clients. Ref: ${errorId}`)
+  }
+
+  revalidatePath('/admin/client-merge-review')
+}
+
+export async function dismissClientDuplicateSuggestion(formData: FormData): Promise<void> {
+  const session = await requireClientMergeAdmin()
+  const suggestionKey = String(formData.get('suggestionKey') ?? '').trim()
+  const reason = String(formData.get('reason') ?? '').trim() || null
+  if (!suggestionKey) throw new Error('Duplicate suggestion key is required')
+
+  try {
+    await db
+      .insert(clientDuplicateDismissals)
+      .values({
+        suggestionKey,
+        reason,
+        dismissedBy: session.user.id as string,
+        dismissedAt: new Date(),
+      })
+      .onConflictDoNothing()
+
     await logAudit({
       actorId: session.user.id as string,
-      action: 'client.review_merge.confirmed',
-      targetId: survivorId,
-      before: { loserIds },
-      after: { survivorId },
-    }, tx)
-  })
+      action: 'client.duplicate.dismissed',
+      targetId: null,
+      before: null,
+      after: { suggestionKey, reason },
+    })
+  } catch (error) {
+    const errorId = await logError('clients.duplicateDismissal.failed', error, {
+      userId: session.user.id as string,
+      metadata: { suggestionKey },
+    })
+    throw new Error(`Failed to dismiss duplicate suggestion. Ref: ${errorId}`)
+  }
 
   revalidatePath('/admin/client-merge-review')
 }

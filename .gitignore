@@ -52,6 +52,7 @@ next-env.d.ts
 .superpowers/
 .vscode/
 .worktrees/
+.github/
 AGENTS.md
 
 # Local scratch (e.g. quote-pull test output)
@@ -60,6 +61,7 @@ tmp/
 docs/superpowers/
 docs/codex/
 docs/adr/
+docs/dev/
 CONTEXT.md
 workers/tracker/.dev.vars
 
@@ -75,3 +77,5 @@ jobcard-export/
 
 AGENTS.md
 dev-server*.log
+
+outputs/

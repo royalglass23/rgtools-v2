@@ -71,9 +71,9 @@ describe('mapCalculatorSubmissionToIntakeInput', () => {
 
     expect(input.jobDescription).toContain('[Calculator] submitted 2026-06-12T01:02:03.000Z')
     expect(input.jobDescription).toContain('Estimate: $4100 - $5400 (subtotal $4800)')
-    expect(input.jobDescription).toContain('premium_pool_fence, 12m, 2 corner(s), 1 gate(s)')
-    expect(input.jobDescription).toContain('Fixing: spigot_round | Substrate: concrete | Hardware: standard_chrome')
-    expect(input.jobDescription).toContain('Glass: toughened_12mm / clear')
+    expect(input.jobDescription).toContain('Premium Pool Fence, 12m, 2 corner(s), 1 gate(s)')
+    expect(input.jobDescription).toContain('Fixing: Round Spigots | Substrate: Concrete | Hardware: Standard Chrome')
+    expect(input.jobDescription).toContain('Glass: 12mm Toughened / Clear')
     expect(input.jobDescription).toContain('Special Engineer Design may be required')
     expect(input.jobDescription).toContain('Contact consent: yes')
     expect(input.freeText).toBeUndefined()
