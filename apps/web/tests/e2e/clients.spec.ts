@@ -36,6 +36,7 @@ test.describe('clients cleanup', () => {
     await page.goto('/clients')
 
     await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Refresh from ServiceM8' })).toHaveCount(0)
     await expect(page.getByLabel('Search')).toBeVisible()
     await expect(page.getByLabel('Cleanup filter')).toBeVisible()
 

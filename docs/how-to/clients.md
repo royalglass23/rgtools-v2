@@ -20,7 +20,7 @@ Use it to check:
 - Linked tracked quotes.
 - ServiceM8 job context where available.
 
-Use **Search** to find a client by canonical name or alias. Use **Cleanup filter** after a ServiceM8 import to narrow the list to imported clients, clients that need review, reviewed clients, possible duplicates, clients with no contact details, clients with no client type, or ServiceM8-linked clients.
+Use **Search** to find a client by canonical name or alias. Use **Cleanup filter** to narrow the list to imported clients, clients that need review, reviewed clients, possible duplicates, clients with no contact details, clients with no client type, or ServiceM8-linked clients.
 
 Client matching is based on normalised phone and email values. When a new lead or tracked quote arrives, rgtools tries to connect it to the existing client record rather than creating a duplicate.
 
@@ -49,9 +49,7 @@ Strong ServiceM8 identity matches can be planned for safe auto-merge. Ambiguous 
 
 ## Admin operation notes
 
-Run **Refresh from ServiceM8** from the Clients list when you want to import or refresh company/client records. A successful run reports scanned, created, updated, needs-review, skipped, and error counts. If row-level errors occur, the import can still complete and the warning is written to the admin error log with the import summary.
-
-After a large import, check **Cleanup filter -> Needs Review**, **No Contact Details**, **No Client Type**, and **Possible Duplicates**. Keep cleanup in small batches and use the client detail page for canonical edits. Dashboard edits, duplicate merges, and duplicate dismissals are admin-only and write audit or error-log entries.
+When reviewing imported records, check **Cleanup filter -> Needs Review**, **No Contact Details**, **No Client Type**, and **Possible Duplicates**. Keep cleanup in small batches and use the client detail page for canonical edits. Dashboard edits, duplicate merges, and duplicate dismissals are admin-only and write audit or error-log entries.
 
 If a merge was wrong, v1 has no one-click undo. Correct it manually by creating or editing the correct survivor client, moving affected leads/quotes/work orders/contacts back to the right client in the database, and leaving an audit note explaining the correction. Use the hidden merged reference and aliases to identify what was absorbed.
 
