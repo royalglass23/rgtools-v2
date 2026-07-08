@@ -36,6 +36,7 @@ const getJobQuoteMetaMock = vi.hoisted(() => vi.fn())
 const getJobContactMock = vi.hoisted(() => vi.fn())
 const getCompanyContactMock = vi.hoisted(() => vi.fn())
 const resolveClientMock = vi.hoisted(() => vi.fn())
+const persistLeadScoreMock = vi.hoisted(() => vi.fn())
 const selectLimit = vi.hoisted(() => vi.fn())
 const insertReturning = vi.hoisted(() => vi.fn(async () => [{ id: 'new-lead-1' }]))
 const txInsertValues = vi.hoisted(() => vi.fn((values: unknown) => {
@@ -58,6 +59,10 @@ vi.mock('@/lib/servicem8/client', () => ({
 
 vi.mock('@/modules/clients/client-resolver', () => ({
   resolveClient: resolveClientMock,
+}))
+
+vi.mock('@/modules/lead-intake/scoring/persist-score', () => ({
+  persistLeadScore: persistLeadScoreMock,
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -102,6 +107,7 @@ describe('fetchLeadFromServiceM8', () => {
     getJobContactMock.mockReset()
     getCompanyContactMock.mockReset()
     resolveClientMock.mockReset()
+    persistLeadScoreMock.mockReset()
     insertReturning.mockClear()
     txInsertValues.mockClear()
     mockTransaction.mockClear()
@@ -435,6 +441,12 @@ describe('importLeadFromServiceM8JobNumber', () => {
     selectLimit.mockReset()
     selectLimit.mockResolvedValue([])
     resolveClientMock.mockResolvedValue({ clientId: 'client-1', contactId: 'contact-1' })
+    persistLeadScoreMock.mockResolvedValue({
+      score: 34,
+      tier: 'D',
+      completeness: { answered: 3, total: 13 },
+      completenessPercent: 23,
+    })
   })
 
   it('creates an unscored linked lead immediately for a valid Quote job', async () => {
@@ -486,6 +498,103 @@ describe('importLeadFromServiceM8JobNumber', () => {
     expect(capturedInsertValues[0]).not.toHaveProperty('tier')
     expect(capturedInsertValues[0]).not.toHaveProperty('seedScore')
     expect(capturedInsertValues[0]).not.toHaveProperty('completeness')
+    expect(persistLeadScoreMock).not.toHaveBeenCalled()
+  })
+
+  it('fills recognized job-card fields and scores the imported Quote lead', async () => {
+    resolveJobUuidMock.mockResolvedValue('job-uuid-8')
+    getJobQuoteMetaMock.mockResolvedValue({
+      jobUuid: 'job-uuid-8',
+      status: 'Quote',
+      jobNumber: 'Q260008',
+      jobDescription: 'Balustrade for a commercial fit-out',
+      jobAddress: '8 Rail Road',
+      companyUuid: 'company-8',
+      clientName: 'Strong Build',
+      quoteValue: '27500.00',
+      leadJobCardFields: {
+        clientType: 'Builder / Developer / Pool Builder / Landscaper',
+        projectType: 'New Build / Commercial Fit-out',
+      },
+    })
+    getJobContactMock.mockResolvedValue({ name: 'Sam', phone: '021 222 333', mobile: null, email: 'sam@example.test' })
+
+    const result = await importLeadFromServiceM8JobNumber('Q260008', 'actor-1', { request: vi.fn() })
+
+    expect(result).toMatchObject({
+      ok: true,
+      leadId: 'new-lead-1',
+      message: 'Imported and scored job Q260008.',
+    })
+    expect(capturedInsertValues[0]).toMatchObject({
+      clientTypeAnswer: 'builder_developer_pool_builder_landscaper',
+      budgetBand: '20k_50k',
+      projectType: 'new_build_commercial_fit_out',
+    })
+    expect(persistLeadScoreMock).toHaveBeenCalledWith('new-lead-1', 'actor-1')
+  })
+
+  it('maps a recognized project type from the configured ServiceM8 note field', async () => {
+    resolveJobUuidMock.mockResolvedValue('job-uuid-9')
+    getJobQuoteMetaMock.mockResolvedValue({
+      jobUuid: 'job-uuid-9',
+      status: 'Quote',
+      jobNumber: 'Q260009',
+      jobDescription: 'Commercial balustrade',
+      jobAddress: '9 Rail Road',
+      companyUuid: 'company-9',
+      clientName: 'Note Build',
+      leadJobCardFields: {
+        note: 'Project Type: New Build / Commercial Fit-out | RGTools Lead lead-old',
+      },
+    })
+    getJobContactMock.mockResolvedValue({ name: 'Nia', phone: '021 333 444', mobile: null, email: 'nia@example.test' })
+
+    const result = await importLeadFromServiceM8JobNumber('Q260009', 'actor-1', { request: vi.fn() })
+
+    expect(result).toMatchObject({
+      ok: true,
+      message: 'Imported and scored job Q260009.',
+    })
+    expect(capturedInsertValues[0]).toMatchObject({
+      projectType: 'new_build_commercial_fit_out',
+    })
+    expect(persistLeadScoreMock).toHaveBeenCalledWith('new-lead-1', 'actor-1')
+  })
+
+  it('ignores unknown job-card labels and audits the unmapped field names', async () => {
+    resolveJobUuidMock.mockResolvedValue('job-uuid-10')
+    getJobQuoteMetaMock.mockResolvedValue({
+      jobUuid: 'job-uuid-10',
+      status: 'Quote',
+      jobNumber: 'Q260010',
+      jobDescription: 'Balustrade',
+      jobAddress: '10 Rail Road',
+      companyUuid: 'company-10',
+      clientName: 'Unknown Build',
+      leadJobCardFields: {
+        clientType: 'A very special client',
+        projectType: 'A very special project',
+      },
+    })
+    getJobContactMock.mockResolvedValue({ name: 'Uma', phone: '021 444 555', mobile: null, email: 'uma@example.test' })
+
+    const result = await importLeadFromServiceM8JobNumber('Q260010', 'actor-1', { request: vi.fn() })
+
+    expect(result).toMatchObject({
+      ok: true,
+      message: 'Imported job Q260010.',
+    })
+    expect(capturedInsertValues[0]).not.toHaveProperty('clientTypeAnswer')
+    expect(capturedInsertValues[0]).not.toHaveProperty('projectType')
+    expect(persistLeadScoreMock).not.toHaveBeenCalled()
+    expect(capturedInsertValues[1]).toMatchObject({
+      action: 'lead.servicem8_import',
+      detail: {
+        unmappedJobCardFields: { to: ['clientType', 'projectType'] },
+        needsScoring: { to: true },
+      },
+    })
   })
 
   it('rejects non-Quote jobs without creating a lead', async () => {

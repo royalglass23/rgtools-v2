@@ -4,8 +4,10 @@ const auth = vi.fn()
 const createTrackedQuote = vi.fn()
 const revalidatePath = vi.fn()
 const getExpirySettings = vi.fn()
+const requireModule = vi.fn()
 
 vi.mock('@/lib/auth', () => ({ auth: () => auth() }))
+vi.mock('@/lib/guard', () => ({ requireModule: (slug: string) => requireModule(slug) }))
 vi.mock('../create-tracked-quote', () => ({
   createTrackedQuote: (opts: unknown) => createTrackedQuote(opts),
 }))
@@ -22,7 +24,9 @@ describe('createTrackedQuoteAction', () => {
     createTrackedQuote.mockReset()
     revalidatePath.mockReset()
     getExpirySettings.mockReset()
+    requireModule.mockReset()
     auth.mockResolvedValue({ user: { id: 'user-1' } })
+    requireModule.mockResolvedValue(undefined)
     getExpirySettings.mockResolvedValue({ defaultPreset: '30d' })
   })
 
@@ -39,6 +43,7 @@ describe('createTrackedQuoteAction', () => {
     const result = await createTrackedQuoteAction('   ')
 
     expect(result).toEqual({ ok: false, message: 'Enter a ServiceM8 job ID.' })
+    expect(requireModule).toHaveBeenCalledWith('quote-tracker')
     expect(createTrackedQuote).not.toHaveBeenCalled()
   })
 
@@ -63,6 +68,7 @@ describe('createTrackedQuoteAction', () => {
       ownerUserId: 'user-1',
       expiry: '30d',
     })
+    expect(requireModule).toHaveBeenCalledWith('quote-tracker')
     expect(result).toEqual({
       ok: true,
       link: 'https://quotes-worker.example/q/AB12CD34',

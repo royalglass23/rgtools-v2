@@ -1,6 +1,7 @@
 'use server'
 
 import { auth } from '@/lib/auth'
+import { userCanAccessSlug } from '@/lib/access-db'
 import { importLeadFromServiceM8JobNumber } from '@/modules/leads/servicem8-fetch'
 
 export type ImportServiceM8LeadActionResult =
@@ -14,6 +15,11 @@ export async function importServiceM8LeadAction(jobNumber: string): Promise<Impo
   const session = await auth()
   if (!session?.user?.id) {
     return { ok: false, message: 'Sign in to import from ServiceM8.' }
+  }
+
+  const allowed = await userCanAccessSlug(session.user.id, 'leads')
+  if (!allowed) {
+    return { ok: false, message: 'You do not have access to import ServiceM8 leads.' }
   }
 
   const normalizedJobNumber = jobNumber.trim().toUpperCase()
