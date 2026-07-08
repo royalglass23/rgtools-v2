@@ -11,6 +11,7 @@ const getExpirySettings = vi.fn<ServiceM8AttachmentWebhookDeps['getExpirySetting
 const resolveOwnerUserId = vi.fn<ServiceM8AttachmentWebhookDeps['resolveOwnerUserId']>()
 const getNotificationSettings = vi.fn<ServiceM8AttachmentWebhookDeps['getNotificationSettings']>()
 const sendReadyLinkEmail = vi.fn<ServiceM8AttachmentWebhookDeps['sendReadyLinkEmail']>()
+const authorizedHeaders = () => new Headers({ 'x-servicem8-webhook-secret': 'secret-1' })
 
 function deps(): ServiceM8AttachmentWebhookDeps {
   return {
@@ -46,8 +47,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
 
   it('echoes a ServiceM8 subscribe challenge when the query token matches', async () => {
     const result = await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?mode=subscribe&challenge=abc&token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment?mode=subscribe&challenge=abc',
+      headers: authorizedHeaders(),
       body: {},
       deps: deps(),
     })
@@ -83,8 +84,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     })
 
     const result = await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1', attachment_source: 'QUOTE' }] },
       deps: deps(),
     })
@@ -108,8 +109,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     })
 
     const result = await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1', related_object_uuid: 'payload-job' }] },
       deps: deps(),
     })
@@ -138,8 +139,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     getExpirySettings.mockResolvedValue({ defaultPreset: '7d' })
 
     await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })
@@ -167,8 +168,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     resolveOwnerUserId.mockResolvedValue('user-1')
 
     await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { auth: { staffUUID: 'staff-1' }, entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })
@@ -197,8 +198,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     resolveOwnerUserId.mockResolvedValue(null)
 
     await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { auth: { staffUUID: 'staff-missing' }, entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })
@@ -244,8 +245,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
       })
 
     const result = await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })
@@ -280,8 +281,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     getNotificationSettings.mockResolvedValue({ enabled: true, to: ['support@royalglass.co.nz', 'sales@royalglass.co.nz'] })
 
     await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })
@@ -311,8 +312,8 @@ describe('handleServiceM8AttachmentWebhook', () => {
     getNotificationSettings.mockResolvedValue({ enabled: false, to: ['support@royalglass.co.nz'] })
 
     await handleServiceM8AttachmentWebhook({
-      url: 'https://app.example/api/servicem8/attachment?token=secret-1',
-      headers: new Headers(),
+      url: 'https://app.example/api/servicem8/attachment',
+      headers: authorizedHeaders(),
       body: { entry: [{ uuid: 'attachment-1' }] },
       deps: deps(),
     })

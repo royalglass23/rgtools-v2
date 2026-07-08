@@ -1,11 +1,14 @@
 'use server'
 
+import { inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { auth } from '@/lib/auth'
 import { logAudit } from '@/lib/audit-db'
+import { db } from '@/lib/db'
 import { requireModule } from '@/lib/guard'
+import { quotes } from '@rgtools/db/schema'
 
 import { generateConversationSnapshotForQuote } from './conversation-snapshot'
 import { getLatestQuoteAiGuidance } from './ai-guidance'
@@ -54,6 +57,40 @@ export async function createTrackedQuoteAction(jobNumber: string): Promise<Track
     jobAddress: result.jobAddress,
     expiresAt: result.expiresAt,
   }
+}
+
+export async function batchDeleteQuotesAction(formData: FormData): Promise<void> {
+  const session = await auth()
+  if (session?.user?.role !== 'admin' || !session.user.id) {
+    throw new Error('Forbidden')
+  }
+  await requireModule('quote-tracker')
+
+  const quoteIds = formData
+    .getAll('quoteId')
+    .map((value) => String(value))
+    .filter(Boolean)
+
+  if (quoteIds.length === 0) return
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(quotes)
+      .where(inArray(quotes.id, quoteIds))
+
+    await Promise.all(quoteIds.map((quoteId) =>
+      logAudit({
+        actorId: session.user.id as string,
+        entityType: 'quote',
+        action: 'quote.deleted',
+        targetId: quoteId,
+        detail: { batch: true },
+      }, tx),
+    ))
+  })
+
+  revalidatePath('/')
+  revalidatePath('/quote-tracker')
 }
 
 export type ExpireQuoteLinkActionResult = { ok: true } | { ok: false; message: string }

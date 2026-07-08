@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import { batchDeleteQuotesAction } from './actions'
 import { CopyLinkButton } from './CopyLinkButton'
 import { isExpired } from './expiry'
 import type { QuoteListFilters } from './list-filters'
@@ -34,6 +36,7 @@ export function QuoteTableControls({
   pageCount,
   basePath = '/quote-tracker',
   paramPrefix = '',
+  isAdmin = false,
 }: {
   filters: QuoteListFilters
   rows: QuoteRow[]
@@ -43,15 +46,78 @@ export function QuoteTableControls({
   basePath?: string
   /** Prefix applied to query param names so multiple tables can coexist on one URL. */
   paramPrefix?: string
+  isAdmin?: boolean
 }) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const allVisibleSelected = rows.length > 0 && rows.every((quote) => selectedSet.has(quote.id))
+
+  function toggleQuote(quoteId: string) {
+    setSelectedIds((current) => (
+      current.includes(quoteId)
+        ? current.filter((id) => id !== quoteId)
+        : [...current, quoteId]
+    ))
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds(allVisibleSelected ? [] : rows.map((quote) => quote.id))
+  }
+
   return (
     <>
       <FilterBar filters={filters} basePath={basePath} paramPrefix={paramPrefix} />
+
+      {isAdmin && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500">{selectedIds.length} selected</span>
+          <button
+            type="submit"
+            form="batch-delete-quotes-form"
+            disabled={selectedIds.length === 0}
+            className="rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Delete selected
+          </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <form
+          id="batch-delete-quotes-form"
+          action={batchDeleteQuotesAction}
+          onSubmit={(event) => {
+            if (selectedIds.length === 0) {
+              event.preventDefault()
+              return
+            }
+
+            if (!window.confirm(`Delete ${selectedIds.length} selected quote${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)) {
+              event.preventDefault()
+            }
+          }}
+        >
+          {selectedIds.map((quoteId) => (
+            <input key={quoteId} type="hidden" name="quoteId" value={quoteId} />
+          ))}
+        </form>
+      )}
 
       <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
             <tr>
+              {isAdmin && (
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    aria-label="Select all visible quotes"
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Job address</th>
               <th className="px-4 py-3">Value</th>
@@ -72,6 +138,17 @@ export function QuoteTableControls({
 
               return (
                 <tr key={quote.id} className="hover:bg-gray-50">
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedSet.has(quote.id)}
+                        onChange={() => toggleQuote(quote.id)}
+                        aria-label={`Select quote for ${quote.clientName}`}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <Link href={`/quote-tracker/${quote.id}`} className="block">
                       <span className="font-medium text-gray-950">{quote.clientName}</span>
@@ -115,7 +192,7 @@ export function QuoteTableControls({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={9 + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">
                   No tracked quotes yet. Use the Track Quote button to create one.
                 </td>
               </tr>

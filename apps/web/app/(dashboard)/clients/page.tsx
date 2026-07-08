@@ -1,7 +1,11 @@
 import Link from 'next/link'
-import { auth } from '@/lib/auth'
-import { getClientsList, type ClientCleanupFilter } from '@/modules/clients/queries'
-import { ServiceM8ClientsImportButton } from '@/modules/clients/ServiceM8ClientsImportButton'
+import {
+  CLIENT_LIST_PAGE_SIZE_OPTIONS,
+  DEFAULT_CLIENT_LIST_PAGE_SIZE,
+  getClientsListPage,
+  type ClientCleanupFilter,
+  type ClientListPageSize,
+} from '@/modules/clients/queries'
 
 const cleanupFilters: Array<{ value: ClientCleanupFilter; label: string }> = [
   { value: 'all', label: 'All clients' },
@@ -22,11 +26,11 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
   const params = await searchParams
   const search = firstParam(params?.search) ?? ''
   const cleanupFilter = parseCleanupFilter(firstParam(params?.filter))
-  const [clients, session] = await Promise.all([
-    getClientsList({ search, cleanupFilter }),
-    auth(),
-  ])
-  const canImportFromServiceM8 = session?.user?.role === 'admin'
+  const requestedPage = parsePositiveInt(firstParam(params?.page))
+  const requestedPageSize = parsePageSize(firstParam(params?.pageSize))
+  const clientPage = await getClientsListPage({ search, cleanupFilter }, { page: requestedPage, pageSize: requestedPageSize })
+  const clients = clientPage.rows
+  const resetHref = buildClientsHref({ pageSize: clientPage.pageSize })
 
   return (
     <div className="space-y-5">
@@ -35,10 +39,11 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <h1 className="text-2xl font-semibold text-gray-950">Clients</h1>
           <p className="mt-1 text-sm text-gray-600">Companies with their contacts, leads, and tracked quotes.</p>
         </div>
-        {canImportFromServiceM8 && <ServiceM8ClientsImportButton />}
       </div>
 
       <form className="flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-white p-3 shadow-sm">
+        <input type="hidden" name="page" value="1" />
+        <input type="hidden" name="pageSize" value={String(clientPage.pageSize)} />
         <div className="min-w-64 flex-1">
           <label htmlFor="client-search" className="text-xs font-medium uppercase tracking-wide text-gray-500">
             Search
@@ -70,7 +75,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           Apply
         </button>
         {(search || cleanupFilter !== 'all') && (
-          <Link href="/clients" className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <Link href={resetHref} className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Reset
           </Link>
         )}
@@ -126,8 +131,74 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           </tbody>
         </table>
       </div>
+
+      <div className="grid gap-3 text-sm text-gray-600 sm:grid-cols-3 sm:items-center">
+        <span>{clientPage.total} clients</span>
+        <div className="flex items-center justify-center gap-2">
+          <PaginationLink
+            href={buildClientsHref({
+              search,
+              cleanupFilter,
+              page: clientPage.page - 1,
+              pageSize: clientPage.pageSize,
+            })}
+            disabled={clientPage.page <= 1}
+          >
+            Previous
+          </PaginationLink>
+          <span>Page {clientPage.page} of {clientPage.pageCount}</span>
+          <PaginationLink
+            href={buildClientsHref({
+              search,
+              cleanupFilter,
+              page: clientPage.page + 1,
+              pageSize: clientPage.pageSize,
+            })}
+            disabled={clientPage.page >= clientPage.pageCount}
+          >
+            Next
+          </PaginationLink>
+        </div>
+        <form action="/clients" className="flex items-center justify-start gap-2 sm:justify-end">
+          {search && <input type="hidden" name="search" value={search} />}
+          {cleanupFilter !== 'all' && <input type="hidden" name="filter" value={cleanupFilter} />}
+          <input type="hidden" name="page" value="1" />
+          <label htmlFor="client-page-size" className="flex items-center gap-2">
+            <span className="whitespace-nowrap">Page size</span>
+            <select
+              id="client-page-size"
+              name="pageSize"
+              defaultValue={String(clientPage.pageSize)}
+              className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-950 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+            >
+              {CLIENT_LIST_PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Apply
+          </button>
+        </form>
+      </div>
     </div>
   )
+}
+
+function PaginationLink({
+  href,
+  disabled,
+  children,
+}: {
+  href: string
+  disabled: boolean
+  children: string
+}) {
+  if (disabled) {
+    return <span className="rounded border border-gray-200 px-3 py-1.5 text-gray-400">{children}</span>
+  }
+
+  return <Link href={href} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{children}</Link>
 }
 
 function formatDate(date: Date | string) {
@@ -144,4 +215,37 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 
 function parseCleanupFilter(value: string | undefined): ClientCleanupFilter {
   return cleanupFilters.some((filter) => filter.value === value) ? value as ClientCleanupFilter : 'all'
+}
+
+function parsePositiveInt(value: string | undefined): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 1
+}
+
+function parsePageSize(value: string | undefined): ClientListPageSize {
+  const parsed = Number(value)
+  return CLIENT_LIST_PAGE_SIZE_OPTIONS.includes(parsed as ClientListPageSize)
+    ? parsed as ClientListPageSize
+    : DEFAULT_CLIENT_LIST_PAGE_SIZE
+}
+
+function buildClientsHref({
+  search = '',
+  cleanupFilter = 'all',
+  page = 1,
+  pageSize = DEFAULT_CLIENT_LIST_PAGE_SIZE,
+}: {
+  search?: string
+  cleanupFilter?: ClientCleanupFilter
+  page?: number
+  pageSize?: ClientListPageSize
+}) {
+  const params = new URLSearchParams()
+  if (search) params.set('search', search)
+  if (cleanupFilter !== 'all') params.set('filter', cleanupFilter)
+  if (page > 1) params.set('page', String(page))
+  if (pageSize !== DEFAULT_CLIENT_LIST_PAGE_SIZE) params.set('pageSize', String(pageSize))
+
+  const query = params.toString()
+  return query ? `/clients?${query}` : '/clients'
 }

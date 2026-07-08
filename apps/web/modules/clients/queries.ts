@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { quotes } from '@rgtools/db/schema'
 import { clientAliases, clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import { workOrders } from '@rgtools/db/schema-workorders'
@@ -61,6 +61,24 @@ export type ClientCleanupFilter =
 export type ClientListFilters = {
   search?: string | null
   cleanupFilter?: ClientCleanupFilter | null
+}
+
+export const CLIENT_LIST_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const
+export const DEFAULT_CLIENT_LIST_PAGE_SIZE = 10
+
+export type ClientListPageSize = typeof CLIENT_LIST_PAGE_SIZE_OPTIONS[number]
+
+export type ClientListPage = {
+  rows: ClientListRow[]
+  total: number
+  page: number
+  pageSize: ClientListPageSize
+  pageCount: number
+}
+
+export type ClientListPagination = {
+  page?: number | null
+  pageSize?: number | null
 }
 
 type ClientDetailShapeInput = ClientShapeBase & {
@@ -248,11 +266,11 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
       db
         .select({ id: leads.id, updatedAt: leads.updatedAt })
         .from(leads)
-        .where(eq(leads.clientId, client.id)),
+        .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt))),
       db
         .select({ id: quotes.id, updatedAt: quotes.updatedAt })
         .from(quotes)
-        .where(eq(quotes.clientId, client.id)),
+        .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt))),
       db
         .select({ id: workOrders.id, updatedAt: workOrders.updatedAt })
         .from(workOrders)
@@ -269,8 +287,37 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
     }
   }))
 
-  return filterClientListRows(shapeClientListRows(shaped), filters)
+  return filterClientListRows(
+    shapeClientListRows(shaped).filter((client) => client.projectCount > 0),
+    filters,
+  )
     .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
+}
+
+export async function getClientsListPage(
+  filters: ClientListFilters = {},
+  pagination: ClientListPagination = {},
+): Promise<ClientListPage> {
+  return paginateClientListRows(await getClientsList(filters), pagination)
+}
+
+export function paginateClientListRows(
+  rows: ClientListRow[],
+  pagination: ClientListPagination = {},
+): ClientListPage {
+  const pageSize = normalizePageSize(pagination.pageSize)
+  const total = rows.length
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const page = clampPage(pagination.page, pageCount)
+  const start = (page - 1) * pageSize
+
+  return {
+    rows: rows.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    pageCount,
+  }
 }
 
 export async function getClientDetail(clientId: string): Promise<ClientDetail | null> {
@@ -308,7 +355,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: leads.updatedAt,
       })
       .from(leads)
-      .where(eq(leads.clientId, client.id))
+      .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt)))
       .orderBy(desc(leads.updatedAt)),
     db
       .select({
@@ -322,7 +369,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: quotes.updatedAt,
       })
       .from(quotes)
-      .where(eq(quotes.clientId, client.id))
+      .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt)))
       .orderBy(desc(quotes.updatedAt)),
     db
       .select({
@@ -339,6 +386,8 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
       .where(eq(workOrders.clientId, client.id))
       .orderBy(desc(workOrders.updatedAt)),
   ])
+
+  if (leadRows.length === 0 && quoteRows.length === 0 && workOrderRows.length === 0) return null
 
   return shapeClientDetail({
     ...client,
@@ -426,4 +475,17 @@ function normalizedDisplayName(row: Pick<ClientShapeBase, 'name' | 'companyName'
 
 function normalizeSearch(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function normalizePageSize(value: number | null | undefined): ClientListPageSize {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_CLIENT_LIST_PAGE_SIZE
+  const pageSize = Math.trunc(value)
+  return CLIENT_LIST_PAGE_SIZE_OPTIONS.includes(pageSize as ClientListPageSize)
+    ? pageSize as ClientListPageSize
+    : DEFAULT_CLIENT_LIST_PAGE_SIZE
+}
+
+function clampPage(value: number | null | undefined, pageCount: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1
+  return Math.min(Math.max(Math.trunc(value), 1), pageCount)
 }

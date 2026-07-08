@@ -7,6 +7,7 @@ import {
   getJobConversationSnapshotHistory,
   getJobContact,
   getJobNotesAndEmails,
+  getJobQuoteMeta,
   resolveJobUuid,
   ServiceM8RateLimitError,
   setJobLeadCardFields,
@@ -161,6 +162,72 @@ describe('getCompanyContact', () => {
       phone: '09 123',
       mobile: null,
       email: 'office@example.test',
+    })
+  })
+})
+
+describe('getJobQuoteMeta', () => {
+  const originalClientTypeField = process.env.SERVICEM8_CLIENT_TYPE_FIELD
+  const originalProjectTypeField = process.env.SERVICEM8_PROJECT_TYPE_FIELD
+  const originalNoteField = process.env.SERVICEM8_NOTE_FIELD
+
+  afterEach(() => {
+    if (originalClientTypeField === undefined) {
+      delete process.env.SERVICEM8_CLIENT_TYPE_FIELD
+    } else {
+      process.env.SERVICEM8_CLIENT_TYPE_FIELD = originalClientTypeField
+    }
+    if (originalProjectTypeField === undefined) {
+      delete process.env.SERVICEM8_PROJECT_TYPE_FIELD
+    } else {
+      process.env.SERVICEM8_PROJECT_TYPE_FIELD = originalProjectTypeField
+    }
+    if (originalNoteField === undefined) {
+      delete process.env.SERVICEM8_NOTE_FIELD
+    } else {
+      process.env.SERVICEM8_NOTE_FIELD = originalNoteField
+    }
+  })
+
+  it('returns configured RG lead job-card fields from the ServiceM8 job card', async () => {
+    process.env.SERVICEM8_CLIENT_TYPE_FIELD = 'customfield_client_type'
+    process.env.SERVICEM8_PROJECT_TYPE_FIELD = 'customfield_project_type'
+    process.env.SERVICEM8_NOTE_FIELD = 'customfield_note'
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path === '/job/job-uuid-1.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uuid: 'job-uuid-1',
+            generated_job_id: 'Q260010',
+            status: 'Quote',
+            job_description: 'Balustrade quote',
+            job_address: '10 Glass Lane',
+            company_uuid: null,
+            total_invoice_amount: '12000.00',
+            customfield_client_type: 'Builder / Developer / Pool Builder / Landscaper',
+            customfield_project_type: 'New Build / Commercial Fit-out',
+            customfield_note: 'Project Type: New Build / Commercial Fit-out',
+          }),
+        }
+      }
+
+      if (path.startsWith('/jobmaterial.json')) {
+        return { ok: true, status: 200, json: async () => [] }
+      }
+
+      throw new Error(`Unexpected request path: ${path}`)
+    })
+
+    await expect(getJobQuoteMeta('job-uuid-1', request)).resolves.toMatchObject({
+      jobUuid: 'job-uuid-1',
+      quoteValue: '12000.00',
+      leadJobCardFields: {
+        clientType: 'Builder / Developer / Pool Builder / Landscaper',
+        projectType: 'New Build / Commercial Fit-out',
+        note: 'Project Type: New Build / Commercial Fit-out',
+      },
     })
   })
 })
