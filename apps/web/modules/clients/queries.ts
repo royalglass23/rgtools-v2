@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { quotes } from '@rgtools/db/schema'
 import { clientAliases, clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import { workOrders } from '@rgtools/db/schema-workorders'
@@ -266,11 +266,11 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
       db
         .select({ id: leads.id, updatedAt: leads.updatedAt })
         .from(leads)
-        .where(eq(leads.clientId, client.id)),
+        .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt))),
       db
         .select({ id: quotes.id, updatedAt: quotes.updatedAt })
         .from(quotes)
-        .where(eq(quotes.clientId, client.id)),
+        .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt))),
       db
         .select({ id: workOrders.id, updatedAt: workOrders.updatedAt })
         .from(workOrders)
@@ -287,7 +287,10 @@ export async function getClientsList(filters: ClientListFilters = {}): Promise<C
     }
   }))
 
-  return filterClientListRows(shapeClientListRows(shaped), filters)
+  return filterClientListRows(
+    shapeClientListRows(shaped).filter((client) => client.projectCount > 0),
+    filters,
+  )
     .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
 }
 
@@ -352,7 +355,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: leads.updatedAt,
       })
       .from(leads)
-      .where(eq(leads.clientId, client.id))
+      .where(and(eq(leads.clientId, client.id), isNull(leads.archivedAt)))
       .orderBy(desc(leads.updatedAt)),
     db
       .select({
@@ -366,7 +369,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
         updatedAt: quotes.updatedAt,
       })
       .from(quotes)
-      .where(eq(quotes.clientId, client.id))
+      .where(and(eq(quotes.clientId, client.id), isNull(quotes.archivedAt)))
       .orderBy(desc(quotes.updatedAt)),
     db
       .select({
@@ -383,6 +386,8 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
       .where(eq(workOrders.clientId, client.id))
       .orderBy(desc(workOrders.updatedAt)),
   ])
+
+  if (leadRows.length === 0 && quoteRows.length === 0 && workOrderRows.length === 0) return null
 
   return shapeClientDetail({
     ...client,
