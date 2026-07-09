@@ -10,6 +10,7 @@ const mockUpdateSet = vi.hoisted(() => vi.fn(() => ({ where: mockUpdateWhere }))
 const mockUpdate = vi.hoisted(() => vi.fn(() => ({ set: mockUpdateSet })))
 const mockRevalidatePath = vi.hoisted(() => vi.fn())
 const mockLogAudit = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const mockRedirect = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({ auth: mockAuth }))
 vi.mock('@/lib/db', () => ({ db: { update: mockUpdate } }))
@@ -17,10 +18,10 @@ vi.mock('@/lib/audit-db', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/modules/leads/queries', () => ({ getLeadDetail: mockGetLeadDetail }))
 vi.mock('@/modules/leads/ai-guidance', () => ({ generateLeadAiGuidance: mockGenerateLeadAiGuidance }))
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidatePath }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
+vi.mock('next/navigation', () => ({ redirect: mockRedirect }))
 vi.mock('drizzle-orm', () => ({ eq: vi.fn((column, value) => ({ column, value })) }))
 
-import { deleteLeadAction, generateLeadSuggestionAction } from '../actions'
+import { deleteLeadAction, generateLeadGuidanceAction, generateLeadSuggestionAction } from '../actions'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -60,12 +61,12 @@ describe('generateLeadSuggestionAction', () => {
     mockGenerateLeadAiGuidance.mockResolvedValue({
       ok: false,
       blocked: true,
-      message: 'Link this lead to a ServiceM8 job before generating AI Guidance.',
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
     })
 
     const result = await generateLeadSuggestionAction('lead-1')
 
-    expect(result).toEqual({ error: 'Link this lead to a ServiceM8 job before generating AI Guidance.' })
+    expect(result).toEqual({ error: 'Link this lead to ServiceM8 to generate AI Guidance.' })
     expect(mockGenerateLeadAiGuidance).toHaveBeenCalledWith({
       leadId: 'lead-1',
       triggeredByUserId: 'user-1',
@@ -123,6 +124,48 @@ describe('generateLeadSuggestionAction', () => {
       aiSuggestionId: 'suggestion-1',
     })
     expect(call.after).not.toHaveProperty('aiSuggestion')
+  })
+})
+
+describe('generateLeadGuidanceAction', () => {
+  it('redirects back to the Lead detail page after saved AI Guidance', async () => {
+    mockGetLeadDetail.mockResolvedValue({
+      id: 'lead-1',
+      servicem8JobUuid: 'job-1',
+      servicem8Status: 'Quote',
+    })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: true,
+      snapshotId: 'snapshot-1',
+      suggestionId: 'suggestion-1',
+      text: 'Call this Quote lead.',
+    })
+    const formData = new FormData()
+    formData.set('leadId', 'lead-1')
+
+    await generateLeadGuidanceAction(formData)
+
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/leads/lead-1')
+    expect(mockRedirect).toHaveBeenCalledWith('/leads/lead-1?aiGuidanceSaved=1')
+  })
+
+  it('redirects back to the Lead detail page with generation errors', async () => {
+    mockGetLeadDetail.mockResolvedValue({
+      id: 'lead-1',
+      servicem8JobUuid: null,
+      servicem8Status: null,
+    })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: false,
+      blocked: true,
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
+    })
+    const formData = new FormData()
+    formData.set('leadId', 'lead-1')
+
+    await generateLeadGuidanceAction(formData)
+
+    expect(mockRedirect).toHaveBeenCalledWith('/leads/lead-1?aiGuidanceError=Link%20this%20lead%20to%20ServiceM8%20to%20generate%20AI%20Guidance.')
   })
 })
 

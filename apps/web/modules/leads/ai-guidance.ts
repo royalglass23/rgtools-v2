@@ -286,7 +286,7 @@ export async function generateLeadAiGuidance(
     return {
       ok: false,
       blocked: true,
-      message: 'Link this lead to a ServiceM8 job before generating AI Guidance.',
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
     }
   }
 

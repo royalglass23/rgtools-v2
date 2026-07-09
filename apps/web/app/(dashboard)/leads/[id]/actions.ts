@@ -69,3 +69,17 @@ export async function generateLeadSuggestionAction(leadId: string): Promise<{ te
   revalidatePath(`/leads/${leadId}`)
   return { text: result.text }
 }
+
+export async function generateLeadGuidanceAction(formData: FormData) {
+  const leadId = formData.get('leadId')?.toString()
+  if (!leadId) redirect('/leads?aiGuidanceError=Lead%20not%20found.')
+
+  const result = await generateLeadSuggestionAction(leadId)
+  revalidatePath(`/leads/${leadId}`)
+
+  if ('error' in result) {
+    redirect(`/leads/${leadId}?aiGuidanceError=${encodeURIComponent(result.error)}`)
+  }
+
+  redirect(`/leads/${leadId}?aiGuidanceSaved=1`)
+}

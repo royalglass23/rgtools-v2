@@ -5,12 +5,13 @@ import { userCanAccessSlug } from '@/lib/access-db'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { ServiceM8FetchButton } from '@/modules/leads/ServiceM8FetchButton'
 import { DeleteLeadButton } from '@/modules/leads/DeleteLeadButton'
-import { AiSuggestionButton } from '@/modules/leads/AiSuggestionButton'
+import { LeadAiGuidancePanel } from '@/modules/leads/LeadAiGuidancePanel'
 import { ReviewerNotesSection } from '@/modules/leads/ReviewerNotesSection'
 import { getLeadReviewerNotes } from '@/modules/leads/reviewer-notes'
+import { getLatestLeadAiGuidance } from '@/modules/leads/ai-guidance'
 import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
 import { formatAnswerKey, formatLeadSource, formatProjectType } from '@/modules/lead-intake/display-labels'
-import { deleteLeadAction, generateLeadSuggestionAction } from './actions'
+import { deleteLeadAction, generateLeadGuidanceAction } from './actions'
 import { addReviewerNoteAction } from './reviewer-notes-actions'
 
 export default async function LeadDetailPage({
@@ -30,10 +31,18 @@ export default async function LeadDetailPage({
   const boundDeleteAction = deleteLeadAction.bind(null, lead.id)
   const intakeSaved = notices.intakeSaved === 'updated' ? 'updated' : notices.intakeSaved === 'added' ? 'added' : null
   const canUseLeads = session?.user?.id ? await userCanAccessSlug(session.user.id, 'leads') : false
-  const reviewerNotes = canUseLeads ? await getLeadReviewerNotes(lead.id) : []
+  const [reviewerNotes, aiGuidance] = await Promise.all([
+    canUseLeads ? getLeadReviewerNotes(lead.id) : Promise.resolve([]),
+    getLatestLeadAiGuidance(lead.id),
+  ])
   const projectTypeLabel = findScoredFieldAnswer(lead.scoredFields, ['Project Type']) ?? formatAnswerKey(lead.projectType)
   const productLabel = formatProjectType(lead.product ?? lead.projectType)
   const channelLabel = formatLeadSource(lead.channel)
+  const aiGuidanceDisabledReason = !lead.servicem8JobUuid
+    ? 'Link this lead to ServiceM8 to generate AI Guidance.'
+    : isReadOnly
+      ? 'AI Guidance is paused while this ServiceM8 job is no longer Quote.'
+      : undefined
   const sourceDetail = findScoredFieldAnswer(lead.scoredFields, ['Source']) ?? formatLeadSource(lead.source)
   const jobDescription = buildJobDescription({
     projectType: projectTypeLabel,
@@ -148,15 +157,22 @@ export default async function LeadDetailPage({
         </dl>
       </Section>
 
-      <Section title="Suggested next step">
-        <AiSuggestionButton
-          leadId={lead.id}
-          initialSuggestion={lead.aiSuggestion}
-          initialGeneratedAt={lead.aiSuggestionAt}
-          action={generateLeadSuggestionAction}
-          disabledReason={isReadOnly ? 'AI suggestions are paused while this ServiceM8 job is no longer Quote.' : undefined}
-        />
-      </Section>
+      {typeof notices.aiGuidanceError === 'string' && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {notices.aiGuidanceError}
+        </div>
+      )}
+      {notices.aiGuidanceSaved === '1' && (
+        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          AI Suggestion saved.
+        </div>
+      )}
+      <LeadAiGuidancePanel
+        leadId={lead.id}
+        guidance={aiGuidance}
+        generateGuidanceAction={generateLeadGuidanceAction}
+        generationDisabledReason={aiGuidanceDisabledReason}
+      />
 
       <Section title="ServiceM8">
         <ServiceM8FetchButton

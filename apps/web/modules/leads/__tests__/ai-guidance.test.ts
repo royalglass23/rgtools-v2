@@ -205,7 +205,7 @@ describe('generateLeadAiGuidance', () => {
     expect(result).toEqual({
       ok: false,
       blocked: true,
-      message: 'Link this lead to a ServiceM8 job before generating AI Guidance.',
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
     })
     expect(d.fetchHistory).not.toHaveBeenCalled()
     expect(d.summarizeConversation).not.toHaveBeenCalled()

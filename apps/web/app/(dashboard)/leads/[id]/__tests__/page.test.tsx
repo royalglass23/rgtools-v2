@@ -5,6 +5,7 @@ const authMock = vi.hoisted(() => vi.fn())
 const getLeadDetailMock = vi.hoisted(() => vi.fn())
 const userCanAccessSlugMock = vi.hoisted(() => vi.fn())
 const getLeadReviewerNotesMock = vi.hoisted(() => vi.fn())
+const getLatestLeadAiGuidanceMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({ auth: authMock }))
 vi.mock('@/lib/access-db', () => ({ userCanAccessSlug: userCanAccessSlugMock }))
@@ -12,11 +13,12 @@ vi.mock('@/modules/leads/queries', () => ({ getLeadDetail: getLeadDetailMock }))
 vi.mock('@/modules/leads/reviewer-notes', () => ({ getLeadReviewerNotes: getLeadReviewerNotesMock }))
 vi.mock('@/modules/leads/ServiceM8FetchButton', () => ({ ServiceM8FetchButton: () => <div data-testid="sm8-fetch" /> }))
 vi.mock('@/modules/leads/DeleteLeadButton', () => ({ DeleteLeadButton: () => <button type="button">Delete</button> }))
-vi.mock('@/modules/leads/AiSuggestionButton', () => ({ AiSuggestionButton: () => <div data-testid="ai-suggestion" /> }))
+vi.mock('@/modules/leads/LeadAiGuidancePanel', () => ({ LeadAiGuidancePanel: () => <div data-testid="ai-guidance" /> }))
 vi.mock('@/modules/leads/ReviewerNotesSection', () => ({ ReviewerNotesSection: () => <div data-testid="reviewer-notes" /> }))
+vi.mock('@/modules/leads/ai-guidance', () => ({ getLatestLeadAiGuidance: getLatestLeadAiGuidanceMock }))
 vi.mock('../actions', () => ({
   deleteLeadAction: vi.fn(),
-  generateLeadSuggestionAction: vi.fn(),
+  generateLeadGuidanceAction: vi.fn(),
 }))
 vi.mock('../reviewer-notes-actions', () => ({
   addReviewerNoteAction: vi.fn(),
@@ -30,6 +32,11 @@ beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: 'user-1', role: 'staff' } })
   userCanAccessSlugMock.mockResolvedValue(true)
   getLeadReviewerNotesMock.mockResolvedValue([])
+  getLatestLeadAiGuidanceMock.mockResolvedValue({
+    conversationSnapshot: null,
+    aiSuggestion: null,
+    generationFailure: null,
+  })
   getLeadDetailMock.mockResolvedValue({
     id: 'lead-1',
     clientName: 'Aroha Smith',
@@ -79,5 +86,6 @@ describe('LeadDetailPage compatibility fields', () => {
     expect(screen.getByText('Ready for Glazing')).toBeInTheDocument()
     expect(screen.getByText('25%')).toBeInTheDocument()
     expect(screen.getByText('10 Jul 2026')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-guidance')).toBeInTheDocument()
   })
 })
