@@ -2,8 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 
-type AddressComponent = { types: string[]; short_name: string }
+type AddressComponent = { types: string[]; short_name: string; long_name?: string }
 type AddressChangeSource = 'input' | 'place' | 'manual'
+type GeocodedAddress = { address: string; suburb: string }
 
 type Props = {
   value: string
@@ -20,12 +21,33 @@ let mapsConfigured = false
 const FIELD_LABEL_CLASS = 'inline-flex h-4 items-center gap-2 text-xs font-medium text-gray-600'
 const FIELD_CONTROL_CLASS = 'mt-1 h-[38px] w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
 
+async function importGoogleLibrary(library: 'places'): Promise<google.maps.PlacesLibrary>
+async function importGoogleLibrary(library: 'geocoding'): Promise<google.maps.GeocodingLibrary>
+async function importGoogleLibrary(library: 'places' | 'geocoding') {
+  const { setOptions, importLibrary } = await import('@googlemaps/js-api-loader')
+  if (!mapsConfigured) {
+    setOptions({ key: apiKey, v: 'weekly' })
+    mapsConfigured = true
+  }
+  return importLibrary(library)
+}
+
 export function extractSuburb(components: AddressComponent[]): string {
-  for (const type of ['locality', 'sublocality_level_1', 'sublocality']) {
+  for (const type of ['sublocality_level_1', 'sublocality', 'locality']) {
     const match = components.find((c) => c.types.includes(type))
     if (match) return match.short_name
   }
   return ''
+}
+
+export function addressFromGeocodeResult(result: google.maps.GeocoderResult | null | undefined): GeocodedAddress | null {
+  if (!result) return null
+  const address = result.formatted_address?.trim()
+  if (!address) return null
+  return {
+    address,
+    suburb: extractSuburb(result.address_components ?? []),
+  }
 }
 
 export function PlacesAutocomplete({
@@ -51,13 +73,7 @@ export function PlacesAutocomplete({
     let cancelled = false
     let listener: google.maps.MapsEventListener | undefined
 
-    import('@googlemaps/js-api-loader').then(({ setOptions, importLibrary }) => {
-      if (!mapsConfigured) {
-        setOptions({ key: apiKey, v: 'weekly' })
-        mapsConfigured = true
-      }
-      return importLibrary('places')
-    }).then((placesLib) => {
+    importGoogleLibrary('places').then((placesLib) => {
       if (cancelled || !inputRef.current) return
       const { Autocomplete } = placesLib as google.maps.PlacesLibrary
       const autocomplete = new Autocomplete(inputRef.current, {
@@ -95,7 +111,34 @@ export function PlacesAutocomplete({
     if (committedValue === lastPlaceValueRef.current || committedValue === lastManualCommitRef.current) return
 
     lastManualCommitRef.current = committedValue
-    onChangeRef.current(nextValue, '', 'manual')
+    void commitGeocodedManualInput(nextValue)
+  }
+
+  async function commitGeocodedManualInput(nextValue: string) {
+    const fallbackValue = nextValue.trim()
+    if (!fallbackValue || !apiKey) {
+      onChangeRef.current(nextValue, '', 'manual')
+      return
+    }
+
+    try {
+      const { Geocoder } = await importGoogleLibrary('geocoding')
+      const geocoder = new Geocoder()
+      const { results } = await geocoder.geocode({
+        address: fallbackValue,
+        componentRestrictions: { country: 'NZ' },
+      })
+      const geocoded = addressFromGeocodeResult(results[0])
+      if (!geocoded) {
+        onChangeRef.current(nextValue, '', 'manual')
+        return
+      }
+
+      lastManualCommitRef.current = geocoded.address.trim()
+      onChangeRef.current(geocoded.address, geocoded.suburb, 'manual')
+    } catch {
+      onChangeRef.current(nextValue, '', 'manual')
+    }
   }
 
   return (
