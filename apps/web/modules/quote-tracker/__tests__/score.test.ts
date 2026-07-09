@@ -17,10 +17,38 @@ describe('quote tracker scoring', () => {
     })).toBe(100)
   })
 
-  it('marks strong engagement as hot', () => {
+  it('marks quick deep quote review as hot', () => {
     expect(computeStatusTag({
       totalOpens: 1,
-      totalTimeMs: 6 * 60 * 1000,
+      totalTimeMs: 30 * 1000,
+      maxScrollDepth: 75,
+      uniqueSessions: 1,
+      uniqueDevices: 1,
+      forwardingSuspected: false,
+      hasCta: false,
+      hasReturnVisit: false,
+      createdAt: new Date('2026-06-16T00:00:00.000Z'),
+    })).toBe('hot')
+  })
+
+  it('marks steady mid-depth quote review as hot', () => {
+    expect(computeStatusTag({
+      totalOpens: 1,
+      totalTimeMs: 45 * 1000,
+      maxScrollDepth: 50,
+      uniqueSessions: 1,
+      uniqueDevices: 1,
+      forwardingSuspected: false,
+      hasCta: false,
+      hasReturnVisit: false,
+      createdAt: new Date('2026-06-16T00:00:00.000Z'),
+    })).toBe('hot')
+  })
+
+  it('marks repeat opens with meaningful engagement as hot', () => {
+    expect(computeStatusTag({
+      totalOpens: 2,
+      totalTimeMs: 30 * 1000,
       maxScrollDepth: 20,
       uniqueSessions: 1,
       uniqueDevices: 1,
@@ -31,11 +59,25 @@ describe('quote tracker scoring', () => {
     })).toBe('hot')
   })
 
-  it('marks one or two meaningful opens as warm', () => {
+  it('does not mark repeat accidental opens as hot', () => {
     expect(computeStatusTag({
       totalOpens: 2,
-      totalTimeMs: 90 * 1000,
-      maxScrollDepth: 55,
+      totalTimeMs: 10 * 1000,
+      maxScrollDepth: 20,
+      uniqueSessions: 1,
+      uniqueDevices: 1,
+      forwardingSuspected: false,
+      hasCta: false,
+      hasReturnVisit: false,
+      createdAt: new Date('2026-06-16T00:00:00.000Z'),
+    })).toBe('cold')
+  })
+
+  it('marks partial quote engagement as warm', () => {
+    expect(computeStatusTag({
+      totalOpens: 1,
+      totalTimeMs: 20 * 1000,
+      maxScrollDepth: 30,
       uniqueSessions: 1,
       uniqueDevices: 1,
       forwardingSuspected: false,
@@ -48,7 +90,7 @@ describe('quote tracker scoring', () => {
   it('marks low engagement opens as cold', () => {
     expect(computeStatusTag({
       totalOpens: 1,
-      totalTimeMs: 45 * 1000,
+      totalTimeMs: 15 * 1000,
       maxScrollDepth: 20,
       uniqueSessions: 1,
       uniqueDevices: 1,
@@ -79,8 +121,8 @@ describe('quote tracker scoring', () => {
   })
 
   it('exports plain-English status rules for the dashboard', () => {
-    expect(STATUS_TAG_RULES.hot).toContain('3+ opens')
-    expect(STATUS_TAG_RULES.warm).toContain('1-2 opens')
+    expect(STATUS_TAG_RULES.hot).toContain('30+ sec')
+    expect(STATUS_TAG_RULES.warm).toContain('20+ sec')
     expect(STATUS_TAG_RULES.cold).toContain('Opened')
     expect(STATUS_TAG_RULES.dead).toContain('Never opened')
   })
