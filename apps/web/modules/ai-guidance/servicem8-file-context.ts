@@ -51,11 +51,13 @@ export type ServiceM8FileContextDeps = {
     model: string
   }>
   saveFile: (record: InterpretedServiceM8File) => Promise<InterpretedServiceM8File>
+  waitBeforeRetry?: (ms: number) => Promise<void>
+  retryDelaysMs?: number[]
   now: () => Date
 }
 
 type FileSupport =
-  | { supported: true; kind: 'image' | 'pdf' }
+  | { supported: true; kind: 'image' | 'file'; mimeType: string; detail?: 'low' | 'high' }
   | { supported: false; reason: string; errorType: 'unsupported_cad' | 'unsupported_file_type' }
 
 export async function buildServiceM8FileContext(
@@ -67,7 +69,7 @@ export async function buildServiceM8FileContext(
 
   for (const attachment of attachments) {
     const cached = await deps.findCachedFile(attachment.servicem8AttachmentUuid, attachment.editDate)
-    if (cached) {
+    if (cached && shouldReuseCachedFile(cached, attachment)) {
       files.push(cached)
       continue
     }
@@ -101,7 +103,7 @@ async function interpretAndCacheAttachment(
 
   try {
     const bytes = await deps.downloadAttachment(attachment.servicem8AttachmentUuid)
-    const interpretation = await deps.interpretFile({ attachment, bytes })
+    const interpretation = await interpretFileWithRetry({ attachment, bytes }, deps)
     return deps.saveFile({
       ...baseFileRecord(attachment),
       status: 'interpreted',
@@ -140,10 +142,14 @@ export function classifyServiceM8Attachment(attachment: Pick<ServiceM8JobAttachm
   const extension = fileExtension(attachment.name)
 
   if (fileType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(extension)) {
-    return { supported: true, kind: 'image' }
+    return { supported: true, kind: 'image', mimeType: mimeTypeForImageAttachment(attachment) }
   }
   if (fileType.includes('pdf') || extension === 'pdf') {
-    return { supported: true, kind: 'pdf' }
+    return { supported: true, kind: 'file', mimeType: 'application/pdf', detail: 'low' }
+  }
+  const commonFileMimeType = mimeTypeForCommonFile(extension, fileType)
+  if (commonFileMimeType) {
+    return { supported: true, kind: 'file', mimeType: commonFileMimeType }
   }
   if (isCadExtension(extension) || fileType.includes('acad') || fileType.includes('dwg') || fileType.includes('dxf')) {
     return {
@@ -174,12 +180,21 @@ function summarizeFiles(files: InterpretedServiceM8File[]): ServiceM8FileContext
   }
 }
 
+function shouldReuseCachedFile(cached: InterpretedServiceM8File, attachment: ServiceM8JobAttachment): boolean {
+  if (cached.status === 'interpreted') return true
+  const support = classifyServiceM8Attachment(attachment)
+  if (!support.supported) return true
+  return false
+}
+
 export const realServiceM8FileContextDeps: ServiceM8FileContextDeps = {
   listJobAttachments: (servicem8JobUuid) => listServiceM8JobAttachments(servicem8JobUuid),
   findCachedFile: (servicem8AttachmentUuid, editDate) => findCachedInterpretedFile(servicem8AttachmentUuid, editDate),
   downloadAttachment: (servicem8AttachmentUuid) => downloadAttachmentFile(servicem8AttachmentUuid),
   interpretFile: (input) => interpretServiceM8FileWithOpenAI(input),
   saveFile: (record) => saveInterpretedFile(record),
+  waitBeforeRetry: sleep,
+  retryDelaysMs: [1_000, 2_500],
   now: () => new Date(),
 }
 
@@ -299,25 +314,24 @@ function buildOpenAIFileInput(attachment: ServiceM8JobAttachment, bytes: ArrayBu
   const support = classifyServiceM8Attachment(attachment)
   if (!support.supported) throw new Error('Unsupported ServiceM8 attachment type for AI Guidance v1.')
 
-  const mimeType = mimeTypeForAttachment(attachment, support.kind)
   const base64 = Buffer.from(bytes).toString('base64')
   if (support.kind === 'image') {
     return {
       type: 'input_image',
-      image_url: `data:${mimeType};base64,${base64}`,
+      image_url: `data:${support.mimeType};base64,${base64}`,
     }
   }
 
-  return {
+  const fileInput: Record<string, string> = {
     type: 'input_file',
-    filename: attachment.name ?? 'servicem8-attachment.pdf',
-    file_data: `data:application/pdf;base64,${base64}`,
-    detail: 'low',
+    filename: attachment.name ?? 'servicem8-attachment',
+    file_data: `data:${support.mimeType};base64,${base64}`,
   }
+  if (support.detail) fileInput.detail = support.detail
+  return fileInput
 }
 
-function mimeTypeForAttachment(attachment: ServiceM8JobAttachment, kind: 'image' | 'pdf'): string {
-  if (kind === 'pdf') return 'application/pdf'
+function mimeTypeForImageAttachment(attachment: Pick<ServiceM8JobAttachment, 'name' | 'fileType'>): string {
   const fileType = attachment.fileType?.toLowerCase()
   if (fileType?.startsWith('image/')) return fileType
   const extension = fileExtension(attachment.name)
@@ -325,6 +339,47 @@ function mimeTypeForAttachment(attachment: ServiceM8JobAttachment, kind: 'image'
   if (extension === 'webp') return 'image/webp'
   if (extension === 'gif') return 'image/gif'
   return 'image/jpeg'
+}
+
+function mimeTypeForCommonFile(extension: string, fileType: string): string | null {
+  if (fileType && !fileType.startsWith('application/octet-stream')) {
+    if (isCommonFileMimeType(fileType)) return fileType
+  }
+
+  const byExtension: Record<string, string> = {
+    txt: 'text/plain',
+    md: 'text/markdown',
+    csv: 'text/csv',
+    tsv: 'text/tab-separated-values',
+    json: 'application/json',
+    html: 'text/html',
+    htm: 'text/html',
+    xml: 'application/xml',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    rtf: 'application/rtf',
+    odt: 'application/vnd.oasis.opendocument.text',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    iif: 'text/plain',
+  }
+
+  return byExtension[extension] ?? null
+}
+
+function isCommonFileMimeType(fileType: string): boolean {
+  return fileType.startsWith('text/')
+    || fileType.includes('json')
+    || fileType.includes('xml')
+    || fileType.includes('word')
+    || fileType.includes('presentation')
+    || fileType.includes('powerpoint')
+    || fileType.includes('spreadsheet')
+    || fileType.includes('excel')
+    || fileType.includes('opendocument')
+    || fileType.includes('rtf')
 }
 
 function extractOpenAIResponseText(payload: unknown): string | null {
@@ -391,6 +446,34 @@ function classifyInterpretationError(error: unknown): string {
   return 'interpretation_error'
 }
 
+async function interpretFileWithRetry(
+  input: { attachment: ServiceM8JobAttachment; bytes: ArrayBuffer },
+  deps: Pick<ServiceM8FileContextDeps, 'interpretFile' | 'retryDelaysMs' | 'waitBeforeRetry'>,
+): Promise<{ summary: string; model: string }> {
+  const retryDelaysMs = deps.retryDelaysMs ?? []
+  let attempt = 0
+
+  while (true) {
+    try {
+      return await deps.interpretFile(input)
+    } catch (error) {
+      const retryDelayMs = retryDelaysMs[attempt]
+      if (retryDelayMs == null || !isTransientInterpretationError(error)) throw error
+      await (deps.waitBeforeRetry ?? sleep)(retryDelayMs)
+      attempt += 1
+    }
+  }
+}
+
+function isTransientInterpretationError(error: unknown): boolean {
+  if (isAiGuidanceTimeoutError(error)) return true
+  if (!(error instanceof Error)) return false
+  const httpMatch = error.message.match(/HTTP\s+(\d{3})/)
+  if (!httpMatch) return false
+  const status = Number(httpMatch[1])
+  return status === 429 || status >= 500
+}
+
 function fileExtension(name: string | null | undefined): string {
   const trimmed = name?.trim().toLowerCase()
   if (!trimmed || !trimmed.includes('.')) return ''
@@ -411,4 +494,8 @@ function odataFilter(expr: string): string {
 
 function escapeOdataString(value: string): string {
   return value.replace(/'/g, "''")
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
