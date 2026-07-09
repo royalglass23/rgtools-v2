@@ -3,10 +3,11 @@
 import { useEffect, useRef } from 'react'
 
 type AddressComponent = { types: string[]; short_name: string }
+type AddressChangeSource = 'input' | 'place' | 'manual'
 
 type Props = {
   value: string
-  onChange: (address: string, suburb: string, source?: 'input' | 'place') => void
+  onChange: (address: string, suburb: string, source?: AddressChangeSource) => void
   label?: string
   required?: boolean
   updateOnInput?: boolean
@@ -36,6 +37,8 @@ export function PlacesAutocomplete({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const onChangeRef = useRef(onChange)
+  const lastPlaceValueRef = useRef('')
+  const lastManualCommitRef = useRef('')
   useEffect(() => { onChangeRef.current = onChange })
 
   useEffect(() => {
@@ -66,6 +69,8 @@ export function PlacesAutocomplete({
         const place = autocomplete.getPlace()
         const address = place.formatted_address ?? inputRef.current?.value ?? ''
         const suburb = extractSuburb(place.address_components ?? [])
+        lastPlaceValueRef.current = address.trim()
+        lastManualCommitRef.current = ''
         onChangeRef.current(address, suburb, 'place')
       })
     })
@@ -77,9 +82,20 @@ export function PlacesAutocomplete({
   }, [])
 
   function handleManualInput(nextValue: string) {
+    if (nextValue.trim() !== lastPlaceValueRef.current) {
+      lastPlaceValueRef.current = ''
+    }
     if (updateOnInput || !nextValue) {
       onChangeRef.current(nextValue, '', 'input')
     }
+  }
+
+  function commitManualInput(nextValue = inputRef.current?.value ?? '') {
+    const committedValue = nextValue.trim()
+    if (committedValue === lastPlaceValueRef.current || committedValue === lastManualCommitRef.current) return
+
+    lastManualCommitRef.current = committedValue
+    onChangeRef.current(nextValue, '', 'manual')
   }
 
   return (
@@ -95,6 +111,10 @@ export function PlacesAutocomplete({
         defaultValue={value}
         required={required}
         onChange={(event) => handleManualInput(event.target.value)}
+        onBlur={(event) => commitManualInput(event.target.value)}
+        onPaste={() => {
+          window.setTimeout(() => commitManualInput(), 0)
+        }}
         autoComplete="off"
         className={FIELD_CONTROL_CLASS}
         placeholder="Start typing an address..."
