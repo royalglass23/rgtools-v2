@@ -7,11 +7,14 @@ import {
   getJobConversationSnapshotHistory,
   type LeadServiceM8History,
 } from '@/lib/servicem8/client'
+import { buildAiGuidanceFailureRecord, type AiGuidanceFailureRecord } from '@/modules/ai-guidance/runtime'
 import { buildServiceM8FileContext, type ServiceM8FileContext } from '@/modules/ai-guidance/servicem8-file-context'
 import { quoteAiGenerationFailures, quoteConversationSnapshots, quotes } from '@rgtools/db/schema'
 import { AI_GUIDANCE_TIMEOUT_MESSAGE, fetchAiGuidanceOpenAi, isAiGuidanceTimeoutError } from './ai-timeout'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CONVERSATION_SNAPSHOT_PROMPT_VERSION = 'quote-conversation-snapshot-v1'
+const CONVERSATION_SNAPSHOT_INPUT_VERSION = 'quote-conversation-snapshot-input-v1'
 
 const CONVERSATION_SNAPSHOT_RESPONSE_FORMAT = {
   type: 'json_schema',
@@ -131,11 +134,9 @@ export type ConversationSnapshotDeps = {
   insertSnapshot: (record: ConversationSnapshotRecord) => Promise<{ id: string }>
   recordFailure: (input: {
     quoteId: string
-    triggeredByUserId: string
-    failureStage: string
-    errorMessage: string
-  }) => Promise<void>
+  } & AiGuidanceFailureRecord) => Promise<void>
   now: () => Date
+  model: string
 }
 
 export type GenerateConversationSnapshotResult =
@@ -155,9 +156,10 @@ export async function generateConversationSnapshotForQuote(
 
   const previousSnapshot = await deps.findLatestSnapshot(input.quoteId)
   const previousCursor = parseSnapshotCursor(previousSnapshot?.snapshotCursor ?? null)
+  const attemptedAt = deps.now()
 
   try {
-    const fetchedAt = deps.now()
+    const fetchedAt = attemptedAt
     const historyResult = await deps.fetchHistory(quote.servicem8Uuid)
     const { fileContext, fileSafeError } = await fetchFileContext(quote.servicem8Uuid, deps)
     const scopedHistory = scopeHistory(historyResult, quote.createdAt, previousCursor)
@@ -208,14 +210,21 @@ export async function generateConversationSnapshotForQuote(
     const snapshot = await deps.insertSnapshot(record)
     return { ok: true, snapshotId: snapshot.id, partial: sourceStatus === 'partial' }
   } catch (error) {
-    const message = safeErrorMessage(error)
-    await deps.recordFailure({
-      quoteId: input.quoteId,
+    const failure = buildAiGuidanceFailureRecord({
+      stage: 'conversation_snapshot',
+      error,
+      attemptedAt,
       triggeredByUserId: input.triggeredByUserId,
-      failureStage: 'conversation_snapshot',
-      errorMessage: message,
+      model: deps.model,
+      promptVersion: CONVERSATION_SNAPSHOT_PROMPT_VERSION,
+      inputSnapshotVersion: CONVERSATION_SNAPSHOT_INPUT_VERSION,
+      safeErrorMessage,
     })
-    return { ok: false, message }
+    await deps.recordFailure({
+      ...failure,
+      quoteId: input.quoteId,
+    })
+    return { ok: false, message: failure.errorMessage }
   }
 }
 
@@ -277,14 +286,10 @@ export const realConversationSnapshotDeps: ConversationSnapshotDeps = {
     return snapshot
   },
   async recordFailure(input) {
-    await db.insert(quoteAiGenerationFailures).values({
-      quoteId: input.quoteId,
-      triggeredByUserId: input.triggeredByUserId,
-      failureStage: input.failureStage,
-      errorMessage: input.errorMessage,
-    })
+    await db.insert(quoteAiGenerationFailures).values(input)
   },
   now: () => new Date(),
+  model: process.env.OPENAI_MODEL ?? 'gpt-4o',
 }
 
 function scopeHistory(
