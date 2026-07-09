@@ -36,12 +36,7 @@ describe('Producer Statement generation', () => {
   it('generates separate PS1 and PS3 PDFs from published configuration', async () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
     const objects: Record<string, Buffer> = {
-      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
-        { name: 'client_name', type: 'text' },
-        { name: 'job_address', type: 'text' },
-        { name: 'bc_number', type: 'text' },
-        { name: 'description', type: 'text' },
-      ]),
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
       'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf([
         { name: 'completion_date', type: 'text' },
         { name: 'description', type: 'text' },
@@ -75,12 +70,26 @@ describe('Producer Statement generation', () => {
     expect(result.outputs.map((output) => output.documentKind)).toEqual(['ps1', 'ps3'])
 
     const ps1Form = await readForm(result.outputs.find((output) => output.documentKind === 'ps1')!.bytes)
-    expect(ps1Form.getTextField('client_name').getText()).toBe('Jane Customer')
-    expect(ps1Form.getTextField('job_address').getText()).toBe('12 Glass Lane')
-    expect(ps1Form.getTextField('bc_number').getText()).toBe('BC-123')
-    expect(ps1Form.getTextField('description').getText()).toBe(
+    expect(ps1Form.getTextField('Name').getText()).toBe('Jane Customer')
+    expect(ps1Form.getTextField('Address').getText()).toBe('12 Glass Lane')
+    expect(ps1Form.getTextField('Description').getText()).toBe(
       'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
     )
+    expect(ps1Form.getTextField('Date0').getText()).toBe('26/06/2026')
+    expect(ps1Form.getTextField('Thickness').getText()).toBe('12mm')
+    expect(ps1Form.getTextField('Height').getText()).toBe('1.00')
+    expect(ps1Form.getTextField('HeightAboveFix').getText()).toBe('1.05')
+    expect(ps1Form.getCheckBox('TimberTB').isChecked()).toBe(true)
+    expect(ps1Form.getCheckBox('ConcreteTB').isChecked()).toBe(false)
+    expect(ps1Form.getCheckBox('SteelTB').isChecked()).toBe(false)
+    expect(ps1Form.getCheckBox('ExternalTB').isChecked()).toBe(true)
+    expect(ps1Form.getCheckBox('InternalTB').isChecked()).toBe(false)
+    expect(ps1Form.getCheckBox('NewTB').isChecked()).toBe(true)
+    expect(ps1Form.getCheckBox('ExistingTB').isChecked()).toBe(false)
+    expect(ps1Form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
+    expect(ps1Form.getCheckBox('LaminatedTB').isChecked()).toBe(false)
+    expect(ps1Form.getCheckBox('Direct').isChecked()).toBe(true)
+    expect(ps1Form.getCheckBox('Cont').isChecked()).toBe(true)
 
     const ps3Form = await readForm(result.outputs.find((output) => output.documentKind === 'ps3')!.bytes)
     expect(ps3Form.getTextField('completion_date').getText()).toBe('26/06/2026')
@@ -92,12 +101,7 @@ describe('Producer Statement generation', () => {
   it('uses the standard PS1 template when gate is required', async () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
     const objects: Record<string, Buffer> = {
-      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
-        { name: 'client_name', type: 'text' },
-        { name: 'job_address', type: 'text' },
-        { name: 'bc_number', type: 'text' },
-        { name: 'description', type: 'text' },
-      ]),
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
     }
 
     const result = await generateProducerStatementPackage({
@@ -129,9 +133,12 @@ describe('Producer Statement generation', () => {
     })
 
     const form = await readForm(result.outputs[0].bytes)
-    expect(form.getTextField('description').getText()).toBe(
+    expect(form.getTextField('Description').getText()).toBe(
       'Double Disc glass balustrade to Pool fence, External, fixed to Steel; Laminated glass at 15mm.',
     )
+    expect(form.getCheckBox('SteelTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('LaminatedTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('ExistingTB').isChecked()).toBe(true)
   })
 
   it('uses the pool PS1 template for pool fence selections when one is published', async () => {
@@ -232,14 +239,14 @@ describe('Producer Statement generation', () => {
     const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
       { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
       { fieldName: 'selected_glass', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'glass_type', fixedValue: null, checkboxValue: null },
-      { fieldName: 'max_height', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.maxHeightMm', fixedValue: null, checkboxValue: null },
+      { fieldName: 'height', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.height', fixedValue: null, checkboxValue: null },
       { fieldName: 'fixed_note', fieldType: 'text', sourceType: 'fixed_value', sourceKey: null, fixedValue: 'Producer Statement package', checkboxValue: null },
     ])
     const objects: Record<string, Buffer> = {
       'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
         { name: 'client_name', type: 'text' },
         { name: 'selected_glass', type: 'text' },
-        { name: 'max_height', type: 'text' },
+        { name: 'height', type: 'text' },
         { name: 'fixed_note', type: 'text' },
       ]),
     }
@@ -252,7 +259,7 @@ describe('Producer Statement generation', () => {
     const form = await readForm(result.outputs[0].bytes)
     expect(form.getTextField('client_name').getText()).toBe('Jane Customer')
     expect(form.getTextField('selected_glass').getText()).toBe('Toughened')
-    expect(form.getTextField('max_height').getText()).toBe('1000')
+    expect(form.getTextField('height').getText()).toBe('1.00')
     expect(form.getTextField('fixed_note').getText()).toBe('Producer Statement package')
   })
 
@@ -269,12 +276,7 @@ describe('Producer Statement generation', () => {
   it('persists generated outputs and one generation record with readable snapshots', async () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
     const objects: Record<string, Buffer> = {
-      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
-        { name: 'client_name', type: 'text' },
-        { name: 'job_address', type: 'text' },
-        { name: 'bc_number', type: 'text' },
-        { name: 'description', type: 'text' },
-      ]),
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
       'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf([
         { name: 'completion_date', type: 'text' },
         { name: 'description', type: 'text' },
@@ -395,6 +397,29 @@ function defaultInput(mode: 'ps1_only' | 'ps3_only' | 'both') {
       gate_required: 'no',
     },
   }
+}
+
+function legacyPs1FixtureFields(): Array<{ name: string; type: 'text' | 'checkbox' }> {
+  return [
+    { name: 'Name', type: 'text' },
+    { name: 'Address', type: 'text' },
+    { name: 'Description', type: 'text' },
+    { name: 'Height', type: 'text' },
+    { name: 'Thickness', type: 'text' },
+    { name: 'HeightAboveFix', type: 'text' },
+    { name: 'Date0', type: 'text' },
+    { name: 'TimberTB', type: 'checkbox' },
+    { name: 'ConcreteTB', type: 'checkbox' },
+    { name: 'SteelTB', type: 'checkbox' },
+    { name: 'InternalTB', type: 'checkbox' },
+    { name: 'ExternalTB', type: 'checkbox' },
+    { name: 'NewTB', type: 'checkbox' },
+    { name: 'ExistingTB', type: 'checkbox' },
+    { name: 'ToughenedTB', type: 'checkbox' },
+    { name: 'LaminatedTB', type: 'checkbox' },
+    { name: 'Direct', type: 'checkbox' },
+    { name: 'Cont', type: 'checkbox' },
+  ]
 }
 
 function withStandardPs1Mappings(

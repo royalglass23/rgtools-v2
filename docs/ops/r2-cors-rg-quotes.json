@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://rgtools-delta.vercel.app",
+          "https://rgtools.co.nz",
+          "https://www.rgtools.co.nz"
+        ],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["content-type", "x-amz-content-sha256"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
