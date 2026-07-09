@@ -330,6 +330,13 @@
       "when": 1783566000000,
       "tag": "0046_ai_guidance_failure_runtime_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783652400000,
+      "tag": "0047_lead_ai_guidance",
+      "breakpoints": true
     }
   ]
 }

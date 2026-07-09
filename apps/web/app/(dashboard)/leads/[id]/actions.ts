@@ -9,8 +9,7 @@ import { logAudit } from '@/lib/audit-db'
 import { leads } from '@rgtools/db/schema-leads'
 import { getLeadDetail } from '@/modules/leads/queries'
 import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
-import { generateSuggestion, MissingOpenAIKeyError } from '@/modules/lead-intake/ai/suggest-next-step'
-import { getJobNotesAndEmails } from '@/lib/servicem8/client'
+import { generateLeadAiGuidance } from '@/modules/leads/ai-guidance'
 
 export async function deleteLeadAction(leadId: string) {
   const session = await auth()
@@ -35,8 +34,6 @@ export async function deleteLeadAction(leadId: string) {
   redirect('/leads')
 }
 
-const SUGGESTION_COOLDOWN_MS = 60_000
-
 export async function generateLeadSuggestionAction(leadId: string): Promise<{ text: string } | { error: string }> {
   const session = await auth()
   if (!session?.user?.id) {
@@ -49,53 +46,26 @@ export async function generateLeadSuggestionAction(leadId: string): Promise<{ te
     return { error: 'This lead is read-only because ServiceM8 status is no longer Quote.' }
   }
 
-  if (lead.aiSuggestionAt) {
-    const elapsed = Date.now() - new Date(lead.aiSuggestionAt).getTime()
-    if (elapsed < SUGGESTION_COOLDOWN_MS) {
-      return { error: 'Please wait before generating another suggestion.' }
-    }
+  const result = await generateLeadAiGuidance({
+    leadId,
+    triggeredByUserId: session.user.id,
+  })
+  if (!result.ok) {
+    return { error: result.message }
   }
 
-  try {
-    const history = lead.servicem8JobUuid
-      ? await getLeadHistory(lead.servicem8JobUuid)
-      : null
-    const suggestion = await generateSuggestion({ ...lead, history })
-    const generatedAt = new Date()
+  await logAudit({
+    actorId: session.user.id,
+    entityType: 'lead',
+    action: 'lead.ai_guidance_generated',
+    targetId: leadId,
+    before: null,
+    after: {
+      conversationSnapshotId: result.snapshotId,
+      aiSuggestionId: result.suggestionId,
+    },
+  })
 
-    await db
-      .update(leads)
-      .set({
-        aiSuggestion: suggestion.text,
-        aiSuggestionAt: generatedAt,
-        updatedAt: generatedAt,
-      })
-      .where(eq(leads.id, leadId))
-
-    await logAudit({
-      actorId: session.user.id,
-      entityType: 'lead',
-      action: 'lead.ai_suggestion_generated',
-      targetId: leadId,
-      before: null,
-      after: { aiSuggestionAt: generatedAt.toISOString() },
-    })
-
-    revalidatePath(`/leads/${leadId}`)
-    return suggestion
-  } catch (error) {
-    if (error instanceof MissingOpenAIKeyError) {
-      return { error: 'AI suggestions are not configured yet. Add OPENAI_API_KEY to enable this.' }
-    }
-
-    return { error: error instanceof Error ? error.message : 'Could not generate a suggestion. Try again later.' }
-  }
-}
-
-async function getLeadHistory(jobUuid: string) {
-  try {
-    return await getJobNotesAndEmails(jobUuid)
-  } catch {
-    return null
-  }
+  revalidatePath(`/leads/${leadId}`)
+  return { text: result.text }
 }
