@@ -12,6 +12,7 @@ import {
   type PsConfigurationRows,
 } from '@/modules/ps-generator/configuration'
 import { generateProducerStatementPackage, type PsGenerationMode } from '@/modules/ps-generator/generation'
+import { legacyPs1FieldMappingsForDiscovery } from '@/modules/ps-generator/seed-config'
 import { discoverPdfFields } from '@/modules/ps-generator/template-fields'
 import {
   psConfigurationAuditEntries,
@@ -446,6 +447,34 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
       templateValues(configVersionId, system.id, displayName, 'standard_ps1', standardUpload, now),
       ...(poolUpload ? [templateValues(configVersionId, system.id, displayName, 'pool_ps1', poolUpload, now)] : []),
     ]).returning({ id: psTemplateVariants.id, variantKind: psTemplateVariants.variantKind })
+    const uploadByVariantKind = new Map([
+      ['standard_ps1', standardUpload],
+      ...(poolUpload ? [['pool_ps1', poolUpload] as const] : []),
+    ] as const)
+    const legacyMappings = templates.flatMap((template) => {
+      if (template.variantKind !== 'standard_ps1' && template.variantKind !== 'pool_ps1') return []
+      const upload = uploadByVariantKind.get(template.variantKind)
+      if (!upload) return []
+      return legacyPs1FieldMappingsForDiscovery(upload.fieldDiscovery).map((mapping) => ({
+        templateVariantId: template.id,
+        fieldName: mapping.fieldName,
+        fieldType: mapping.fieldType,
+        sourceType: mapping.sourceType,
+        sourceKey: mapping.sourceKey ?? null,
+        fixedValue: mapping.fixedValue ?? null,
+        checkboxValue: mapping.checkboxValue ?? null,
+        sortOrder: mapping.sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      }))
+    })
+    const insertedMappings = legacyMappings.length > 0
+      ? await tx.insert(psFieldMappings).values(legacyMappings).returning({
+        id: psFieldMappings.id,
+        templateVariantId: psFieldMappings.templateVariantId,
+        fieldName: psFieldMappings.fieldName,
+      })
+      : []
 
     await tx.insert(psConfigurationAuditEntries).values([
       {
@@ -486,6 +515,16 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
         configVersionId,
         before: null,
         after: { systemId: system.id, variantKind: template.variantKind },
+        createdAt: now,
+      })),
+      ...insertedMappings.map((mapping) => ({
+        actorId,
+        entityType: 'field_mapping' as const,
+        entityId: mapping.id,
+        action: 'draft_saved' as const,
+        configVersionId,
+        before: null,
+        after: { templateVariantId: mapping.templateVariantId, fieldName: mapping.fieldName },
         createdAt: now,
       })),
     ])
@@ -775,6 +814,76 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
       updatedAt: now,
     }
     await tx.update(psTemplateVariants).set(after).where(eq(psTemplateVariants.id, templateVariantId))
+    const legacyMappings = legacyPs1FieldMappingsForDiscovery(fieldDiscovery)
+    const mappingAudits: Array<typeof psConfigurationAuditEntries.$inferInsert> = []
+    if (legacyMappings.length > 0) {
+      const existingMappings = await tx
+        .select()
+        .from(psFieldMappings)
+        .where(eq(psFieldMappings.templateVariantId, templateVariantId))
+      const legacyFieldNames = new Set(legacyMappings.map((mapping) => mapping.fieldName))
+
+      for (const beforeMapping of existingMappings) {
+        if (legacyFieldNames.has(beforeMapping.fieldName) || beforeMapping.archivedAt) continue
+        const archivedMapping = { archivedAt: now, updatedAt: now }
+        await tx.update(psFieldMappings).set(archivedMapping).where(eq(psFieldMappings.id, beforeMapping.id))
+        mappingAudits.push({
+          actorId,
+          entityType: 'field_mapping',
+          entityId: beforeMapping.id,
+          action: 'archived',
+          configVersionId,
+          before: beforeMapping,
+          after: { ...beforeMapping, ...archivedMapping },
+          createdAt: now,
+        })
+      }
+
+      for (const mapping of legacyMappings) {
+        const beforeMapping = existingMappings.find((candidate) => candidate.fieldName === mapping.fieldName)
+        const values = {
+          templateVariantId,
+          fieldName: mapping.fieldName,
+          fieldType: mapping.fieldType,
+          sourceType: mapping.sourceType,
+          sourceKey: mapping.sourceKey ?? null,
+          fixedValue: mapping.fixedValue ?? null,
+          checkboxValue: mapping.checkboxValue ?? null,
+          sortOrder: mapping.sortOrder,
+          archivedAt: null,
+          updatedAt: now,
+        }
+        if (beforeMapping) {
+          await tx.update(psFieldMappings).set(values).where(eq(psFieldMappings.id, beforeMapping.id))
+          mappingAudits.push({
+            actorId,
+            entityType: 'field_mapping',
+            entityId: beforeMapping.id,
+            action: 'draft_saved',
+            configVersionId,
+            before: beforeMapping,
+            after: { ...beforeMapping, ...values },
+            createdAt: now,
+          })
+          continue
+        }
+
+        const [insertedMapping] = await tx.insert(psFieldMappings).values({
+          ...values,
+          createdAt: now,
+        }).returning({ id: psFieldMappings.id })
+        mappingAudits.push({
+          actorId,
+          entityType: 'field_mapping',
+          entityId: insertedMapping.id,
+          action: 'draft_saved',
+          configVersionId,
+          before: null,
+          after: { templateVariantId, fieldName: mapping.fieldName },
+          createdAt: now,
+        })
+      }
+    }
     await tx.insert(psConfigurationAuditEntries).values({
       actorId,
       entityType: 'template_variant',
@@ -785,6 +894,7 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
       after: { ...before, ...after },
       createdAt: now,
     })
+    if (mappingAudits.length > 0) await tx.insert(psConfigurationAuditEntries).values(mappingAudits)
   })
 
   revalidateConfigurationPaths()

@@ -5,6 +5,7 @@ import {
   buildPsConfigurationSystemRows,
   createPsGeneratorSeedRows,
 } from '../configuration'
+import { legacyPs1FieldMappingsForDiscovery } from '../seed-config'
 import {
   createConfigurationDraft,
   createDraftSystemRow,
@@ -21,6 +22,21 @@ import {
 import { PS_GENERATOR_OPTION_CATEGORIES } from '../config'
 
 describe('published PS Generator configuration', () => {
+  it('maps legacy WordPress PS1 PDF fields from discovery output', () => {
+    expect(legacyPs1FieldMappingsForDiscovery({
+      text: ['Name', 'Address', 'Description', 'Date0', 'Height'],
+      checkbox: ['TimberTB', 'Direct'],
+    })).toEqual([
+      expect.objectContaining({ fieldName: 'Name', sourceType: 'project_value', sourceKey: 'clientName', sortOrder: 10 }),
+      expect.objectContaining({ fieldName: 'Address', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 }),
+      expect.objectContaining({ fieldName: 'Description', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 30 }),
+      expect.objectContaining({ fieldName: 'Date0', sourceType: 'date', sourceKey: 'today', sortOrder: 40 }),
+      expect.objectContaining({ fieldName: 'Height', sourceType: 'system_rule', sourceKey: 'heightRules.default.height', sortOrder: 50 }),
+      expect.objectContaining({ fieldName: 'TimberTB', sourceType: 'selected_option', sourceKey: 'structure_material.timber', sortOrder: 60 }),
+      expect.objectContaining({ fieldName: 'Direct', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 70 }),
+    ])
+  })
+
   it('exposes the seeded WordPress configuration through the application read model', () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
 
@@ -34,15 +50,15 @@ describe('published PS Generator configuration', () => {
     ])
     expect(configuration.optionCategories.find((category) => category.slug === 'structure_material')?.values).toEqual([
       { slug: 'timber', label: 'Timber' },
+      { slug: 'concrete', label: 'Concrete' },
       { slug: 'steel', label: 'Steel' },
-      { slug: 'aluminium', label: 'Aluminium' },
     ])
     expect(configuration.systems.find((system) => system.slug === 'double-disc')?.optionRules).toMatchObject({
       system: [{ slug: 'double-disc', label: 'Double Disc' }],
       structure_material: [
         { slug: 'timber', label: 'Timber' },
+        { slug: 'concrete', label: 'Concrete' },
         { slug: 'steel', label: 'Steel' },
-        { slug: 'aluminium', label: 'Aluminium' },
       ],
       gate_required: [
         { slug: 'no', label: 'No' },
@@ -56,7 +72,7 @@ describe('published PS Generator configuration', () => {
     ])
     expect(configuration.templateVariants.find((variant) => variant.variantKind === 'standard_ps1')?.fieldMappings).toEqual([
       {
-        fieldName: 'client_name',
+        fieldName: 'Name',
         fieldType: 'text',
         sourceType: 'project_value',
         sourceKey: 'clientName',
@@ -64,7 +80,7 @@ describe('published PS Generator configuration', () => {
         checkboxValue: null,
       },
       {
-        fieldName: 'job_address',
+        fieldName: 'Address',
         fieldType: 'text',
         sourceType: 'project_value',
         sourceKey: 'jobAddress',
@@ -72,21 +88,28 @@ describe('published PS Generator configuration', () => {
         checkboxValue: null,
       },
       {
-        fieldName: 'bc_number',
-        fieldType: 'text',
-        sourceType: 'project_value',
-        sourceKey: 'bcNumber',
-        fixedValue: null,
-        checkboxValue: null,
-      },
-      {
-        fieldName: 'description',
+        fieldName: 'Description',
         fieldType: 'text',
         sourceType: 'description_template',
         sourceKey: 'standard-balustrade',
         fixedValue: null,
         checkboxValue: null,
       },
+      expect.objectContaining({ fieldName: 'Date0', fieldType: 'text', sourceType: 'date' }),
+      expect.objectContaining({ fieldName: 'Thickness', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'thickness' }),
+      expect.objectContaining({ fieldName: 'Height', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.height' }),
+      expect.objectContaining({ fieldName: 'HeightAboveFix', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix' }),
+      expect.objectContaining({ fieldName: 'TimberTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_material.timber' }),
+      expect.objectContaining({ fieldName: 'ConcreteTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_material.concrete' }),
+      expect.objectContaining({ fieldName: 'SteelTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_material.steel' }),
+      expect.objectContaining({ fieldName: 'InternalTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'location.internal' }),
+      expect.objectContaining({ fieldName: 'ExternalTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'location.external' }),
+      expect.objectContaining({ fieldName: 'NewTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_built.new' }),
+      expect.objectContaining({ fieldName: 'ExistingTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_built.existing' }),
+      expect.objectContaining({ fieldName: 'ToughenedTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'glass_type.toughened' }),
+      expect.objectContaining({ fieldName: 'LaminatedTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'glass_type.laminated' }),
+      expect.objectContaining({ fieldName: 'Direct', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true }),
+      expect.objectContaining({ fieldName: 'Cont', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true }),
     ])
     expect(configuration.descriptionTemplates.map((template) => template.slug)).toEqual([
       'gate-balustrade',
