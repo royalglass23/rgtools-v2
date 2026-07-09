@@ -56,6 +56,7 @@ function deps(overrides: Partial<ConversationSnapshotDeps> = {}): ConversationSn
     insertSnapshot: vi.fn(async (record) => ({ id: 'snapshot-1', ...record })),
     recordFailure: vi.fn(async () => undefined),
     now: () => new Date('2026-06-13T00:00:00Z'),
+    model: 'gpt-4o',
     ...overrides,
   }
 }
@@ -418,7 +419,13 @@ describe('generateConversationSnapshotForQuote', () => {
       quoteId,
       triggeredByUserId: userId,
       failureStage: 'conversation_snapshot',
+      errorType: 'ai_response_error',
       errorMessage: 'ServiceM8 request failed after 5 attempts with HTTP 429',
+      attemptedAt: new Date('2026-06-13T00:00:00Z'),
+      retryAfter: new Date('2026-06-13T00:01:00Z'),
+      model: 'gpt-4o',
+      promptVersion: 'quote-conversation-snapshot-v1',
+      inputSnapshotVersion: 'quote-conversation-snapshot-input-v1',
     })
   })
 
@@ -435,7 +442,11 @@ describe('generateConversationSnapshotForQuote', () => {
     expect(d.insertSnapshot).not.toHaveBeenCalled()
     expect(d.recordFailure).toHaveBeenCalledWith(expect.objectContaining({
       failureStage: 'conversation_snapshot',
+      errorType: 'generation_error',
       errorMessage: 'Conversation Snapshot summary missing internalNotesSummary',
+      model: 'gpt-4o',
+      promptVersion: 'quote-conversation-snapshot-v1',
+      inputSnapshotVersion: 'quote-conversation-snapshot-input-v1',
     }))
   })
 
@@ -454,7 +465,11 @@ describe('generateConversationSnapshotForQuote', () => {
     })
     expect(d.recordFailure).toHaveBeenCalledWith(expect.objectContaining({
       failureStage: 'conversation_snapshot',
+      errorType: 'timeout',
       errorMessage: 'AI Guidance took longer than 5 minutes, so it was stopped. Please try again.',
+      model: 'gpt-4o',
+      promptVersion: 'quote-conversation-snapshot-v1',
+      inputSnapshotVersion: 'quote-conversation-snapshot-input-v1',
     }))
   })
 

@@ -199,6 +199,9 @@ describe('generateAiSuggestionForQuote', () => {
       errorMessage: 'AI Suggestion output has invalid confidence',
       attemptedAt: new Date('2026-06-25T00:00:00Z'),
       retryAfter: new Date('2026-06-25T00:01:00Z'),
+      model: 'gpt-4o-mini',
+      promptVersion: 'quote-ai-guidance-v1',
+      inputSnapshotVersion: 'quote-ai-guidance-input-v1',
     })
   })
 
@@ -286,6 +289,9 @@ describe('generateAiSuggestionForQuote', () => {
       errorType,
       errorMessage: message,
       retryAfter: new Date('2026-06-25T00:01:00Z'),
+      model: 'gpt-4o-mini',
+      promptVersion: 'quote-ai-guidance-v1',
+      inputSnapshotVersion: 'quote-ai-guidance-input-v1',
     }))
   })
 
