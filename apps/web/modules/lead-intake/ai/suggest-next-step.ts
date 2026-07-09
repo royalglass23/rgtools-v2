@@ -38,12 +38,8 @@ export type SuggestionLead = {
   } | null
 }
 
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | null
-    }
-  }>
+type ResponsesTextResponse = {
+  output_text?: string
 }
 
 export function buildSuggestionPrompt(lead: SuggestionLead): string {
@@ -184,25 +180,16 @@ export async function generateSuggestion(lead: SuggestionLead): Promise<{ text: 
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) throw new MissingOpenAIKeyError()
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: buildSuggestionPrompt(lead),
-        },
-      ],
-      temperature: 0.4,
+      model: process.env.OPENAI_MODEL ?? 'gpt-5.4-mini',
+      instructions: SYSTEM_PROMPT,
+      input: buildSuggestionPrompt(lead),
     }),
   })
 
@@ -211,8 +198,8 @@ export async function generateSuggestion(lead: SuggestionLead): Promise<{ text: 
     throw new Error(`OpenAI suggestion failed with HTTP ${response.status}${body ? `: ${body}` : ''}`)
   }
 
-  const payload = await response.json() as ChatCompletionResponse
-  const text = payload.choices?.[0]?.message?.content?.trim()
+  const payload = await response.json() as ResponsesTextResponse
+  const text = payload.output_text?.trim()
   if (!text) throw new Error('OpenAI suggestion response did not include text')
 
   return { text }
