@@ -23,7 +23,7 @@ vi.mock('../PlacesAutocomplete', () => ({
     onChange,
   }: {
     value: string
-    onChange: (address: string, suburb: string, source?: 'input' | 'place') => void
+    onChange: (address: string, suburb: string, source?: 'input' | 'place' | 'manual') => void
   }) => (
     <label>
       Job Address *
@@ -31,6 +31,7 @@ vi.mock('../PlacesAutocomplete', () => ({
         aria-label="Job Address"
         value={value}
         onChange={(event) => onChange(event.target.value, 'Albany', 'input')}
+        onBlur={(event) => onChange(event.target.value, 'Albany', 'manual')}
       />
     </label>
   ),
@@ -220,6 +221,23 @@ describe('LeadIntakeForm', () => {
       )
     })
     expect(computeLeadDistanceMock).not.toHaveBeenCalled()
+  })
+
+  it('computes distance when a pasted job address is manually committed', async () => {
+    render(<LeadIntakeForm optionLists={optionLists} />)
+
+    const addressInput = screen.getByLabelText('Job Address')
+    fireEvent.change(addressInput, {
+      target: { value: '22 Queen Street, Auckland' },
+    })
+    fireEvent.blur(addressInput)
+
+    await waitFor(() => {
+      expect(computeLeadDistanceMock).toHaveBeenCalledWith('22 Queen Street, Auckland')
+    })
+    await waitFor(() => {
+      expect(screen.getByText('<15 km')).toBeInTheDocument()
+    })
   })
 })
 

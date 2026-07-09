@@ -341,3 +341,68 @@ export const leadEmailLog = pgTable('lead_email_log', {
   index('lead_email_log_lead_idx').on(t.leadId),
   index('lead_email_log_created_at_idx').on(t.createdAt),
 ])
+
+export const leadConversationSnapshots = pgTable('lead_conversation_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  triggeredByUserId: uuid('triggered_by_user_id').references(() => users.id),
+  summary: text('summary').notNull(),
+  structuredSummary: jsonb('structured_summary').default({}).notNull(),
+  snapshotCursor: jsonb('snapshot_cursor').default({}).notNull(),
+  sourceStatus: text('source_status').default('complete').notNull(),
+  sourceMetadata: jsonb('source_metadata').default({}).notNull(),
+  safeError: text('safe_error'),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  model: text('model').default('').notNull(),
+  promptVersion: text('prompt_version').default('lead-conversation-snapshot-v1').notNull(),
+  inputSnapshotVersion: text('input_snapshot_version').default('lead-conversation-snapshot-input-v1').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_conversation_snapshots_lead_created_idx').on(t.leadId, t.createdAt),
+  index('lead_conversation_snapshots_triggered_by_idx').on(t.triggeredByUserId),
+])
+
+export const leadAiSuggestions = pgTable('lead_ai_suggestions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  conversationSnapshotId: uuid('conversation_snapshot_id').notNull().references(() => leadConversationSnapshots.id, { onDelete: 'cascade' }),
+  triggeredByUserId: uuid('triggered_by_user_id').notNull().references(() => users.id),
+  recommendedMove: text('recommended_move').notNull(),
+  suggestedTiming: text('suggested_timing').default('').notNull(),
+  confidence: text('confidence').default('Medium').notNull(),
+  confidenceReason: text('confidence_reason').default('').notNull(),
+  reasoning: text('reasoning').default('').notNull(),
+  emailDraftSubject: text('email_draft_subject').default('').notNull(),
+  emailDraftBody: text('email_draft_body').default('').notNull(),
+  phoneTalkingPoints: jsonb('phone_talking_points').default([]).notNull(),
+  handoffNotes: text('handoff_notes').default('').notNull(),
+  partialContextNote: text('partial_context_note'),
+  model: text('model').default('').notNull(),
+  promptVersion: text('prompt_version').default('lead-ai-guidance-v1').notNull(),
+  inputSnapshotVersion: text('input_snapshot_version').default('lead-ai-guidance-input-v1').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_ai_suggestions_lead_created_idx').on(t.leadId, t.createdAt),
+  index('lead_ai_suggestions_snapshot_idx').on(t.conversationSnapshotId),
+  index('lead_ai_suggestions_triggered_by_idx').on(t.triggeredByUserId),
+])
+
+export const leadAiGenerationFailures = pgTable('lead_ai_generation_failures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  conversationSnapshotId: uuid('conversation_snapshot_id').references(() => leadConversationSnapshots.id, { onDelete: 'set null' }),
+  triggeredByUserId: uuid('triggered_by_user_id').notNull().references(() => users.id),
+  failureStage: text('failure_stage').notNull(),
+  errorType: text('error_type').default('generation_error').notNull(),
+  errorMessage: text('error_message').notNull(),
+  attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow().notNull(),
+  retryAfter: timestamp('retry_after', { withTimezone: true }),
+  model: text('model').default('').notNull(),
+  promptVersion: text('prompt_version').default('').notNull(),
+  inputSnapshotVersion: text('input_snapshot_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('lead_ai_generation_failures_lead_created_idx').on(t.leadId, t.createdAt),
+  index('lead_ai_generation_failures_retry_after_idx').on(t.retryAfter),
+  index('lead_ai_generation_failures_triggered_by_idx').on(t.triggeredByUserId),
+])
