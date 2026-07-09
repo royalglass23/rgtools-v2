@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { type FormEvent, useState } from 'react'
 
 export type PsConfigurationSystemRow = {
   id: string
@@ -36,6 +37,7 @@ export function PsConfigurationSystemsEditor({
   createAction,
   updateAction,
 }: PsConfigurationSystemsEditorProps) {
+  const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -77,6 +79,10 @@ export function PsConfigurationSystemsEditor({
                   configVersionId={configVersionId}
                   system={system}
                   action={updateAction}
+                  onSubmitted={() => {
+                    setEditingId(null)
+                    router.refresh()
+                  }}
                   onCancel={() => setEditingId(null)}
                 />
               ) : (
@@ -102,6 +108,10 @@ export function PsConfigurationSystemsEditor({
               <NewSystemRow
                 configVersionId={configVersionId}
                 action={createAction}
+                onSubmitted={() => {
+                  setAdding(false)
+                  router.refresh()
+                }}
                 onCancel={() => setAdding(false)}
               />
             ) : null}
@@ -115,37 +125,54 @@ export function PsConfigurationSystemsEditor({
 function NewSystemRow({
   configVersionId,
   action,
+  onSubmitted,
   onCancel,
 }: {
   configVersionId: string
   action: (formData: FormData) => void | Promise<void>
+  onSubmitted: () => void
   onCancel: () => void
 }) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   return (
     <tr className="bg-sky-50 align-top">
       <td colSpan={5} className="px-4 py-3">
-        <form action={action} className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end">
+        <form
+          onSubmit={(event) => void submitSystemForm({
+            event,
+            action,
+            configVersionId,
+            systemPart: (formData) => slugify(String(formData.get('displayName') ?? '')),
+            setSaving,
+            setError,
+            onSubmitted,
+          })}
+          className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end"
+        >
           <input type="hidden" name="configVersionId" value={configVersionId} />
           <label className="text-sm font-medium text-gray-700">
             Name
-            <input name="displayName" required className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
+            <input name="displayName" required disabled={saving} className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
           </label>
           <label className="text-sm font-medium text-gray-700">
             Template
-            <input name="standardPs1Template" type="file" accept="application/pdf,.pdf" required className="mt-1 block w-full text-sm text-gray-700" />
+            <input name="standardPs1Template" type="file" accept="application/pdf,.pdf" required disabled={saving} className="mt-1 block w-full text-sm text-gray-700" />
           </label>
           <label className="text-sm font-medium text-gray-700">
             Pool template
-            <input name="poolPs1Template" type="file" accept="application/pdf,.pdf" className="mt-1 block w-full text-sm text-gray-700" />
+            <input name="poolPs1Template" type="file" accept="application/pdf,.pdf" disabled={saving} className="mt-1 block w-full text-sm text-gray-700" />
           </label>
           <label className="flex items-center gap-2 pb-2 text-sm font-medium text-gray-700">
-            <input type="checkbox" name="isActive" defaultChecked className="h-4 w-4 rounded border-gray-300" />
+            <input type="checkbox" name="isActive" defaultChecked disabled={saving} className="h-4 w-4 rounded border-gray-300" />
             Active
           </label>
           <span className="flex gap-2">
-            <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">Save</button>
-            <button type="button" onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
+            <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
+            <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
+          {error ? <p className="text-sm font-medium text-red-700 md:col-span-5">{error}</p> : null}
         </form>
       </td>
     </tr>
@@ -156,45 +183,165 @@ function EditableSystemRow({
   configVersionId,
   system,
   action,
+  onSubmitted,
   onCancel,
 }: {
   configVersionId: string
   system: PsConfigurationSystemRow
   action: (formData: FormData) => void | Promise<void>
+  onSubmitted: () => void
   onCancel: () => void
 }) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   return (
     <tr className="bg-sky-50 align-top">
       <td colSpan={5} className="px-4 py-3">
-        <form action={action} className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end">
+        <form
+          onSubmit={(event) => void submitSystemForm({
+            event,
+            action,
+            configVersionId,
+            systemPart: () => system.id,
+            setSaving,
+            setError,
+            onSubmitted,
+          })}
+          className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end"
+        >
           <input type="hidden" name="configVersionId" value={configVersionId} />
           <input type="hidden" name="systemId" value={system.id} />
           <label className="text-sm font-medium text-gray-700">
             Name
-            <input name="displayName" required defaultValue={system.displayName} className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
+            <input name="displayName" required defaultValue={system.displayName} disabled={saving} className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
           </label>
           <label className="text-sm font-medium text-gray-700">
             Template
             <span className="mt-1 block text-xs font-normal text-gray-500">{templateText(system.standardPs1Template)}</span>
-            <input name="standardPs1Template" type="file" accept="application/pdf,.pdf" className="mt-1 block w-full text-sm text-gray-700" />
+            <input name="standardPs1Template" type="file" accept="application/pdf,.pdf" disabled={saving} className="mt-1 block w-full text-sm text-gray-700" />
           </label>
           <label className="text-sm font-medium text-gray-700">
             Pool template
             <span className="mt-1 block text-xs font-normal text-gray-500">{templateText(system.poolPs1Template)}</span>
-            <input name="poolPs1Template" type="file" accept="application/pdf,.pdf" className="mt-1 block w-full text-sm text-gray-700" />
+            <input name="poolPs1Template" type="file" accept="application/pdf,.pdf" disabled={saving} className="mt-1 block w-full text-sm text-gray-700" />
           </label>
           <label className="flex items-center gap-2 pb-2 text-sm font-medium text-gray-700">
-            <input type="checkbox" name="isActive" defaultChecked={system.isActive} className="h-4 w-4 rounded border-gray-300" />
+            <input type="checkbox" name="isActive" defaultChecked={system.isActive} disabled={saving} className="h-4 w-4 rounded border-gray-300" />
             Active
           </label>
           <span className="flex gap-2">
-            <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">Save</button>
-            <button type="button" onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
+            <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
+            <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
+          {error ? <p className="text-sm font-medium text-red-700 md:col-span-5">{error}</p> : null}
         </form>
       </td>
     </tr>
   )
+}
+
+async function submitSystemForm(input: {
+  event: FormEvent<HTMLFormElement>
+  action: (formData: FormData) => void | Promise<void>
+  configVersionId: string
+  systemPart: (formData: FormData) => string
+  setSaving: (saving: boolean) => void
+  setError: (error: string | null) => void
+  onSubmitted: () => void
+}) {
+  input.event.preventDefault()
+  input.setSaving(true)
+  input.setError(null)
+
+  const form = input.event.currentTarget
+  const formData = new FormData(form)
+  appendSelectedFile(form, formData, 'standardPs1Template')
+  appendSelectedFile(form, formData, 'poolPs1Template')
+  const systemPart = input.systemPart(formData)
+
+  try {
+    if (!systemPart) throw new Error('System name is required.')
+    await prepareDirectTemplateUpload(formData, input.configVersionId, systemPart, 'standardPs1Template', 'standard_ps1')
+    await prepareDirectTemplateUpload(formData, input.configVersionId, systemPart, 'poolPs1Template', 'pool_ps1')
+    await input.action(formData)
+    input.onSubmitted()
+  } catch (error) {
+    input.setError(error instanceof Error ? error.message : 'Unable to save system.')
+  } finally {
+    input.setSaving(false)
+  }
+}
+
+function appendSelectedFile(
+  form: HTMLFormElement,
+  formData: FormData,
+  fieldName: 'standardPs1Template' | 'poolPs1Template',
+) {
+  const current = formData.get(fieldName)
+  if (current instanceof File && current.size > 0) return
+
+  const input = form.elements.namedItem(fieldName)
+  if (!(input instanceof HTMLInputElement)) return
+  const file = input.files?.[0]
+  if (file && file.size > 0) formData.set(fieldName, file)
+}
+
+async function prepareDirectTemplateUpload(
+  formData: FormData,
+  configVersionId: string,
+  systemPart: string,
+  fieldName: 'standardPs1Template' | 'poolPs1Template',
+  variantKind: 'standard_ps1' | 'pool_ps1',
+) {
+  const value = formData.get(fieldName)
+  if (!(value instanceof File) || value.size === 0) {
+    formData.delete(fieldName)
+    return
+  }
+  if (value.type && value.type !== 'application/pdf') throw new Error('Template upload must be a PDF.')
+
+  const ticketResponse = await fetch('/api/ps-generator/template-upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      configVersionId,
+      systemPart,
+      variantKind,
+      filename: value.name,
+      contentType: value.type || 'application/pdf',
+      size: value.size,
+    }),
+  })
+  const ticket = await ticketResponse.json() as {
+    objectKey?: string
+    originalFilename?: string
+    uploadUrl?: string
+    headers?: Record<string, string>
+    error?: string
+  }
+  if (!ticketResponse.ok || !ticket.objectKey || !ticket.originalFilename || !ticket.uploadUrl) {
+    throw new Error(ticket.error ?? 'Unable to prepare template upload.')
+  }
+
+  const uploadResponse = await fetch(ticket.uploadUrl, {
+    method: 'PUT',
+    headers: ticket.headers ?? { 'content-type': 'application/pdf' },
+    body: value,
+  })
+  if (!uploadResponse.ok) throw new Error('Unable to upload template PDF.')
+
+  formData.delete(fieldName)
+  formData.set(`${fieldName}ObjectKey`, ticket.objectKey)
+  formData.set(`${fieldName}OriginalFilename`, ticket.originalFilename)
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 }
 
 function templateText(template: PsConfigurationSystemRow['standardPs1Template']) {

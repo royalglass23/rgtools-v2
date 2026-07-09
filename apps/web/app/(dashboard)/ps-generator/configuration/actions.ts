@@ -369,13 +369,25 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
   const poolFile = formData.get('poolPs1Template')
 
   if (!displayName || !slug) throw new Error('System name is required.')
-  if (!isUpload(standardFile)) throw new Error('Choose a standard PS1 template PDF.')
 
   const now = new Date()
-  const standardUpload = await prepareTemplateUpload(configVersionId, slug, 'standard_ps1', standardFile)
-  const poolUpload = isUpload(poolFile)
-    ? await prepareTemplateUpload(configVersionId, slug, 'pool_ps1', poolFile)
-    : null
+  const standardUpload = await resolveTemplateUpload(
+    formData,
+    configVersionId,
+    slug,
+    'standard_ps1',
+    standardFile,
+    'standardPs1Template',
+  )
+  const poolUpload = await resolveTemplateUpload(
+    formData,
+    configVersionId,
+    slug,
+    'pool_ps1',
+    poolFile,
+    'poolPs1Template',
+  )
+  if (!standardUpload) throw new Error('Choose a standard PS1 template PDF.')
 
   await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -494,12 +506,22 @@ export async function updatePsConfigurationSystemAction(formData: FormData): Pro
   if (!displayName) throw new Error('System display name is required.')
 
   const now = new Date()
-  const standardUpload = isUpload(standardFile)
-    ? await prepareTemplateUpload(configVersionId, systemId, 'standard_ps1', standardFile)
-    : null
-  const poolUpload = isUpload(poolFile)
-    ? await prepareTemplateUpload(configVersionId, systemId, 'pool_ps1', poolFile)
-    : null
+  const standardUpload = await resolveTemplateUpload(
+    formData,
+    configVersionId,
+    systemId,
+    'standard_ps1',
+    standardFile,
+    'standardPs1Template',
+  )
+  const poolUpload = await resolveTemplateUpload(
+    formData,
+    configVersionId,
+    systemId,
+    'pool_ps1',
+    poolFile,
+    'poolPs1Template',
+  )
 
   await db.transaction(async (tx) => {
     const [before] = await tx
@@ -1098,6 +1120,25 @@ function isUpload(value: FormDataEntryValue | null): value is File {
   return value instanceof File && value.size > 0
 }
 
+async function resolveTemplateUpload(
+  formData: FormData,
+  configVersionId: string,
+  systemPart: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  file: FormDataEntryValue | null,
+  fieldName: 'standardPs1Template' | 'poolPs1Template',
+) {
+  const objectKey = String(formData.get(`${fieldName}ObjectKey`) ?? '').trim()
+  const originalFilename = String(formData.get(`${fieldName}OriginalFilename`) ?? '').trim()
+  if (objectKey && originalFilename) {
+    return prepareStoredTemplateUpload(configVersionId, systemPart, variantKind, objectKey, originalFilename)
+  }
+  if (isUpload(file)) {
+    return prepareTemplateUpload(configVersionId, systemPart, variantKind, file)
+  }
+  return null
+}
+
 async function prepareTemplateUpload(
   configVersionId: string,
   systemPart: string,
@@ -1114,6 +1155,35 @@ async function prepareTemplateUpload(
     originalFilename: file.name,
     fieldDiscovery,
   }
+}
+
+async function prepareStoredTemplateUpload(
+  configVersionId: string,
+  systemPart: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+  objectKey: string,
+  originalFilename: string,
+) {
+  if (!objectKey.startsWith(templateObjectPrefix(configVersionId, systemPart, variantKind))) {
+    throw new Error('Uploaded template does not match this draft system.')
+  }
+  if (!originalFilename.toLowerCase().endsWith('.pdf')) throw new Error('Template upload must be a PDF.')
+  const bytes = await getStorage().get(objectKey)
+  if (!bytes) throw new Error('Uploaded template PDF could not be found in storage.')
+  const fieldDiscovery = await discoverPdfFields(bytes)
+  return {
+    objectKey,
+    originalFilename,
+    fieldDiscovery,
+  }
+}
+
+function templateObjectPrefix(
+  configVersionId: string,
+  systemPart: string,
+  variantKind: 'standard_ps1' | 'pool_ps1',
+) {
+  return `drafts/ps-generator/templates/${configVersionId}/${sanitizeObjectPart(systemPart)}/${variantKind}/`
 }
 
 function templateValues(
