@@ -217,6 +217,28 @@ export const quoteAiGenerationFailures = pgTable('quote_ai_generation_failures',
   index('quote_ai_generation_failures_triggered_by_idx').on(table.triggeredByUserId),
 ])
 
+export const servicem8InterpretedFiles = pgTable('servicem8_interpreted_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  servicem8AttachmentUuid: text('servicem8_attachment_uuid').notNull(),
+  servicem8JobUuid: text('servicem8_job_uuid').notNull(),
+  name: text('name'),
+  fileType: text('file_type'),
+  attachmentSource: text('attachment_source'),
+  editDate: text('edit_date').notNull(),
+  status: text('status').notNull(),
+  summary: text('summary'),
+  model: text('model'),
+  interpretedAt: timestamp('interpreted_at', { withTimezone: true }),
+  errorMessage: text('error_message'),
+  errorMetadata: jsonb('error_metadata').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('servicem8_interpreted_files_attachment_edit_uq').on(table.servicem8AttachmentUuid, table.editDate),
+  index('servicem8_interpreted_files_job_idx').on(table.servicem8JobUuid),
+  index('servicem8_interpreted_files_status_idx').on(table.status),
+])
+
 export const settings = pgTable('settings', {
   id: uuid('id').primaryKey().defaultRandom(),
   key: text('key').unique().notNull(),

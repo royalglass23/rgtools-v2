@@ -33,6 +33,7 @@ export default async function LeadDetailPage({
   const reviewerNotes = canUseLeads ? await getLeadReviewerNotes(lead.id) : []
   const projectTypeLabel = findScoredFieldAnswer(lead.scoredFields, ['Project Type']) ?? formatAnswerKey(lead.projectType)
   const productLabel = formatProjectType(lead.product ?? lead.projectType)
+  const channelLabel = formatLeadSource(lead.channel)
   const sourceDetail = findScoredFieldAnswer(lead.scoredFields, ['Source']) ?? formatLeadSource(lead.source)
   const jobDescription = buildJobDescription({
     projectType: projectTypeLabel,
@@ -89,6 +90,7 @@ export default async function LeadDetailPage({
           <Field label="Job Address" value={lead.location ?? '-'} className="sm:col-span-2" />
           <Field label="Email" value={lead.email ?? '-'} />
           <Field label="Phone" value={lead.phone ?? '-'} />
+          <Field label="Channel" value={channelLabel} />
           <Field label="Source" value={sourceDetail} />
         </dl>
       </Section>
