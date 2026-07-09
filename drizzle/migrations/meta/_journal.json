@@ -316,6 +316,13 @@
       "when": 1783387200000,
       "tag": "0044_client_duplicate_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1783562400000,
+      "tag": "0045_servicem8_interpreted_files",
+      "breakpoints": true
     }
   ]
 }

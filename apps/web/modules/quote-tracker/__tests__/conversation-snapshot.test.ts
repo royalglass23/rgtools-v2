@@ -38,9 +38,15 @@ function deps(overrides: Partial<ConversationSnapshotDeps> = {}): ConversationSn
         emails: { ok: true, count: 1, latestTimestamp: '2026-06-11T09:00:00Z' },
       },
     })),
+    buildFileContext: vi.fn(async () => ({
+      servicem8JobUuid: 'job-uuid-1',
+      files: [],
+      sourceStatus: { status: 'complete' as const, total: 0, interpreted: 0, unsupported: 0, failed: 0 },
+    })),
     summarizeHistory: vi.fn(async () => ({
       customerEmailSummary: 'Jane asked whether low iron glass can be included.',
       internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+      fileContextSummary: 'No ServiceM8 files were found for this quote.',
       openQuestions: ['Can Royal Glass install before July?', 'Does Jane want low iron glass?'],
       lastKnownPosition: 'Customer is reviewing the quote details.',
       importantDates: ['before July'],
@@ -62,6 +68,7 @@ describe('generateConversationSnapshotForQuote', () => {
 
     expect(result).toEqual({ ok: true, snapshotId: 'snapshot-1', partial: false })
     expect(d.fetchHistory).toHaveBeenCalledWith('job-uuid-1')
+    expect(d.buildFileContext).toHaveBeenCalledWith('job-uuid-1')
     expect(d.summarizeHistory).toHaveBeenCalledWith(expect.objectContaining({
       quote: expect.objectContaining({ clientName: 'Jane Smith' }),
       history: {
@@ -75,14 +82,19 @@ describe('generateConversationSnapshotForQuote', () => {
           },
         ],
       },
+      fileContext: expect.objectContaining({
+        sourceStatus: { status: 'complete', total: 0, interpreted: 0, unsupported: 0, failed: 0 },
+        files: [],
+      }),
     }))
     expect(d.insertSnapshot).toHaveBeenCalledWith(expect.objectContaining({
       quoteId,
       triggeredByUserId: userId,
-      summary: 'Jane asked whether low iron glass can be included.\n\nInstall timing before July is the key internal follow-up.',
+      summary: 'Jane asked whether low iron glass can be included.\n\nInstall timing before July is the key internal follow-up.\n\nNo ServiceM8 files were found for this quote.',
       structuredSummary: expect.objectContaining({
         customerEmailSummary: 'Jane asked whether low iron glass can be included.',
         internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+        fileContextSummary: 'No ServiceM8 files were found for this quote.',
       }),
       sourceStatus: 'complete',
       sourceMetadata: expect.objectContaining({
@@ -91,6 +103,10 @@ describe('generateConversationSnapshotForQuote', () => {
         latestEmailTimestamp: '2026-06-11T09:00:00Z',
         noteCount: 2,
         emailCount: 1,
+        fileCount: 0,
+        interpretedFileCount: 0,
+        unsupportedFileCount: 0,
+        failedFileCount: 0,
       }),
       snapshotCursor: {
         latestNoteTimestamp: '2026-06-12T09:00:00Z',
@@ -100,6 +116,164 @@ describe('generateConversationSnapshotForQuote', () => {
     const savedRecord = JSON.stringify(vi.mocked(d.insertSnapshot).mock.calls[0]?.[0])
     expect(savedRecord).not.toContain('Customer asked if install can be before July.')
     expect(savedRecord).not.toContain('Can you include low iron glass?')
+  })
+
+  it('includes interpreted and unsupported ServiceM8 file context in the saved Conversation Snapshot', async () => {
+    const d = deps({
+      buildFileContext: vi.fn(async () => ({
+        servicem8JobUuid: 'job-uuid-1',
+        files: [
+          {
+            servicem8AttachmentUuid: 'attachment-photo-1',
+            servicem8JobUuid: 'job-uuid-1',
+            name: 'site-photo.jpg',
+            fileType: 'image/jpeg',
+            attachmentSource: 'Job',
+            editDate: '2026-06-12T10:00:00Z',
+            status: 'interpreted' as const,
+            summary: 'Photo shows a tiled shower opening with a nib wall on the left.',
+            model: 'gpt-4o-mini',
+            interpretedAt: new Date('2026-06-13T00:00:00Z'),
+            errorMessage: null,
+            errorMetadata: {},
+          },
+          {
+            servicem8AttachmentUuid: 'attachment-plan-1',
+            servicem8JobUuid: 'job-uuid-1',
+            name: 'layout.pdf',
+            fileType: 'application/pdf',
+            attachmentSource: 'Job',
+            editDate: '2026-06-12T11:00:00Z',
+            status: 'interpreted' as const,
+            summary: 'PDF shows a 980mm wide shower screen beside the vanity.',
+            model: 'gpt-4o-mini',
+            interpretedAt: new Date('2026-06-13T00:00:00Z'),
+            errorMessage: null,
+            errorMetadata: {},
+          },
+          {
+            servicem8AttachmentUuid: 'attachment-cad-1',
+            servicem8JobUuid: 'job-uuid-1',
+            name: 'shop-drawing.dwg',
+            fileType: 'application/acad',
+            attachmentSource: 'Job',
+            editDate: '2026-06-12T12:00:00Z',
+            status: 'unsupported' as const,
+            summary: null,
+            model: null,
+            interpretedAt: null,
+            errorMessage: 'CAD files are detected but not interpreted in v1.',
+            errorMetadata: { errorType: 'unsupported_cad' },
+          },
+        ],
+        sourceStatus: { status: 'partial' as const, total: 3, interpreted: 2, unsupported: 1, failed: 0 },
+      })),
+      summarizeHistory: vi.fn(async () => ({
+        customerEmailSummary: 'Jane asked whether low iron glass can be included.',
+        internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+        fileContextSummary: 'Site photo and PDF show a tiled shower opening with a 980mm shower screen. One CAD file was not interpreted.',
+        openQuestions: ['Confirm whether the nib wall needs a channel detail.'],
+        lastKnownPosition: 'Customer is reviewing the quote details.',
+        importantDates: ['before July'],
+        decisionMakers: ['Jane Smith'],
+        risksBlockers: ['CAD detail needs manual review.'],
+      })),
+    })
+
+    const result = await generateConversationSnapshotForQuote({ quoteId, triggeredByUserId: userId }, d)
+
+    expect(result).toEqual({ ok: true, snapshotId: 'snapshot-1', partial: true })
+    expect(d.summarizeHistory).toHaveBeenCalledWith(expect.objectContaining({
+      fileContext: expect.objectContaining({
+        sourceStatus: { status: 'partial', total: 3, interpreted: 2, unsupported: 1, failed: 0 },
+        files: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'site-photo.jpg',
+            status: 'interpreted',
+            summary: 'Photo shows a tiled shower opening with a nib wall on the left.',
+          }),
+          expect.objectContaining({
+            name: 'layout.pdf',
+            status: 'interpreted',
+            summary: 'PDF shows a 980mm wide shower screen beside the vanity.',
+          }),
+          expect.objectContaining({
+            name: 'shop-drawing.dwg',
+            status: 'unsupported',
+            errorMessage: 'CAD files are detected but not interpreted in v1.',
+          }),
+        ]),
+      }),
+    }))
+    expect(d.insertSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      sourceStatus: 'partial',
+      safeError: 'ServiceM8 file context is partial: 1 unsupported, 0 failed.',
+      structuredSummary: expect.objectContaining({
+        fileContextSummary: 'Site photo and PDF show a tiled shower opening with a 980mm shower screen. One CAD file was not interpreted.',
+      }),
+      sourceMetadata: expect.objectContaining({
+        fileCount: 3,
+        interpretedFileCount: 2,
+        unsupportedFileCount: 1,
+        failedFileCount: 0,
+        partialContext: {
+          files: 'ServiceM8 file context is partial: 1 unsupported, 0 failed.',
+        },
+      }),
+    }))
+  })
+
+  it('keeps saving a partial Conversation Snapshot when file interpretation fails', async () => {
+    const d = deps({
+      buildFileContext: vi.fn(async () => ({
+        servicem8JobUuid: 'job-uuid-1',
+        files: [
+          {
+            servicem8AttachmentUuid: 'attachment-photo-2',
+            servicem8JobUuid: 'job-uuid-1',
+            name: 'balustrade-photo.jpg',
+            fileType: 'image/jpeg',
+            attachmentSource: 'Job',
+            editDate: '2026-06-12T10:00:00Z',
+            status: 'failed' as const,
+            summary: null,
+            model: null,
+            interpretedAt: new Date('2026-06-13T00:00:00Z'),
+            errorMessage: 'File interpretation failed for balustrade-photo.jpg: OpenAI returned HTTP 500.',
+            errorMetadata: { errorType: 'ai_response_error' },
+          },
+        ],
+        sourceStatus: { status: 'partial' as const, total: 1, interpreted: 0, unsupported: 0, failed: 1 },
+      })),
+      summarizeHistory: vi.fn(async () => ({
+        customerEmailSummary: 'Jane asked whether low iron glass can be included.',
+        internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+        fileContextSummary: 'One ServiceM8 photo could not be interpreted, so staff should review it manually.',
+        openQuestions: ['Review failed photo manually before follow-up.'],
+        lastKnownPosition: 'Customer is reviewing the quote details.',
+        importantDates: ['before July'],
+        decisionMakers: ['Jane Smith'],
+        risksBlockers: ['File context is partial.'],
+      })),
+    })
+
+    const result = await generateConversationSnapshotForQuote({ quoteId, triggeredByUserId: userId }, d)
+
+    expect(result).toEqual({ ok: true, snapshotId: 'snapshot-1', partial: true })
+    expect(d.insertSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      sourceStatus: 'partial',
+      safeError: 'ServiceM8 file context is partial: 0 unsupported, 1 failed.',
+      sourceMetadata: expect.objectContaining({
+        fileCount: 1,
+        interpretedFileCount: 0,
+        unsupportedFileCount: 0,
+        failedFileCount: 1,
+        partialContext: {
+          files: 'ServiceM8 file context is partial: 0 unsupported, 1 failed.',
+        },
+      }),
+    }))
+    expect(d.recordFailure).not.toHaveBeenCalled()
   })
 
   it('uses the Snapshot Cursor to summarise only new ServiceM8 history on refresh', async () => {
@@ -294,6 +468,7 @@ describe('generateConversationSnapshotForQuote', () => {
             content: JSON.stringify({
               customerEmailSummary: 'Jane asked whether low iron glass can be included.',
               internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+              fileContextSummary: 'No ServiceM8 files were found for this quote.',
               openQuestions: ['Can Royal Glass install before July?'],
               lastKnownPosition: 'Customer is reviewing the quote details.',
               importantDates: ['before July'],
@@ -325,6 +500,11 @@ describe('generateConversationSnapshotForQuote', () => {
           body: 'Can you include low iron glass?',
           direction: 'inbound',
         }],
+      },
+      fileContext: {
+        servicem8JobUuid: 'job-uuid-1',
+        files: [],
+        sourceStatus: { status: 'complete', total: 0, interpreted: 0, unsupported: 0, failed: 0 },
       },
       previousCursor: null,
     })
