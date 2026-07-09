@@ -13,13 +13,22 @@ export type EngagementData = {
 }
 
 export const STATUS_TAG_RULES: Record<StatusTag, string> = {
-  hot: '3+ opens, return visit, CTA click, or more than 5 minutes total reading time.',
-  warm: '1-2 opens with more than 50% max scroll depth.',
+  hot: '30+ sec active time with 75%+ scroll, 45+ sec with 50%+ scroll, or 2+ opens with meaningful engagement.',
+  warm: '20+ sec active time or 30%+ scroll without a Hot signal.',
   cold: 'Opened, but engagement is still low or incomplete.',
   dead: 'Never opened after 3+ days since creation.',
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+const SECOND_MS = 1000
+const HOT_QUICK_REVIEW_TIME_MS = 30 * SECOND_MS
+const HOT_QUICK_REVIEW_SCROLL_DEPTH = 75
+const HOT_STEADY_REVIEW_TIME_MS = 45 * SECOND_MS
+const HOT_STEADY_REVIEW_SCROLL_DEPTH = 50
+const HOT_REPEAT_OPEN_TIME_MS = 30 * SECOND_MS
+const HOT_REPEAT_OPEN_SCROLL_DEPTH = 30
+const WARM_MIN_TIME_MS = 20 * SECOND_MS
+const WARM_MIN_SCROLL_DEPTH = 30
 
 export function computeScore(e: EngagementData): number {
   const raw =
@@ -33,16 +42,25 @@ export function computeScore(e: EngagementData): number {
 }
 
 export function computeStatusTag(e: EngagementData): StatusTag {
-  if (
-    e.totalOpens >= 3 ||
+  const hasPrimaryHotSignal =
+    (e.totalTimeMs >= HOT_QUICK_REVIEW_TIME_MS && e.maxScrollDepth >= HOT_QUICK_REVIEW_SCROLL_DEPTH) ||
+    (e.totalTimeMs >= HOT_STEADY_REVIEW_TIME_MS && e.maxScrollDepth >= HOT_STEADY_REVIEW_SCROLL_DEPTH) ||
+    (e.totalOpens >= 2 && (e.totalTimeMs >= HOT_REPEAT_OPEN_TIME_MS || e.maxScrollDepth >= HOT_REPEAT_OPEN_SCROLL_DEPTH))
+
+  const hasSecondaryHotSignal =
     e.hasReturnVisit ||
     e.hasCta ||
-    e.totalTimeMs > 5 * 60 * 1000
+    e.forwardingSuspected ||
+    e.uniqueDevices >= 2
+
+  if (
+    hasPrimaryHotSignal ||
+    hasSecondaryHotSignal
   ) {
     return 'hot'
   }
 
-  if (e.totalOpens >= 1 && e.totalOpens <= 2 && e.maxScrollDepth > 50) {
+  if (e.totalOpens > 0 && (e.totalTimeMs >= WARM_MIN_TIME_MS || e.maxScrollDepth >= WARM_MIN_SCROLL_DEPTH)) {
     return 'warm'
   }
 
