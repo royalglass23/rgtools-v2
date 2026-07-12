@@ -9,7 +9,7 @@ import {
   psSystems,
   psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
-import { PS_GENERATOR_OPTION_CATEGORIES } from './config'
+import { PS_GENERATOR_COMPATIBILITY_OPTIONS, PS_GENERATOR_OPTION_CATEGORIES } from './config'
 import { PS_GENERATOR_WORDPRESS_SEED, type PsConfigState } from './seed-config'
 
 type MaybeDate = Date | string | null
@@ -345,9 +345,12 @@ export function buildConfigurationReadModel(
   const optionCategories = categories.map((category) => ({
     slug: category.slug,
     label: category.label,
-    values: values
-      .filter((value) => value.categoryId === category.id)
-      .map((value) => ({ slug: value.slug, label: value.label })),
+    values: withCompatibilityOptions(
+      category.slug,
+      values
+        .filter((value) => value.categoryId === category.id)
+        .map((value) => ({ slug: value.slug, label: value.label })),
+    ),
   }))
 
   const systems = systemRows.map((system) => {
@@ -369,7 +372,7 @@ export function buildConfigurationReadModel(
       displayName: system.displayName,
       heightRules: system.heightRules,
       metadata: system.metadata,
-      optionRules,
+      optionRules: withCompatibilityOptionRules(optionRules),
     }
   })
 
@@ -422,6 +425,36 @@ export function buildConfigurationReadModel(
     templateVariants,
     descriptionTemplates,
   }
+}
+
+function withCompatibilityOptions(
+  categorySlug: string,
+  values: PublishedPsOptionValue[],
+): PublishedPsOptionValue[] {
+  const additions = PS_GENERATOR_COMPATIBILITY_OPTIONS[categorySlug as keyof typeof PS_GENERATOR_COMPATIBILITY_OPTIONS] ?? []
+  const baseValues = categorySlug === 'structure_type'
+    ? values.filter((value) => value.slug !== 'pool-fence')
+    : values
+  if (additions.length === 0) return baseValues
+
+  const bySlug = new Map(baseValues.map((value) => [value.slug, value]))
+  for (const option of additions) {
+    bySlug.set(option.slug, {
+      slug: option.slug,
+      label: option.label,
+    })
+  }
+  return [...bySlug.values()]
+}
+
+function withCompatibilityOptionRules(
+  optionRules: Record<string, PublishedPsOptionValue[]>,
+): Record<string, PublishedPsOptionValue[]> {
+  const next: Record<string, PublishedPsOptionValue[]> = {}
+  for (const [categorySlug, values] of Object.entries(optionRules)) {
+    next[categorySlug] = withCompatibilityOptions(categorySlug, values)
+  }
+  return next
 }
 
 export function buildPsConfigurationSystemRows(configuration: PublishedPsConfiguration): PsConfigurationSystemRow[] {

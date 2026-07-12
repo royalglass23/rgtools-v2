@@ -165,8 +165,11 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
       values: [
         { slug: 'deck', label: 'Deck', sortOrder: 10 },
         { slug: 'balcony', label: 'Balcony', sortOrder: 20 },
-        { slug: 'stair', label: 'Stair', sortOrder: 30 },
-        { slug: 'pool-fence', label: 'Pool fence', sortOrder: 40 },
+        { slug: 'pool', label: 'Pool Area', sortOrder: 30 },
+        { slug: 'stair', label: 'Stair Area', sortOrder: 40 },
+        { slug: 'landing', label: 'Landing', sortOrder: 50 },
+        { slug: 'stair-and-landing', label: 'Stair and Landing', sortOrder: 60 },
+        { slug: 'stair-and-balcony', label: 'Stair and Balcony Area', sortOrder: 70 },
       ],
     },
     {
@@ -176,6 +179,7 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
       values: [
         { slug: 'external', label: 'External', sortOrder: 10 },
         { slug: 'internal', label: 'Internal', sortOrder: 20 },
+        { slug: 'both', label: 'External and Internal', sortOrder: 30 },
       ],
     },
     {
@@ -230,8 +234,8 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
       allowedOptions: {
         system: ['double-disc'],
         structure_material: ['timber', 'concrete', 'steel'],
-        structure_type: ['deck', 'balcony', 'stair', 'pool-fence'],
-        location: ['external', 'internal'],
+        structure_type: ['deck', 'balcony', 'pool', 'stair', 'landing', 'stair-and-landing', 'stair-and-balcony'],
+        location: ['external', 'internal', 'both'],
         structure_built: ['new', 'existing'],
         glass_type: ['toughened', 'laminated'],
         thickness: ['12mm', '15mm', '17-52mm'],
@@ -251,8 +255,8 @@ export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
       allowedOptions: {
         system: ['frameless-spigot'],
         structure_material: ['timber', 'concrete', 'steel'],
-        structure_type: ['deck', 'balcony', 'pool-fence'],
-        location: ['external'],
+        structure_type: ['deck', 'balcony', 'pool', 'stair', 'landing', 'stair-and-landing', 'stair-and-balcony'],
+        location: ['external', 'internal', 'both'],
         structure_built: ['new', 'existing'],
         glass_type: ['toughened', 'laminated'],
         thickness: ['12mm'],

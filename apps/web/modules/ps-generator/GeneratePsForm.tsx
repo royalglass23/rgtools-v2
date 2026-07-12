@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useState, useTransition } from 'react'
+import { FormEvent, useMemo, useRef, useState, useTransition } from 'react'
 
 import { PlacesAutocomplete } from '@/modules/lead-intake/PlacesAutocomplete'
 
@@ -41,6 +41,7 @@ const MODE_OPTIONS: Array<{ value: PsGenerationMode; label: string; body: string
 ]
 
 export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [mode, setMode] = useState<PsGenerationMode>('ps1_only')
   const [projectDetails, setProjectDetails] = useState({
     jobNumber: '',
@@ -97,8 +98,13 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
     })
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+  }
+
+  async function handleGenerate() {
+    if (!formRef.current?.reportValidity()) return
+
     setMessage(null)
     setIsGenerating(true)
 
@@ -137,7 +143,7 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-950">Generate PS</h1>
@@ -233,7 +239,8 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
 
       <div className="flex justify-end">
         <button
-          type="submit"
+          type="button"
+          onClick={handleGenerate}
           disabled={isGenerating}
           className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
         >

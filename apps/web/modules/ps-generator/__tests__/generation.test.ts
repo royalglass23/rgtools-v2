@@ -114,7 +114,7 @@ describe('Producer Statement generation', () => {
       selections: {
         system: 'double-disc',
         structure_material: 'steel',
-        structure_type: 'pool-fence',
+        structure_type: 'pool',
         location: 'external',
         structure_built: 'existing',
         glass_type: 'laminated',
@@ -136,11 +136,38 @@ describe('Producer Statement generation', () => {
 
     const form = await readForm(result.outputs[0].bytes)
     expect(form.getTextField('Description').getText()).toBe(
-      'Double Disc glass balustrade to Pool fence, External, fixed to Steel; Laminated glass at 15mm.',
+      'Double Disc glass balustrade to Pool Area, External, fixed to Steel; Laminated glass at 15mm.',
     )
     expect(form.getCheckBox('SteelTB').isChecked()).toBe(true)
     expect(form.getCheckBox('LaminatedTB').isChecked()).toBe(true)
     expect(form.getCheckBox('ExistingTB').isChecked()).toBe(true)
+  })
+
+  it('fills both location checkboxes when location is internal and external', async () => {
+    const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
+    }
+
+    const result = await generateProducerStatementPackage({
+      ...defaultInput('ps1_only'),
+      selections: {
+        ...defaultInput('ps1_only').selections,
+        location: 'both',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getCheckBox('ExternalTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('InternalTB').isChecked()).toBe(true)
+    expect(form.getTextField('Description').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External and Internal, fixed to Timber; Toughened glass at 12mm.',
+    )
   })
 
   it('flattens generated PDFs by default so filled fields render as page content', async () => {
@@ -159,7 +186,7 @@ describe('Producer Statement generation', () => {
     expect(form.getFields()).toEqual([])
   })
 
-  it('uses the pool PS1 template for pool fence selections when one is published', async () => {
+  it('uses the pool PS1 template for pool area selections when one is published', async () => {
     const configuration = withPoolPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
       { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
       { fieldName: 'pool_description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', fixedValue: null, checkboxValue: null },
@@ -180,7 +207,7 @@ describe('Producer Statement generation', () => {
       selections: {
         system: 'frameless-spigot',
         structure_material: 'timber',
-        structure_type: 'pool-fence',
+        structure_type: 'pool',
         location: 'external',
         structure_built: 'new',
         glass_type: 'toughened',
@@ -197,6 +224,40 @@ describe('Producer Statement generation', () => {
       templateLabel: 'Frameless Spigot Pool PS1',
       sourceObjectKey: 'templates/ps-generator/wordpress/frameless-spigot/ps1-pool.pdf',
     })
+  })
+
+  it('uses pool height rules and pool template for pool area selections', async () => {
+    const configuration = withPoolPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'height', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.height', fixedValue: null, checkboxValue: null },
+      { fieldName: 'height_above_fix', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/frameless-spigot/ps1-pool.pdf': await createFixturePdf([
+        { name: 'height', type: 'text' },
+        { name: 'height_above_fix', type: 'text' },
+      ]),
+    }
+
+    const result = await generateProducerStatementPackage({
+      ...defaultInput('ps1_only'),
+      selections: {
+        ...defaultInput('ps1_only').selections,
+        system: 'frameless-spigot',
+        structure_type: 'pool',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      flattenGeneratedPdf: false,
+    })
+
+    expect(result.outputs[0]).toMatchObject({
+      documentKind: 'ps1',
+      templateLabel: 'Frameless Spigot Pool PS1',
+    })
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('height').getText()).toBe('1.20')
+    expect(form.getTextField('height_above_fix').getText()).toBe('1.20')
   })
 
   it('generates PS3 only without fetching a PS1 template', async () => {
