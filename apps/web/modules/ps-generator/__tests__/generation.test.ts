@@ -323,6 +323,43 @@ describe('Producer Statement generation', () => {
     expect(form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
   })
 
+  it('fills legacy PS1 default fields when an older published config is missing those mappings', async () => {
+    const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
+      { fieldName: 'job_address', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress', fixedValue: null, checkboxValue: null },
+      { fieldName: 'bc_number', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber', fixedValue: null, checkboxValue: null },
+      { fieldName: 'description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
+    }
+
+    const input = defaultInput('ps1_only')
+    const result = await generateProducerStatementPackage({
+      ...input,
+      projectDetails: {
+        ...input.projectDetails,
+        bcNumber: '',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('Thickness').getText()).toBe('12mm')
+    expect(form.getTextField('Height').getText()).toBe('1.00')
+    expect(form.getTextField('HeightAboveFix').getText()).toBe('1.05')
+    expect(form.getCheckBox('TimberTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('ExternalTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('NewTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('Direct').isChecked()).toBe(true)
+    expect(form.getCheckBox('Cont').isChecked()).toBe(true)
+  })
+
   it('does not require optional BC number or lot description fields when those values are blank', async () => {
     const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
       { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },

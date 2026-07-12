@@ -14,6 +14,7 @@ import {
   type PublishedPsSystem,
   type PublishedPsTemplateVariant,
 } from './configuration'
+import { PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS } from './seed-config'
 
 export type PsGenerationMode = 'ps1_only' | 'ps3_only' | 'both'
 export type PsGeneratedDocumentKind = 'ps1' | 'ps3'
@@ -125,6 +126,10 @@ interface GenerationContext {
   now: Date
 }
 
+type PsResolvedFieldMapping = PublishedPsTemplateVariant['fieldMappings'][number] & {
+  legacyDefault?: boolean
+}
+
 export interface PsGenerationActor {
   id: string
   label: string
@@ -173,7 +178,8 @@ export async function generateProducerStatementPackage(
         documentKind,
       })
     }
-    if (template.fieldMappings.length === 0) {
+    const fieldMappings = fieldMappingsWithLegacyDefaults(template)
+    if (fieldMappings.length === 0) {
       throw new PsGenerationError('field_mappings_missing', `Published template "${template.label}" has no field mappings.`, {
         templateVariantId: template.id,
       })
@@ -196,7 +202,7 @@ export async function generateProducerStatementPackage(
       r2ObjectKey: dependencies.persistGeneratedOutputs ? buildGeneratedObjectKey(operationId, filename) : undefined,
       filename,
       contentType: 'application/pdf',
-      bytes: await fillTemplatePdf(templateBytes, template, context, dependencies.flattenGeneratedPdf !== false),
+      bytes: await fillTemplatePdf(templateBytes, template, fieldMappings, context, dependencies.flattenGeneratedPdf !== false),
     })
   }
 
@@ -396,18 +402,20 @@ function validateSelectedOptions(system: PublishedPsSystem, selections: Record<s
 async function fillTemplatePdf(
   templateBytes: Buffer,
   template: PublishedPsTemplateVariant,
+  fieldMappings: PsResolvedFieldMapping[],
   context: GenerationContext,
   flattenGeneratedPdf: boolean,
 ): Promise<Buffer> {
   const pdf = await PDFDocument.load(toUint8Array(templateBytes))
   const form = pdf.getForm()
 
-  for (const mapping of template.fieldMappings) {
+  for (const mapping of fieldMappings) {
     if (mapping.fieldType === 'text') {
       const textValue = resolveTextValue(mapping, context)
       const field = findTextField(form, mapping)
       if (!field) {
         if (isOptionalBlankProjectField(mapping, textValue)) continue
+        if (mapping.legacyDefault) continue
 
         const fieldLabel = fieldLabelForMapping(mapping)
         throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${fieldLabel}".`, {
@@ -424,6 +432,8 @@ async function fillTemplatePdf(
     if (mapping.fieldType === 'checkbox') {
       const checkbox = findCheckBox(form, mapping)
       if (!checkbox) {
+        if (mapping.legacyDefault) continue
+
         const fieldLabel = fieldLabelForMapping(mapping)
         throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${fieldLabel}".`, {
           templateVariantId: template.id,
@@ -448,6 +458,63 @@ async function fillTemplatePdf(
   if (flattenGeneratedPdf) form.flatten({ updateFieldAppearances: true })
 
   return Buffer.from(await pdf.save())
+}
+
+function fieldMappingsWithLegacyDefaults(
+  template: PublishedPsTemplateVariant,
+): PsResolvedFieldMapping[] {
+  if (template.documentKind !== 'ps1') return template.fieldMappings
+
+  const discovered = discoveredTemplateFields(template.fieldDiscovery)
+  if (discovered.size === 0) return template.fieldMappings
+
+  const existing = new Set(template.fieldMappings.map(mappingSemanticKey))
+  const defaults = PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS
+    .filter((mapping) => discovered.has(mapping.fieldName))
+    .filter((mapping) => !existing.has(mappingSemanticKey(mapping)))
+    .map((mapping) => ({
+      fieldName: mapping.fieldName,
+      fieldType: mapping.fieldType,
+      sourceType: mapping.sourceType,
+      sourceKey: mapping.sourceKey ?? null,
+      fixedValue: mapping.fixedValue ?? null,
+      checkboxValue: mapping.checkboxValue ?? null,
+      legacyDefault: true,
+    }))
+
+  return defaults.length > 0 ? [...template.fieldMappings, ...defaults] : template.fieldMappings
+}
+
+function discoveredTemplateFields(fieldDiscovery: unknown): Set<string> {
+  if (!fieldDiscovery || typeof fieldDiscovery !== 'object') return new Set()
+
+  const discovery = fieldDiscovery as { text?: unknown; checkbox?: unknown; fields?: unknown }
+  return new Set([
+    ...arrayOfStrings(discovery.text),
+    ...arrayOfStrings(discovery.checkbox),
+    ...arrayOfStrings(discovery.fields),
+  ])
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function mappingSemanticKey(mapping: {
+  fieldName: string
+  fieldType: 'text' | 'checkbox'
+  sourceType: 'project_value' | 'selected_option' | 'system_rule' | 'description_template' | 'date' | 'fixed_value'
+  sourceKey?: string | null
+  fixedValue?: string | null
+  checkboxValue?: boolean | null
+}) {
+  return [
+    mapping.fieldType,
+    mapping.sourceType,
+    mapping.sourceKey ?? '',
+    mapping.fixedValue ?? '',
+    mapping.checkboxValue === null || mapping.checkboxValue === undefined ? '' : String(mapping.checkboxValue),
+  ].join(':')
 }
 
 function findTextField(
