@@ -71,7 +71,7 @@ function SettingsSection({
 }
 
 export default async function TrackingAdminPage({ searchParams }: TrackingAdminPageProps) {
-  await requireModule('admin')
+  await requireModule('admin/tracking')
 
   const params = await searchParams
   const settings = await getTrackingSettings()

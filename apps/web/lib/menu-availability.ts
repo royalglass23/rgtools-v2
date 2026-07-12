@@ -18,17 +18,17 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   {
     key: 'lead-intake',
     label: 'Lead Intake',
-    slugs: ['lead-intake', 'leads', 'lead-intake/configuration'],
+    slugs: ['lead-intake', 'leads', 'lead-intake/configuration', 'lead-intake/guide'],
   },
   {
     key: 'quote-tracker',
     label: 'Quote Tracker',
-    slugs: ['quote-tracker'],
+    slugs: ['quote-tracker', 'admin/tracking', 'quote-tracker/guide'],
   },
   {
     key: 'clients',
     label: 'Clients',
-    slugs: ['clients'],
+    slugs: ['clients', 'admin/client-merge-review', 'clients/configuration', 'clients/guide'],
   },
   {
     key: 'ps-generator',
@@ -43,7 +43,7 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
   {
     key: 'work-orders',
     label: 'Work Order',
-    slugs: ['work-orders', 'work-orders/manage', 'admin/work-orders'],
+    slugs: ['work-orders', 'work-orders/manage', 'admin/work-orders', 'work-orders/guide'],
   },
   {
     key: 'admin',
@@ -54,9 +54,7 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
       'admin/lead-scoring',
       'admin/calculator-pricing',
       'admin/dashboard-settings',
-      'admin/tracking',
       'admin/lead-import',
-      'admin/client-merge-review',
     ],
   },
 ]
