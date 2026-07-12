@@ -303,6 +303,12 @@ export type QuoteJobMeta = {
   leadJobCardFields: ServiceM8LeadJobCardFields
 }
 
+export type ServiceM8JobLookup = {
+  jobNumber: string | null
+  clientName: string | null
+  jobAddress: string | null
+}
+
 export type ServiceM8LeadJobCardFields = {
   clientType: string | null
   leadsQuality: string | null
@@ -820,6 +826,40 @@ export async function getJobQuoteMeta(
   }
 }
 
+export async function getJobLookupByNumber(
+  jobNumber: string,
+  request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+): Promise<ServiceM8JobLookup | null> {
+  const normalized = jobNumber.trim().toUpperCase()
+  if (!normalized) return null
+
+  const res = await request(`/job.json${odataFilter(`generated_job_id eq '${escapeOdataString(normalized)}'`)}`)
+  if (!res.ok) return null
+  const jobs = await res.json()
+  if (!Array.isArray(jobs)) return null
+  const job = jobs.find((candidate): candidate is ServiceM8JobRecord => (
+    Boolean(candidate && typeof candidate === 'object' && (candidate as ServiceM8JobRecord).uuid)
+  ))
+  if (!job) return null
+
+  let clientName: string | null = null
+  if (job.company_uuid) {
+    const companyRes = await request(`/company/${job.company_uuid}.json`)
+    if (companyRes.ok) {
+      const company = await companyRes.json()
+      if (company && typeof company === 'object') {
+        clientName = normalizeOptionalString((company as ServiceM8CompanyRecord).name)
+      }
+    }
+  }
+
+  return {
+    jobNumber: normalizeOptionalString(job.generated_job_id) ?? normalized,
+    clientName,
+    jobAddress: normalizeOptionalString(job.job_address),
+  }
+}
+
 function readLeadJobCardFields(job: ServiceM8JobRecord): ServiceM8LeadJobCardFields {
   return {
     clientType: readConfiguredJobField(job, process.env.SERVICEM8_CLIENT_TYPE_FIELD),
@@ -837,6 +877,10 @@ function readConfiguredJobField(
   if (!fieldName) return null
 
   const value = (job as Record<string, unknown>)[fieldName]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizeOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 

@@ -17,10 +17,12 @@ const moduleRow = (
 })
 
 describe('buildDashboardNavigation', () => {
-  it('keeps regular modules top-level and moves admin modules into the Admin menu', () => {
+  it('keeps shared admin modules in Admin and moves module settings into their module menus', () => {
     const nav = buildDashboardNavigation([
       moduleRow('m1', 'lead-intake', 'Lead Intake', 0),
       moduleRow('m3', 'leads', 'Leads', 1),
+      moduleRow('quotes', 'quote-tracker', 'Quote Tracker', 3),
+      moduleRow('clients', 'clients', 'Clients', 4),
       moduleRow('m4', 'admin/calculator-pricing', 'Cost Calculator Price', 102, true),
       moduleRow('m5', 'admin', 'Administration', 99, true),
       moduleRow('m6', 'admin/tracking', 'Tracking Settings', 103, true),
@@ -37,6 +39,12 @@ describe('buildDashboardNavigation', () => {
         name: 'Configuration',
         href: '/lead-intake/configuration',
       },
+      {
+        id: 'lead-intake-guide',
+        slug: 'lead-intake/guide',
+        name: 'Guide',
+        href: '/lead-intake/guide',
+      },
     ])
     expect(nav.adminItems).toEqual([
       { id: 'm5', slug: 'admin', name: 'Administration', href: '/admin/administration' },
@@ -46,18 +54,27 @@ describe('buildDashboardNavigation', () => {
         name: 'Cost Calculator Price',
         href: '/admin/calculator-pricing',
       },
+    ])
+    expect(nav.quoteTrackerItems).toEqual([
+      { id: 'quote-tracker-list', slug: 'quote-tracker', name: 'Track Quotes', href: '/quote-tracker' },
       {
-        id: 'm6',
+        id: 'quote-tracker-configuration',
         slug: 'admin/tracking',
-        name: 'Tracking Settings',
+        name: 'Configuration',
         href: '/admin/tracking',
       },
+      { id: 'quote-tracker-guide', slug: 'quote-tracker/guide', name: 'Guide', href: '/quote-tracker/guide' },
+    ])
+    expect(nav.clientsItems).toEqual([
+      { id: 'clients-list', slug: 'clients', name: 'List', href: '/clients' },
       {
-        id: 'm7',
+        id: 'clients-merge-review',
         slug: 'admin/client-merge-review',
-        name: 'Client Merge Review',
+        name: 'Merge Review',
         href: '/admin/client-merge-review',
       },
+      { id: 'clients-configuration', slug: 'clients/configuration', name: 'Configuration', href: '/clients/configuration' },
+      { id: 'clients-guide', slug: 'clients/guide', name: 'Guide', href: '/clients/guide' },
     ])
   })
 
@@ -70,18 +87,25 @@ describe('buildDashboardNavigation', () => {
     expect(nav.leadIntakeItems).toEqual([
       { id: 'lead-intake-form', slug: 'lead-intake', name: 'Form', href: '/lead-intake' },
       { id: 'lead-intake-list', slug: 'leads', name: 'List', href: '/leads' },
+      { id: 'lead-intake-guide', slug: 'lead-intake/guide', name: 'Guide', href: '/lead-intake/guide' },
     ])
   })
 
-  it('keeps the clients module as a top-level navigation item', () => {
+  it('groups Quote Tracker and Clients with their staff-facing guide links', () => {
     const nav = buildDashboardNavigation([
       moduleRow('clients', 'clients', 'Clients', 2),
       moduleRow('quotes', 'quote-tracker', 'Quote Tracker', 3),
     ])
 
     expect(nav.primaryModules.map((mod) => ({ slug: mod.slug, name: mod.name }))).toEqual([
-      { slug: 'clients', name: 'Clients' },
-      { slug: 'quote-tracker', name: 'Quote Tracker' },
+    ])
+    expect(nav.quoteTrackerItems).toEqual([
+      { id: 'quote-tracker-list', slug: 'quote-tracker', name: 'Track Quotes', href: '/quote-tracker' },
+      { id: 'quote-tracker-guide', slug: 'quote-tracker/guide', name: 'Guide', href: '/quote-tracker/guide' },
+    ])
+    expect(nav.clientsItems).toEqual([
+      { id: 'clients-list', slug: 'clients', name: 'List', href: '/clients' },
+      { id: 'clients-guide', slug: 'clients/guide', name: 'Guide', href: '/clients/guide' },
     ])
   })
 
@@ -124,6 +148,7 @@ describe('buildDashboardNavigation', () => {
     expect(nav.workOrderItems).toEqual([
       { id: 'work-order-list', slug: 'work-orders', name: 'Lists', href: '/work-orders' },
       { id: 'work-order-configuration', slug: 'admin/work-orders', name: 'Configuration', href: '/admin/work-orders' },
+      { id: 'work-order-guide', slug: 'work-orders/guide', name: 'Guide', href: '/work-orders/guide' },
     ])
     expect(nav.primaryModules).not.toContainEqual(expect.objectContaining({ slug: 'work-orders/manage' }))
   })
@@ -156,7 +181,12 @@ describe('buildDashboardNavigation', () => {
       moduleRow('clients', 'clients', 'Clients', 2),
     ], { isAdmin: true })
 
-    expect(nav.primaryModules.map((mod) => mod.slug)).toEqual(['clients'])
+    expect(nav.primaryModules.map((mod) => mod.slug)).toEqual([])
+    expect(nav.clientsItems).toEqual([
+      { id: 'clients-list', slug: 'clients', name: 'List', href: '/clients' },
+      { id: 'clients-configuration', slug: 'clients/configuration', name: 'Configuration', href: '/clients/configuration' },
+      { id: 'clients-guide', slug: 'clients/guide', name: 'Guide', href: '/clients/guide' },
+    ])
     expect(nav.adminItems).toEqual([])
   })
 })

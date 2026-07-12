@@ -33,6 +33,24 @@ describe('menu availability', () => {
     expect(roleCanSeeMenu('staff', 'ps-generator/configuration', availability)).toBe(false)
   })
 
+  it('groups moved settings routes under their owning module menus', () => {
+    const availability = parseMenuAvailabilitySetting(serializeMenuAvailability({
+      ...DEFAULT_MENU_AVAILABILITY,
+      admin: {
+        ...DEFAULT_MENU_AVAILABILITY.admin,
+        'quote-tracker': false,
+        clients: false,
+        admin: true,
+      },
+    }))
+
+    expect(roleCanSeeMenu('admin', 'admin/tracking', availability)).toBe(false)
+    expect(roleCanSeeMenu('admin', 'quote-tracker/guide', availability)).toBe(false)
+    expect(roleCanSeeMenu('admin', 'admin/client-merge-review', availability)).toBe(false)
+    expect(roleCanSeeMenu('admin', 'clients/configuration', availability)).toBe(false)
+    expect(roleCanSeeMenu('admin', 'admin/dashboard-settings', availability)).toBe(true)
+  })
+
   it('allows unknown slugs unless another guard blocks them', () => {
     expect(roleCanSeeMenu('staff', 'future-module', DEFAULT_MENU_AVAILABILITY)).toBe(true)
   })

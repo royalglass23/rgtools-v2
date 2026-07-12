@@ -11,7 +11,7 @@ const noExternalServiceM8: ServiceM8FetchRequest = async () => ({
 })
 
 export default async function ClientMergeReviewPage() {
-  await requireModule('admin')
+  await requireModule('admin/client-merge-review')
   await requireModule('clients')
 
   const [rows, dismissedSuggestionKeys] = await Promise.all([

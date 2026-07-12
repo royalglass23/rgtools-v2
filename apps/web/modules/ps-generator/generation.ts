@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { PDFDocument } from 'pdf-lib'
+import { PDFCheckBox, PDFDocument, PDFTextField, type PDFForm } from 'pdf-lib'
 
 import { getStorage } from '@/lib/storage'
 import type { QuoteStorage } from '@/lib/storage/types'
@@ -74,6 +74,49 @@ export class PsGenerationError extends Error {
   }
 }
 
+const PROJECT_FIELD_LABELS: Record<string, string> = {
+  clientName: 'Client name',
+  jobAddress: 'Job address',
+  bcNumber: 'BC Number',
+  lotDescription: 'Lot Description',
+}
+
+const FIELD_NAME_LABELS: Record<string, string> = {
+  client_name: 'Client name',
+  job_address: 'Job address',
+  bc_number: 'BC Number',
+  lot_description: 'Lot Description',
+  completion_date: 'Completion Date',
+  pool_description: 'Pool Description',
+}
+
+const OPTION_LABELS: Record<string, string> = {
+  system: 'System',
+  structure_material: 'Structure material',
+  structure_type: 'Structure type',
+  location: 'Location',
+  structure_built: 'Structure built',
+  glass_type: 'Glass type',
+  thickness: 'Thickness',
+  gate_required: 'Gate required',
+}
+
+export function humanizePsIdentifier(value: string | null | undefined): string {
+  if (!value) return ''
+  return PROJECT_FIELD_LABELS[value]
+    ?? FIELD_NAME_LABELS[value]
+    ?? OPTION_LABELS[value]
+    ?? value
+      .split(/[_.-]+/g)
+      .filter(Boolean)
+      .map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
+      .join(' ')
+}
+
+export function humanizePsGenerationMessage(message: string): string {
+  return message.replace(/"([a-z][a-z0-9_.-]*)"/g, (_match, identifier: string) => `"${humanizePsIdentifier(identifier)}"`)
+}
+
 interface GenerationContext {
   configuration: PublishedPsConfiguration
   system: PublishedPsSystem
@@ -109,8 +152,9 @@ export async function generateProducerStatementPackage(
 
   const system = configuration.systems.find((candidate) => candidate.slug === input.selections.system)
   if (!system) {
-    throw new PsGenerationError('published_system_missing', `Published system "${input.selections.system}" is not available.`, {
+    throw new PsGenerationError('published_system_missing', `Published system "${humanizePsIdentifier(input.selections.system)}" is not available.`, {
       systemSlug: input.selections.system,
+      systemLabel: humanizePsIdentifier(input.selections.system),
     })
   }
 
@@ -336,10 +380,13 @@ function validateSelectedOptions(system: PublishedPsSystem, selections: Record<s
     const allowedValues = system.optionRules[categorySlug]
     if (!allowedValues) continue
     if (!allowedValues.some((value) => value.slug === optionSlug)) {
-      throw new PsGenerationError('selected_option_not_allowed', `Option "${optionSlug}" is not allowed for ${system.displayName}.`, {
+      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not allowed for ${system.displayName}.`, {
         categorySlug,
+        categoryLabel: humanizePsIdentifier(categorySlug),
         optionSlug,
+        optionLabel: humanizePsIdentifier(optionSlug),
         systemSlug: system.slug,
+        systemLabel: system.displayName,
       })
     }
   }
@@ -355,41 +402,201 @@ async function fillTemplatePdf(
 
   for (const mapping of template.fieldMappings) {
     if (mapping.fieldType === 'text') {
-      try {
-        form.getTextField(mapping.fieldName).setText(resolveTextValue(mapping, context))
-      } catch (err) {
-        throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${mapping.fieldName}".`, {
+      const textValue = resolveTextValue(mapping, context)
+      const field = findTextField(form, mapping)
+      if (!field) {
+        if (isOptionalBlankProjectField(mapping, textValue)) continue
+
+        const fieldLabel = fieldLabelForMapping(mapping)
+        throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${fieldLabel}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
-          cause: errorMessage(err),
+          fieldLabel,
+          availableFields: availableTextFields(form),
         })
       }
+      field.setText(textValue)
       continue
     }
 
     if (mapping.fieldType === 'checkbox') {
-      try {
-        const checkbox = form.getCheckBox(mapping.fieldName)
-        if (resolveCheckboxValue(mapping, context)) checkbox.check()
-        else checkbox.uncheck()
-      } catch (err) {
-        throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${mapping.fieldName}".`, {
+      const checkbox = findCheckBox(form, mapping)
+      if (!checkbox) {
+        const fieldLabel = fieldLabelForMapping(mapping)
+        throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${fieldLabel}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
-          cause: errorMessage(err),
+          fieldLabel,
+          availableFields: availableCheckBoxFields(form),
         })
       }
+      if (resolveCheckboxValue(mapping, context)) checkbox.check()
+      else checkbox.uncheck()
       continue
     }
 
-    throw new PsGenerationError('unsupported_field_type', `Unsupported field type "${mapping.fieldType}" for "${mapping.fieldName}".`, {
+    throw new PsGenerationError('unsupported_field_type', `Unsupported field type "${humanizePsIdentifier(mapping.fieldType)}" for "${fieldLabelForMapping(mapping)}".`, {
       templateVariantId: template.id,
       fieldName: mapping.fieldName,
+      fieldLabel: fieldLabelForMapping(mapping),
       fieldType: mapping.fieldType,
     })
   }
 
   return Buffer.from(await pdf.save())
+}
+
+function findTextField(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+): PDFTextField | null {
+  for (const fieldName of candidateFieldNames(mapping)) {
+    try {
+      return form.getTextField(fieldName)
+    } catch {
+      // Try the next known alias.
+    }
+  }
+
+  return findNormalizedTextField(form, candidateFieldNames(mapping))
+}
+
+function findCheckBox(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+): PDFCheckBox | null {
+  for (const fieldName of candidateFieldNames(mapping)) {
+    try {
+      return form.getCheckBox(fieldName)
+    } catch {
+      // Try the next known alias.
+    }
+  }
+
+  return findNormalizedCheckBox(form, candidateFieldNames(mapping))
+}
+
+function findNormalizedTextField(
+  form: PDFForm,
+  fieldNames: string[],
+): PDFTextField | null {
+  const normalizedNames = new Set(fieldNames.map(normalizeFieldName))
+  for (const field of form.getFields()) {
+    if (!(field instanceof PDFTextField)) continue
+    if (normalizedNames.has(normalizeFieldName(field.getName()))) return field
+  }
+  return null
+}
+
+function findNormalizedCheckBox(
+  form: PDFForm,
+  fieldNames: string[],
+): PDFCheckBox | null {
+  const normalizedNames = new Set(fieldNames.map(normalizeFieldName))
+  for (const field of form.getFields()) {
+    if (!(field instanceof PDFCheckBox)) continue
+    if (normalizedNames.has(normalizeFieldName(field.getName()))) return field
+  }
+  return null
+}
+
+function candidateFieldNames(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string[] {
+  return uniqueStrings([
+    mapping.fieldName,
+    ...legacyWordPressAliases(mapping),
+  ])
+}
+
+function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string[] {
+  const key = mapping.sourceKey ?? mapping.fieldName
+
+  if (mapping.sourceType === 'project_value') {
+    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name']
+    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address']
+    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
+    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription']
+  }
+
+  if (mapping.sourceType === 'description_template') {
+    return ['description', 'Description', 'pool_description', 'Pool Description']
+  }
+
+  if (mapping.sourceType === 'date') {
+    return ['completion_date', 'Completion Date', 'Date0', 'Date']
+  }
+
+  if (mapping.sourceType === 'selected_option') {
+    return selectedOptionAliases(key)
+  }
+
+  if (mapping.sourceType === 'system_rule') {
+    if (key === 'heightRules.default.height') return ['height', 'Height']
+    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'HeightAboveFix', 'Height Above Fix']
+  }
+
+  return []
+}
+
+function selectedOptionAliases(sourceKey: string | null): string[] {
+  switch (sourceKey) {
+    case 'thickness':
+      return ['thickness', 'Thickness']
+    case 'structure_material.timber':
+      return ['structure_material_timber', 'TimberTB']
+    case 'structure_material.concrete':
+      return ['structure_material_concrete', 'ConcreteTB']
+    case 'structure_material.steel':
+      return ['structure_material_steel', 'SteelTB']
+    case 'location.internal':
+      return ['location_internal', 'InternalTB']
+    case 'location.external':
+      return ['location_external', 'ExternalTB']
+    case 'structure_built.new':
+      return ['structure_built_new', 'NewTB']
+    case 'structure_built.existing':
+      return ['structure_built_existing', 'ExistingTB']
+    case 'glass_type.toughened':
+      return ['glass_type_toughened', 'ToughenedTB']
+    case 'glass_type.laminated':
+      return ['glass_type_laminated', 'LaminatedTB']
+    default:
+      return []
+  }
+}
+
+function availableTextFields(form: PDFForm): string[] {
+  return form.getFields()
+    .filter((field) => field instanceof PDFTextField)
+    .map((field) => field.getName())
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function availableCheckBoxFields(form: PDFForm): string[] {
+  return form.getFields()
+    .filter((field) => field instanceof PDFCheckBox)
+    .map((field) => field.getName())
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))]
+}
+
+function normalizeFieldName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function isOptionalBlankProjectField(
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+  textValue: string,
+): boolean {
+  return mapping.sourceType === 'project_value'
+    && (mapping.sourceKey === 'bcNumber' || mapping.sourceKey === 'lotDescription')
+    && textValue.trim().length === 0
+}
+
+function fieldLabelForMapping(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string {
+  return humanizePsIdentifier(mapping.sourceKey) || humanizePsIdentifier(mapping.fieldName)
 }
 
 function resolveTextValue(
@@ -410,8 +617,9 @@ function resolveTextValue(
     case 'fixed_value':
       return mapping.fixedValue ?? ''
     default:
-      throw new PsGenerationError('unsupported_source_type', `Unsupported mapping source type "${mapping.sourceType}" for "${mapping.fieldName}".`, {
+      throw new PsGenerationError('unsupported_source_type', `Unsupported mapping source type "${humanizePsIdentifier(mapping.sourceType)}" for "${fieldLabelForMapping(mapping)}".`, {
         fieldName: mapping.fieldName,
+        fieldLabel: fieldLabelForMapping(mapping),
         sourceType: mapping.sourceType,
       })
   }
@@ -433,7 +641,7 @@ function resolveCheckboxValue(
 function resolveDescriptionTemplate(context: GenerationContext, slug: string | null): string {
   const template = context.configuration.descriptionTemplates.find((candidate) => candidate.slug === slug)
   if (!template) {
-    throw new PsGenerationError('description_template_missing', `Description template "${slug}" is not published.`, {
+    throw new PsGenerationError('description_template_missing', `Description template "${humanizePsIdentifier(slug)}" is not published.`, {
       slug,
     })
   }
@@ -497,10 +705,6 @@ function normalizeOptionalText(value: unknown): string | null {
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 function toUint8Array(bytes: Buffer): Uint8Array {

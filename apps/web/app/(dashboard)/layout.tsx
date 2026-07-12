@@ -11,13 +11,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session?.user?.id) redirect('/login')
 
   const accessibleModules = await getAccessibleModules(session.user.id)
-  const { primaryModules, leadIntakeItems, psGeneratorItems, workOrderItems, adminItems } = buildDashboardNavigation(accessibleModules, {
+  const { primaryModules, leadIntakeItems, quoteTrackerItems, clientsItems, psGeneratorItems, workOrderItems, adminItems } = buildDashboardNavigation(accessibleModules, {
     isAdmin: session.user.role === 'admin',
     showWorkOrderNavigation: true,
   })
-  const quoteTrackerModule = primaryModules.find((mod) => mod.slug === 'quote-tracker')
-  const clientsModule = primaryModules.find((mod) => mod.slug === 'clients')
-  const remainingPrimaryModules = primaryModules.filter((mod) => !['quote-tracker', 'clients'].includes(mod.slug))
+  const remainingPrimaryModules = primaryModules
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -38,13 +36,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="h-[72px] w-auto"
             />
           </Link>
-          {(primaryModules.length > 0 || leadIntakeItems.length > 0 || psGeneratorItems.length > 0 || workOrderItems.length > 0 || adminItems.length > 0) && (
+          {(primaryModules.length > 0 || leadIntakeItems.length > 0 || quoteTrackerItems.length > 0 || clientsItems.length > 0 || psGeneratorItems.length > 0 || workOrderItems.length > 0 || adminItems.length > 0) && (
             <div className="flex items-center gap-4">
               {leadIntakeItems.length > 0 && (
                 <DropdownMenu label="Lead Intake" items={leadIntakeItems} />
               )}
-              {quoteTrackerModule && (
-                <PrimaryModuleLink module={quoteTrackerModule} />
+              {quoteTrackerItems.length > 0 && (
+                <DropdownMenu label="Quote Tracker" items={quoteTrackerItems} />
               )}
               {workOrderItems.length > 0 && (
                 <DropdownMenu label="Work Order" items={workOrderItems} />
@@ -52,8 +50,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {psGeneratorItems.length > 0 && (
                 <DropdownMenu label="PS Generator" items={psGeneratorItems} />
               )}
-              {clientsModule && (
-                <PrimaryModuleLink module={clientsModule} />
+              {clientsItems.length > 0 && (
+                <DropdownMenu label="Clients" items={clientsItems} />
               )}
               {remainingPrimaryModules.map((mod) => (
                 <PrimaryModuleLink key={mod.id} module={mod} />

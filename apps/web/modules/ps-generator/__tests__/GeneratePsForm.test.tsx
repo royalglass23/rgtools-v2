@@ -87,6 +87,18 @@ describe('GeneratePsForm', () => {
     expect(screen.getByLabelText('Job address')).toHaveValue('99 Manual Road')
   })
 
+  it('keeps manual entry usable when job lookup fails', async () => {
+    const lookupJob = vi.fn().mockRejectedValue(new Error('ServiceM8 unavailable'))
+    render(<GeneratePsForm configuration={configuration} lookupJob={lookupJob} />)
+
+    fireEvent.change(screen.getByLabelText('Job number'), { target: { value: 'R260210' } })
+    fireEvent.change(screen.getByLabelText('Client name'), { target: { value: 'Manual Customer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Find job' }))
+
+    expect(await screen.findByText('Unable to look up job R260210. You can keep entering details manually.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Client name')).toHaveValue('Manual Customer')
+  })
+
   it('submits generation requests and exposes separate downloads', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,

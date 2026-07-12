@@ -4,6 +4,8 @@ import { auth } from '@/lib/auth'
 import { userCanAccessSlug } from '@/lib/access-db'
 import {
   generateProducerStatementPackage,
+  humanizePsGenerationMessage,
+  humanizePsIdentifier,
   PsGenerationError,
   type GenerateProducerStatementPackageInput,
   type PsGenerationMode,
@@ -55,8 +57,8 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: {
           code: error.code,
-          message: error.message,
-          details: error.details,
+          message: humanizePsGenerationMessage(error.message),
+          details: humanizeGenerationDetails(error.details),
         },
       }, { status: 422 })
     }
@@ -114,4 +116,20 @@ function isGenerationMode(value: unknown): value is PsGenerationMode {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function humanizeGenerationDetails(details: Record<string, unknown> | undefined) {
+  if (!details) return undefined
+
+  const next: Record<string, unknown> = { ...details }
+  for (const key of ['fieldName', 'sourceType', 'fieldType', 'categorySlug', 'optionSlug', 'systemSlug', 'slug']) {
+    if (typeof next[key] === 'string') next[`${key}Label`] = humanizePsIdentifier(next[key] as string)
+  }
+  if (Array.isArray(next.availableFields)) {
+    next.availableFieldLabels = next.availableFields
+      .filter((field): field is string => typeof field === 'string')
+      .map((field) => humanizePsIdentifier(field))
+  }
+
+  return next
 }

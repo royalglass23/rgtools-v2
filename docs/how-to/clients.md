@@ -5,7 +5,7 @@ The Clients area shows the canonical RG Tools client records that connect lead i
 ## Who can use it
 
 - Staff need access to the `clients` module.
-- Admins can also use client merge review under **Admin -> Client Merge Review**.
+- Admins can also use client merge review under **Clients -> Merge Review**.
 
 ## Client list
 
@@ -43,7 +43,7 @@ Admins can use **Client cleanup** on the detail page to edit the canonical clien
 
 Duplicate client records can happen when contact details are missing, typed differently, or imported from older jobs.
 
-Admins review suspected duplicates from **Admin -> Client Merge Review**. Merge cleanup is intentionally admin-controlled because client records connect multiple workflows.
+Admins review suspected duplicates from **Clients -> Merge Review**. Merge cleanup is intentionally admin-controlled because client records connect multiple workflows.
 
 Strong ServiceM8 identity matches can be planned for safe auto-merge. Ambiguous matches stay in the review queue, where admins can either choose the survivor client or dismiss a false match. Merged duplicates are hidden from normal client lists but kept as merged references so old imports and links can still resolve to the survivor.
 

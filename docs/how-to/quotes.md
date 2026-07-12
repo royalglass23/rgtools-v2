@@ -126,7 +126,7 @@ You don't have to keep checking the dashboard — rgtools can email the team aut
 
 Internal-only opens (you previewing your own link) are skipped, and each email is sent at most once per quote so you won't get spammed. Notifications are checked every few minutes, so allow a short delay after an open.
 
-Turn this on and choose who receives the emails at **Admin → Tracking Settings → Open notifications** (see [Tracking settings](#tracking-settings) below).
+Turn this on and choose who receives the emails at **Quote Tracker -> Configuration -> Open notifications** (see [Tracking settings](#tracking-settings) below).
 
 ---
 
@@ -168,7 +168,7 @@ IP addresses in events are purged after 90 days by the same cron job.
 
 ## Tracking settings
 
-Admins can toggle individual tracking signals at **Admin → Tracking Settings**.
+Admins can toggle individual tracking signals at **Quote Tracker -> Configuration**.
 
 | Setting key | What it controls |
 |---|---|
@@ -190,7 +190,7 @@ Settings are cached for 60 seconds in the tracker worker. Changes take up to a m
 
 ### Open notifications
 
-The same Admin → Tracking Settings page controls the email alerts (see [step 7](#7-get-notified-by-email-optional)):
+The same **Quote Tracker -> Configuration** page controls the email alerts (see [step 7](#7-get-notified-by-email-optional)):
 
 | Setting key | What it controls |
 |---|---|
@@ -337,7 +337,7 @@ pnpm quote:create --uuid <jobUuid>
 | Quote creation logic | `apps/web/modules/quote-tracker/create-tracked-quote.ts` |
 | Engagement scoring | `apps/web/modules/quote-tracker/score.ts` |
 | Email gate logic | `apps/web/modules/quote-tracker/email-gate.ts` |
-| Tracking settings | Admin → Tracking Settings in the dashboard |
+| Tracking settings | Quote Tracker -> Configuration in the dashboard |
 | AI Guidance | Quote detail page in rgtools |
 | PDFs at rest | Cloudflare R2 bucket `quotes/<shortcode>.pdf` |
 | Database | Neon (Postgres) — `quotes`, `quote_events`, `quote_engagement`, `quote_recipients`, `quote_viewer_emails`, quote AI snapshot/suggestion/failure tables |
