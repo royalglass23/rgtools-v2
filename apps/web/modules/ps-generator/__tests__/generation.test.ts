@@ -303,6 +303,63 @@ describe('Producer Statement generation', () => {
     expect(form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
   })
 
+  it('does not require optional BC number or lot description fields when those values are blank', async () => {
+    const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
+      { fieldName: 'bc_number', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber', fixedValue: null, checkboxValue: null },
+      { fieldName: 'lot_description', fieldType: 'text', sourceType: 'project_value', sourceKey: 'lotDescription', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
+        { name: 'client_name', type: 'text' },
+      ]),
+    }
+
+    await expect(generateProducerStatementPackage({
+      ...defaultInput('ps1_only'),
+      projectDetails: {
+        clientName: 'Jane Customer',
+        jobAddress: '12 Glass Lane',
+        bcNumber: '',
+        lotDescription: '',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+    })).resolves.toMatchObject({
+      outputs: [expect.objectContaining({ documentKind: 'ps1' })],
+    })
+  })
+
+  it('uses human-readable labels for missing optional fields when a value was entered', async () => {
+    const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'bc_number', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([]),
+    }
+
+    await expect(generateProducerStatementPackage({
+      ...defaultInput('ps1_only'),
+      projectDetails: {
+        clientName: 'Jane Customer',
+        jobAddress: '12 Glass Lane',
+        bcNumber: 'BC-123',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+    })).rejects.toMatchObject({
+      name: 'PsGenerationError',
+      code: 'pdf_text_field_missing',
+      message: 'Template "Double Disc PS1" is missing text field "BC Number".',
+      details: expect.objectContaining({
+        fieldName: 'bc_number',
+        fieldLabel: 'BC Number',
+      }),
+    })
+  })
+
   it('returns a clear generation error when the published template PDF is missing', async () => {
     await expect(generateProducerStatementPackage(defaultInput('ps3_only'), {
       configuration: buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()),

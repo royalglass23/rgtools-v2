@@ -6,6 +6,7 @@ import {
   getCompanyContact,
   getJobConversationSnapshotHistory,
   getJobContact,
+  getJobLookupByNumber,
   getJobNotesAndEmails,
   getJobQuoteMeta,
   resolveJobUuid,
@@ -229,6 +230,40 @@ describe('getJobQuoteMeta', () => {
         note: 'Project Type: New Build / Commercial Fit-out',
       },
     })
+  })
+
+  it('looks up a ServiceM8 job by human job number for PS Generator prefill', async () => {
+    const request = vi.fn<ServiceM8FetchRequest>(async (path) => {
+      if (path.startsWith('/job.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{
+            uuid: 'job-uuid-1',
+            generated_job_id: 'R260210',
+            job_address: '10 Glass Lane',
+            company_uuid: 'company-uuid-1',
+          }],
+        }
+      }
+
+      if (path === '/company/company-uuid-1.json') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ name: 'Jane Customer' }),
+        }
+      }
+
+      throw new Error(`Unexpected request path: ${path}`)
+    })
+
+    await expect(getJobLookupByNumber(' r260210 ', request)).resolves.toEqual({
+      jobNumber: 'R260210',
+      clientName: 'Jane Customer',
+      jobAddress: '10 Glass Lane',
+    })
+    expect(decodeURIComponent(request.mock.calls[0][0])).toContain("generated_job_id eq 'R260210'")
   })
 })
 
