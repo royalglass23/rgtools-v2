@@ -99,7 +99,7 @@ describe('GeneratePsForm', () => {
     expect(screen.getByLabelText('Client name')).toHaveValue('Manual Customer')
   })
 
-  it('submits generation requests and exposes separate downloads', async () => {
+  it('submits generation requests and downloads generated PDFs immediately', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -121,6 +121,7 @@ describe('GeneratePsForm', () => {
         ],
       }),
     } as Response)
+    const clickMock = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     render(<GeneratePsForm configuration={configuration} />)
 
     fireEvent.change(screen.getByLabelText('Client name'), { target: { value: 'Jane Customer' } })
@@ -150,7 +151,9 @@ describe('GeneratePsForm', () => {
         gate_required: 'no',
       },
     })
-    expect(await screen.findByRole('link', { name: 'Download PS1' })).toHaveAttribute('download', 'PS1-Jane-Customer.pdf')
-    expect(screen.getByRole('link', { name: 'Download PS3' })).toHaveAttribute('download', 'PS3-Jane-Customer.pdf')
+    expect(await screen.findByText('Generated and downloaded 2 documents.')).toBeInTheDocument()
+    expect(clickMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('link', { name: 'Download PS1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Download PS3' })).not.toBeInTheDocument()
   })
 })

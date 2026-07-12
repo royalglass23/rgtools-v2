@@ -64,6 +64,7 @@ describe('Producer Statement generation', () => {
       configuration,
       storage: new MemoryStorage(objects),
       now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
     })
 
     expect(result.versionLabel).toBe('wordpress-plugin-v1')
@@ -123,6 +124,7 @@ describe('Producer Statement generation', () => {
     }, {
       configuration,
       storage: new MemoryStorage(objects),
+      flattenGeneratedPdf: false,
     })
 
     expect(result.outputs).toHaveLength(1)
@@ -139,6 +141,22 @@ describe('Producer Statement generation', () => {
     expect(form.getCheckBox('SteelTB').isChecked()).toBe(true)
     expect(form.getCheckBox('LaminatedTB').isChecked()).toBe(true)
     expect(form.getCheckBox('ExistingTB').isChecked()).toBe(true)
+  })
+
+  it('flattens generated PDFs by default so filled fields render as page content', async () => {
+    const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
+    }
+
+    const result = await generateProducerStatementPackage(defaultInput('ps1_only'), {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getFields()).toEqual([])
   })
 
   it('uses the pool PS1 template for pool fence selections when one is published', async () => {
@@ -254,6 +272,7 @@ describe('Producer Statement generation', () => {
     const result = await generateProducerStatementPackage(defaultInput('ps1_only'), {
       configuration,
       storage: new MemoryStorage(objects),
+      flattenGeneratedPdf: false,
     })
 
     const form = await readForm(result.outputs[0].bytes)
@@ -285,6 +304,7 @@ describe('Producer Statement generation', () => {
       configuration,
       storage: new MemoryStorage(objects),
       now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
     })
 
     const form = await readForm(result.outputs[0].bytes)
