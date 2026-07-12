@@ -814,76 +814,6 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
       updatedAt: now,
     }
     await tx.update(psTemplateVariants).set(after).where(eq(psTemplateVariants.id, templateVariantId))
-    const legacyMappings = legacyPs1FieldMappingsForDiscovery(fieldDiscovery)
-    const mappingAudits: Array<typeof psConfigurationAuditEntries.$inferInsert> = []
-    if (legacyMappings.length > 0) {
-      const existingMappings = await tx
-        .select()
-        .from(psFieldMappings)
-        .where(eq(psFieldMappings.templateVariantId, templateVariantId))
-      const legacyFieldNames = new Set(legacyMappings.map((mapping) => mapping.fieldName))
-
-      for (const beforeMapping of existingMappings) {
-        if (legacyFieldNames.has(beforeMapping.fieldName) || beforeMapping.archivedAt) continue
-        const archivedMapping = { archivedAt: now, updatedAt: now }
-        await tx.update(psFieldMappings).set(archivedMapping).where(eq(psFieldMappings.id, beforeMapping.id))
-        mappingAudits.push({
-          actorId,
-          entityType: 'field_mapping',
-          entityId: beforeMapping.id,
-          action: 'archived',
-          configVersionId,
-          before: beforeMapping,
-          after: { ...beforeMapping, ...archivedMapping },
-          createdAt: now,
-        })
-      }
-
-      for (const mapping of legacyMappings) {
-        const beforeMapping = existingMappings.find((candidate) => candidate.fieldName === mapping.fieldName)
-        const values = {
-          templateVariantId,
-          fieldName: mapping.fieldName,
-          fieldType: mapping.fieldType,
-          sourceType: mapping.sourceType,
-          sourceKey: mapping.sourceKey ?? null,
-          fixedValue: mapping.fixedValue ?? null,
-          checkboxValue: mapping.checkboxValue ?? null,
-          sortOrder: mapping.sortOrder,
-          archivedAt: null,
-          updatedAt: now,
-        }
-        if (beforeMapping) {
-          await tx.update(psFieldMappings).set(values).where(eq(psFieldMappings.id, beforeMapping.id))
-          mappingAudits.push({
-            actorId,
-            entityType: 'field_mapping',
-            entityId: beforeMapping.id,
-            action: 'draft_saved',
-            configVersionId,
-            before: beforeMapping,
-            after: { ...beforeMapping, ...values },
-            createdAt: now,
-          })
-          continue
-        }
-
-        const [insertedMapping] = await tx.insert(psFieldMappings).values({
-          ...values,
-          createdAt: now,
-        }).returning({ id: psFieldMappings.id })
-        mappingAudits.push({
-          actorId,
-          entityType: 'field_mapping',
-          entityId: insertedMapping.id,
-          action: 'draft_saved',
-          configVersionId,
-          before: null,
-          after: { templateVariantId, fieldName: mapping.fieldName },
-          createdAt: now,
-        })
-      }
-    }
     await tx.insert(psConfigurationAuditEntries).values({
       actorId,
       entityType: 'template_variant',
@@ -894,7 +824,13 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
       after: { ...before, ...after },
       createdAt: now,
     })
-    if (mappingAudits.length > 0) await tx.insert(psConfigurationAuditEntries).values(mappingAudits)
+    await syncLegacyPs1FieldMappingsForTemplate(tx, {
+      actorId,
+      configVersionId,
+      templateVariantId,
+      fieldDiscovery,
+      now,
+    })
   })
 
   revalidateConfigurationPaths()
@@ -1360,6 +1296,13 @@ async function upsertTemplateVariant(
       after: { ...before, ...values },
       createdAt: now,
     })
+    await syncLegacyPs1FieldMappingsForTemplate(tx, {
+      actorId,
+      configVersionId,
+      templateVariantId: before.id,
+      fieldDiscovery: upload.fieldDiscovery,
+      now,
+    })
     return
   }
 
@@ -1374,4 +1317,95 @@ async function upsertTemplateVariant(
     after: values,
     createdAt: now,
   })
+  await syncLegacyPs1FieldMappingsForTemplate(tx, {
+    actorId,
+    configVersionId,
+    templateVariantId: inserted.id,
+    fieldDiscovery: upload.fieldDiscovery,
+    now,
+  })
+}
+
+async function syncLegacyPs1FieldMappingsForTemplate(
+  tx: Pick<typeof db, 'select' | 'insert' | 'update'>,
+  input: {
+    actorId: string
+    configVersionId: string
+    templateVariantId: string
+    fieldDiscovery: unknown
+    now: Date
+  },
+) {
+  const legacyMappings = legacyPs1FieldMappingsForDiscovery(input.fieldDiscovery)
+  if (legacyMappings.length === 0) return
+
+  const existingMappings = await tx
+    .select()
+    .from(psFieldMappings)
+    .where(eq(psFieldMappings.templateVariantId, input.templateVariantId))
+  const legacyFieldNames = new Set(legacyMappings.map((mapping) => mapping.fieldName))
+  const mappingAudits: Array<typeof psConfigurationAuditEntries.$inferInsert> = []
+
+  for (const beforeMapping of existingMappings) {
+    if (legacyFieldNames.has(beforeMapping.fieldName) || beforeMapping.archivedAt) continue
+    const archivedMapping = { archivedAt: input.now, updatedAt: input.now }
+    await tx.update(psFieldMappings).set(archivedMapping).where(eq(psFieldMappings.id, beforeMapping.id))
+    mappingAudits.push({
+      actorId: input.actorId,
+      entityType: 'field_mapping',
+      entityId: beforeMapping.id,
+      action: 'archived',
+      configVersionId: input.configVersionId,
+      before: beforeMapping,
+      after: { ...beforeMapping, ...archivedMapping },
+      createdAt: input.now,
+    })
+  }
+
+  for (const mapping of legacyMappings) {
+    const beforeMapping = existingMappings.find((candidate) => candidate.fieldName === mapping.fieldName)
+    const values = {
+      templateVariantId: input.templateVariantId,
+      fieldName: mapping.fieldName,
+      fieldType: mapping.fieldType,
+      sourceType: mapping.sourceType,
+      sourceKey: mapping.sourceKey ?? null,
+      fixedValue: mapping.fixedValue ?? null,
+      checkboxValue: mapping.checkboxValue ?? null,
+      sortOrder: mapping.sortOrder,
+      archivedAt: null,
+      updatedAt: input.now,
+    }
+    if (beforeMapping) {
+      await tx.update(psFieldMappings).set(values).where(eq(psFieldMappings.id, beforeMapping.id))
+      mappingAudits.push({
+        actorId: input.actorId,
+        entityType: 'field_mapping',
+        entityId: beforeMapping.id,
+        action: 'draft_saved',
+        configVersionId: input.configVersionId,
+        before: beforeMapping,
+        after: { ...beforeMapping, ...values },
+        createdAt: input.now,
+      })
+      continue
+    }
+
+    const [insertedMapping] = await tx.insert(psFieldMappings).values({
+      ...values,
+      createdAt: input.now,
+    }).returning({ id: psFieldMappings.id })
+    mappingAudits.push({
+      actorId: input.actorId,
+      entityType: 'field_mapping',
+      entityId: insertedMapping.id,
+      action: 'draft_saved',
+      configVersionId: input.configVersionId,
+      before: null,
+      after: { templateVariantId: input.templateVariantId, fieldName: mapping.fieldName },
+      createdAt: input.now,
+    })
+  }
+
+  if (mappingAudits.length > 0) await tx.insert(psConfigurationAuditEntries).values(mappingAudits)
 }

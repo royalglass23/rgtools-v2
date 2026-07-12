@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { PDFDocument } from 'pdf-lib'
+import { PDFCheckBox, PDFDocument, PDFTextField, type PDFForm } from 'pdf-lib'
 
 import { getStorage } from '@/lib/storage'
 import type { QuoteStorage } from '@/lib/storage/types'
@@ -355,30 +355,29 @@ async function fillTemplatePdf(
 
   for (const mapping of template.fieldMappings) {
     if (mapping.fieldType === 'text') {
-      try {
-        form.getTextField(mapping.fieldName).setText(resolveTextValue(mapping, context))
-      } catch (err) {
+      const field = findTextField(form, mapping)
+      if (!field) {
         throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${mapping.fieldName}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
-          cause: errorMessage(err),
+          availableFields: availableTextFields(form),
         })
       }
+      field.setText(resolveTextValue(mapping, context))
       continue
     }
 
     if (mapping.fieldType === 'checkbox') {
-      try {
-        const checkbox = form.getCheckBox(mapping.fieldName)
-        if (resolveCheckboxValue(mapping, context)) checkbox.check()
-        else checkbox.uncheck()
-      } catch (err) {
+      const checkbox = findCheckBox(form, mapping)
+      if (!checkbox) {
         throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${mapping.fieldName}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
-          cause: errorMessage(err),
+          availableFields: availableCheckBoxFields(form),
         })
       }
+      if (resolveCheckboxValue(mapping, context)) checkbox.check()
+      else checkbox.uncheck()
       continue
     }
 
@@ -390,6 +389,145 @@ async function fillTemplatePdf(
   }
 
   return Buffer.from(await pdf.save())
+}
+
+function findTextField(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+): PDFTextField | null {
+  for (const fieldName of candidateFieldNames(mapping)) {
+    try {
+      return form.getTextField(fieldName)
+    } catch {
+      // Try the next known alias.
+    }
+  }
+
+  return findNormalizedTextField(form, candidateFieldNames(mapping))
+}
+
+function findCheckBox(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+): PDFCheckBox | null {
+  for (const fieldName of candidateFieldNames(mapping)) {
+    try {
+      return form.getCheckBox(fieldName)
+    } catch {
+      // Try the next known alias.
+    }
+  }
+
+  return findNormalizedCheckBox(form, candidateFieldNames(mapping))
+}
+
+function findNormalizedTextField(
+  form: PDFForm,
+  fieldNames: string[],
+): PDFTextField | null {
+  const normalizedNames = new Set(fieldNames.map(normalizeFieldName))
+  for (const field of form.getFields()) {
+    if (!(field instanceof PDFTextField)) continue
+    if (normalizedNames.has(normalizeFieldName(field.getName()))) return field
+  }
+  return null
+}
+
+function findNormalizedCheckBox(
+  form: PDFForm,
+  fieldNames: string[],
+): PDFCheckBox | null {
+  const normalizedNames = new Set(fieldNames.map(normalizeFieldName))
+  for (const field of form.getFields()) {
+    if (!(field instanceof PDFCheckBox)) continue
+    if (normalizedNames.has(normalizeFieldName(field.getName()))) return field
+  }
+  return null
+}
+
+function candidateFieldNames(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string[] {
+  return uniqueStrings([
+    mapping.fieldName,
+    ...legacyWordPressAliases(mapping),
+  ])
+}
+
+function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string[] {
+  const key = mapping.sourceKey ?? mapping.fieldName
+
+  if (mapping.sourceType === 'project_value') {
+    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name']
+    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address']
+    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
+  }
+
+  if (mapping.sourceType === 'description_template') {
+    return ['description', 'Description', 'pool_description', 'Pool Description']
+  }
+
+  if (mapping.sourceType === 'date') {
+    return ['completion_date', 'Completion Date', 'Date0', 'Date']
+  }
+
+  if (mapping.sourceType === 'selected_option') {
+    return selectedOptionAliases(key)
+  }
+
+  if (mapping.sourceType === 'system_rule') {
+    if (key === 'heightRules.default.height') return ['height', 'Height']
+    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'HeightAboveFix', 'Height Above Fix']
+  }
+
+  return []
+}
+
+function selectedOptionAliases(sourceKey: string | null): string[] {
+  switch (sourceKey) {
+    case 'thickness':
+      return ['thickness', 'Thickness']
+    case 'structure_material.timber':
+      return ['structure_material_timber', 'TimberTB']
+    case 'structure_material.concrete':
+      return ['structure_material_concrete', 'ConcreteTB']
+    case 'structure_material.steel':
+      return ['structure_material_steel', 'SteelTB']
+    case 'location.internal':
+      return ['location_internal', 'InternalTB']
+    case 'location.external':
+      return ['location_external', 'ExternalTB']
+    case 'structure_built.new':
+      return ['structure_built_new', 'NewTB']
+    case 'structure_built.existing':
+      return ['structure_built_existing', 'ExistingTB']
+    case 'glass_type.toughened':
+      return ['glass_type_toughened', 'ToughenedTB']
+    case 'glass_type.laminated':
+      return ['glass_type_laminated', 'LaminatedTB']
+    default:
+      return []
+  }
+}
+
+function availableTextFields(form: PDFForm): string[] {
+  return form.getFields()
+    .filter((field) => field instanceof PDFTextField)
+    .map((field) => field.getName())
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function availableCheckBoxFields(form: PDFForm): string[] {
+  return form.getFields()
+    .filter((field) => field instanceof PDFCheckBox)
+    .map((field) => field.getName())
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))]
+}
+
+function normalizeFieldName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 function resolveTextValue(
@@ -497,10 +635,6 @@ function normalizeOptionalText(value: unknown): string | null {
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 function toUint8Array(bytes: Buffer): Uint8Array {

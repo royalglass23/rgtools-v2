@@ -263,6 +263,46 @@ describe('Producer Statement generation', () => {
     expect(form.getTextField('fixed_note').getText()).toBe('Producer Statement package')
   })
 
+  it('fills legacy WordPress PS1 fields when mappings use canonical names', async () => {
+    const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
+      { fieldName: 'job_address', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress', fixedValue: null, checkboxValue: null },
+      { fieldName: 'description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', fixedValue: null, checkboxValue: null },
+      { fieldName: 'completion_date', fieldType: 'text', sourceType: 'date', sourceKey: 'today', fixedValue: null, checkboxValue: null },
+      { fieldName: 'thickness', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'thickness', fixedValue: null, checkboxValue: null },
+      { fieldName: 'height', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.height', fixedValue: null, checkboxValue: null },
+      { fieldName: 'height_above_fix', fieldType: 'text', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix', fixedValue: null, checkboxValue: null },
+      { fieldName: 'structure_material_timber', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_material.timber', fixedValue: null, checkboxValue: null },
+      { fieldName: 'location_external', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'location.external', fixedValue: null, checkboxValue: null },
+      { fieldName: 'structure_built_new', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'structure_built.new', fixedValue: null, checkboxValue: null },
+      { fieldName: 'glass_type_toughened', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'glass_type.toughened', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
+    }
+
+    const result = await generateProducerStatementPackage(defaultInput('ps1_only'), {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('Name').getText()).toBe('Jane Customer')
+    expect(form.getTextField('Address').getText()).toBe('12 Glass Lane')
+    expect(form.getTextField('Description').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
+    )
+    expect(form.getTextField('Date0').getText()).toBe('26/06/2026')
+    expect(form.getTextField('Thickness').getText()).toBe('12mm')
+    expect(form.getTextField('Height').getText()).toBe('1.00')
+    expect(form.getTextField('HeightAboveFix').getText()).toBe('1.05')
+    expect(form.getCheckBox('TimberTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('ExternalTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('NewTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
+  })
+
   it('returns a clear generation error when the published template PDF is missing', async () => {
     await expect(generateProducerStatementPackage(defaultInput('ps3_only'), {
       configuration: buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()),
