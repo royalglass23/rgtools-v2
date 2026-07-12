@@ -10,6 +10,12 @@ const generateProducerStatementPackageMock = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/auth', () => ({ auth: authMock }))
 vi.mock('@/lib/access-db', () => ({ userCanAccessSlug: userCanAccessSlugMock }))
 vi.mock('@/modules/ps-generator/generation', () => ({
+  humanizePsGenerationMessage: (message: string) => message.replace(/"bc_number"/g, '"BC Number"'),
+  humanizePsIdentifier: (value: string | null | undefined) => {
+    if (value === 'bc_number') return 'BC Number'
+    if (value === 'client_name') return 'Client name'
+    return value ?? ''
+  },
   PsGenerationError: class PsGenerationError extends Error {
     constructor(
       public readonly code: string,
@@ -96,6 +102,32 @@ describe('POST /api/ps-generator/generate', () => {
 
     expect(response.status).toBe(401)
     expect(generateProducerStatementPackageMock).not.toHaveBeenCalled()
+  })
+
+  it('returns human-readable generation errors without raw field names in the message', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user-1', name: 'Jane Staff' } })
+    userCanAccessSlugMock.mockResolvedValue(true)
+    const { PsGenerationError } = await import('@/modules/ps-generator/generation')
+    generateProducerStatementPackageMock.mockRejectedValue(new PsGenerationError(
+      'pdf_text_field_missing',
+      'Template "Double Disc PS1" is missing text field "bc_number".',
+      { fieldName: 'bc_number', availableFields: ['client_name'] },
+    ))
+
+    const response = await POST(request())
+    const body = await response.json()
+
+    expect(response.status).toBe(422)
+    expect(body.error).toMatchObject({
+      code: 'pdf_text_field_missing',
+      message: 'Template "Double Disc PS1" is missing text field "BC Number".',
+      details: {
+        fieldName: 'bc_number',
+        fieldNameLabel: 'BC Number',
+        availableFields: ['client_name'],
+        availableFieldLabels: ['Client name'],
+      },
+    })
   })
 })
 

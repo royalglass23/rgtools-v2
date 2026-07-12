@@ -75,7 +75,13 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
     if (!normalized || !lookupJob) return
 
     startTransition(async () => {
-      const result = await lookupJob(normalized)
+      let result: LookupJobResult
+      try {
+        result = await lookupJob(normalized)
+      } catch {
+        setMessage(`Unable to look up job ${normalized}. You can keep entering details manually.`)
+        return
+      }
       if (!result.found) {
         setMessage(result.message ?? `No job found for ${normalized}. You can keep entering details manually.`)
         return
