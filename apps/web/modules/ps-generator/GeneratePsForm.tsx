@@ -50,8 +50,8 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
     lotDescription: '',
   })
   const [selections, setSelections] = useState<Record<string, string>>(() => defaultsForConfiguration(configuration))
-  const [outputs, setOutputs] = useState<GeneratedOutput[]>([])
   const [message, setMessage] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const selectedSystem = useMemo(() => (
@@ -100,25 +100,32 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setMessage(null)
-    setOutputs([])
+    setIsGenerating(true)
 
-    const response = await fetch('/api/ps-generator/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        mode,
-        projectDetails,
-        selections,
-      }),
-    })
-    const body = await response.json()
-    if (!response.ok || body.ok === false) {
-      setMessage(body.error?.message ?? body.error ?? 'Unable to generate Producer Statement PDFs.')
-      return
+    try {
+      const response = await fetch('/api/ps-generator/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          projectDetails,
+          selections,
+        }),
+      })
+      const body = await response.json()
+      if (!response.ok || body.ok === false) {
+        setMessage(body.error?.message ?? body.error ?? 'Unable to generate Producer Statement PDFs.')
+        return
+      }
+
+      const generatedOutputs = Array.isArray(body.outputs) ? body.outputs as GeneratedOutput[] : []
+      for (const output of generatedOutputs) downloadGeneratedOutput(output)
+      setMessage(`Generated and downloaded ${generatedOutputs.length} document${generatedOutputs.length === 1 ? '' : 's'}.`)
+    } catch {
+      setMessage('Unable to generate Producer Statement PDFs.')
+    } finally {
+      setIsGenerating(false)
     }
-
-    setOutputs(body.outputs ?? [])
-    setMessage(`Generated ${body.outputs?.length ?? 0} document${body.outputs?.length === 1 ? '' : 's'}.`)
   }
 
   if (!configuration.versionLabel || configuration.systems.length === 0) {
@@ -224,31 +231,28 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
         </div>
       ) : null}
 
-      {outputs.length > 0 ? (
-        <section className="rounded border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-950">Generated documents</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {outputs.map((output) => (
-              <a
-                key={`${output.documentKind}:${output.filename}`}
-                href={`data:${output.contentType};base64,${output.base64}`}
-                download={output.filename}
-                className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white"
-              >
-                Download {output.documentKind.toUpperCase()}
-              </a>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       <div className="flex justify-end">
-        <button type="submit" className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white">
-          Generate PS
+        <button
+          type="submit"
+          disabled={isGenerating}
+          className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {isGenerating ? 'Generating...' : 'Generate PS'}
         </button>
       </div>
     </form>
   )
+}
+
+function downloadGeneratedOutput(output: GeneratedOutput) {
+  const href = `data:${output.contentType};base64,${output.base64}`
+  const link = document.createElement('a')
+  link.href = href
+  link.download = output.filename
+  link.hidden = true
+  document.body.append(link)
+  link.click()
+  link.remove()
 }
 
 function TextInput({

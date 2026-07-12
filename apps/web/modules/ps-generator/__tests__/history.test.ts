@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildPsGenerationHistory, getRetainedGeneratedPdfDownload } from '../history'
+import { buildPsGenerationHistory, getRetainedGeneratedPdfDownload, type PsHistoryGenerationRecord } from '../history'
 
 describe('PS generation history', () => {
   it('renders snapshot values and retained download state for generated and migrated records', () => {
@@ -126,6 +126,33 @@ describe('PS generation history', () => {
     })).resolves.toEqual({ ok: false, reason: 'expired' })
   })
 
+  it('searches history by job number, client name, or job address', () => {
+    const records = [
+      historyRecord({
+        id: 'event-job',
+        jobNumber: 'R260210',
+        clientName: 'Jane Customer',
+        jobAddress: '12 Glass Lane',
+      }),
+      historyRecord({
+        id: 'event-client',
+        jobNumber: 'R260211',
+        clientName: 'Rosedale Holdings',
+        jobAddress: '5 Other Road',
+      }),
+      historyRecord({
+        id: 'event-address',
+        jobNumber: 'R260212',
+        clientName: 'Address Customer',
+        jobAddress: '13 Paul Matthews Road',
+      }),
+    ]
+
+    expect(buildPsGenerationHistory(records, { search: '260210' }).map((record) => record.id)).toEqual(['event-job'])
+    expect(buildPsGenerationHistory(records, { search: 'rosedale' }).map((record) => record.id)).toEqual(['event-client'])
+    expect(buildPsGenerationHistory(records, { search: 'paul matthews' }).map((record) => record.id)).toEqual(['event-address'])
+  })
+
   it('renders migrated legacy PDF snapshots as human-readable descriptions', () => {
     const history = buildPsGenerationHistory([{
       id: 'event-migrated',
@@ -156,3 +183,21 @@ describe('PS generation history', () => {
     }])
   })
 })
+
+function historyRecord(overrides: Partial<PsHistoryGenerationRecord>): PsHistoryGenerationRecord {
+  return {
+    id: 'event',
+    actorLabel: 'Jane Staff',
+    generationMode: 'ps1_only',
+    jobNumber: null,
+    clientName: 'Jane Customer',
+    jobAddress: '12 Glass Lane',
+    bcNumber: null,
+    lotDescription: null,
+    selectionsSnapshot: {},
+    descriptionSnapshot: {},
+    createdAt: new Date('2026-06-26T00:00:00.000Z'),
+    pdfObjects: [],
+    ...overrides,
+  }
+}

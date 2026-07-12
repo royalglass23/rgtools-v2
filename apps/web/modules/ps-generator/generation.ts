@@ -43,6 +43,7 @@ export interface GenerateProducerStatementPackageDependencies {
   actor?: PsGenerationActor
   database?: PsGenerationDatabase
   retentionDays?: number
+  flattenGeneratedPdf?: boolean
 }
 
 export interface GeneratedProducerStatementPdf {
@@ -195,7 +196,7 @@ export async function generateProducerStatementPackage(
       r2ObjectKey: dependencies.persistGeneratedOutputs ? buildGeneratedObjectKey(operationId, filename) : undefined,
       filename,
       contentType: 'application/pdf',
-      bytes: await fillTemplatePdf(templateBytes, template, context),
+      bytes: await fillTemplatePdf(templateBytes, template, context, dependencies.flattenGeneratedPdf !== false),
     })
   }
 
@@ -396,6 +397,7 @@ async function fillTemplatePdf(
   templateBytes: Buffer,
   template: PublishedPsTemplateVariant,
   context: GenerationContext,
+  flattenGeneratedPdf: boolean,
 ): Promise<Buffer> {
   const pdf = await PDFDocument.load(toUint8Array(templateBytes))
   const form = pdf.getForm()
@@ -442,6 +444,8 @@ async function fillTemplatePdf(
       fieldType: mapping.fieldType,
     })
   }
+
+  if (flattenGeneratedPdf) form.flatten({ updateFieldAppearances: true })
 
   return Buffer.from(await pdf.save())
 }
