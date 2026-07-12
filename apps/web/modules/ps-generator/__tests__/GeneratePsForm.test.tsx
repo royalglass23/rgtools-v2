@@ -36,6 +36,20 @@ describe('GeneratePsForm', () => {
     const systemOptions = within(screen.getByLabelText('System')).getAllByRole('option').map((option) => option.textContent)
     expect(systemOptions).toEqual(['Double Disc', 'Frameless Spigot'])
     expect(systemOptions).not.toContain('Legacy Face Fixed')
+    expect(within(screen.getByLabelText('Structure type')).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Deck',
+      'Balcony',
+      'Pool Area',
+      'Stair Area',
+      'Landing',
+      'Stair and Landing',
+      'Stair and Balcony Area',
+    ])
+    expect(within(screen.getByLabelText('Location')).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'External',
+      'Internal',
+      'External and Internal',
+    ])
   })
 
   it('updates option choices when a different published system is selected', () => {
@@ -45,7 +59,7 @@ describe('GeneratePsForm', () => {
 
     expect(screen.getByLabelText('System')).toHaveValue('frameless-spigot')
     expect(screen.getByLabelText('Location')).toHaveValue('external')
-    expect(within(screen.getByLabelText('Location')).getAllByRole('option').map((option) => option.textContent)).toEqual(['External'])
+    expect(within(screen.getByLabelText('Location')).getAllByRole('option').map((option) => option.textContent)).toEqual(['External', 'Internal', 'External and Internal'])
     expect(screen.getByLabelText('Thickness')).toHaveValue('12mm')
     expect(within(screen.getByLabelText('Thickness')).getAllByRole('option').map((option) => option.textContent)).toEqual(['12mm'])
   })
@@ -97,6 +111,23 @@ describe('GeneratePsForm', () => {
 
     expect(await screen.findByText('Unable to look up job R260210. You can keep entering details manually.')).toBeInTheDocument()
     expect(screen.getByLabelText('Client name')).toHaveValue('Manual Customer')
+  })
+
+  it('does not generate from implicit form submit', () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, outputs: [] }),
+    } as Response)
+    render(<GeneratePsForm configuration={configuration} />)
+
+    fireEvent.change(screen.getByLabelText('Client name'), { target: { value: 'Jane Customer' } })
+    fireEvent.change(screen.getByLabelText('Job address'), { target: { value: '12 Glass Lane' } })
+    const form = screen.getByRole('button', { name: 'Generate PS' }).closest('form')
+    expect(form).not.toBeNull()
+
+    fireEvent.submit(form!)
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('submits generation requests and downloads generated PDFs immediately', async () => {

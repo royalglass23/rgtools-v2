@@ -372,7 +372,7 @@ function selectTemplateVariant(
   ))
   if (documentKind === 'ps3') return candidates.find((variant) => variant.variantKind === 'ps3') ?? candidates[0] ?? null
 
-  const preferredKind = selections.structure_type === 'pool-fence'
+  const preferredKind = isPoolStructure(selections.structure_type)
     ? 'pool_ps1'
     : 'standard_ps1'
 
@@ -680,7 +680,7 @@ function resolveTextValue(
     case 'selected_option':
       return selectedOptionLabel(context, mapping.sourceKey)
     case 'system_rule':
-      return stringify(readSystemRule(context.system, mapping.sourceKey))
+      return stringify(readSystemRule(context, mapping.sourceKey))
     case 'description_template':
       return resolveDescriptionTemplate(context, mapping.sourceKey)
     case 'date':
@@ -740,15 +740,32 @@ function selectedOptionLabel(context: GenerationContext, sourceKey: string | nul
 function selectedOptionMatches(selections: Record<string, string>, sourceKey: string | null): boolean {
   if (!sourceKey) return false
   const [categorySlug, expectedSlug] = sourceKey.split('.')
+  if (categorySlug === 'location' && selections.location === 'both') {
+    return expectedSlug === 'external' || expectedSlug === 'internal'
+  }
   return selections[categorySlug] === expectedSlug
 }
 
-function readSystemRule(system: PublishedPsSystem, sourceKey: string | null): unknown {
+function readSystemRule(context: GenerationContext, sourceKey: string | null): unknown {
   if (!sourceKey) return null
+  if (sourceKey.startsWith('heightRules.default.') && isPoolStructure(context.input.selections.structure_type)) {
+    const poolSourceKey = sourceKey.replace('heightRules.default.', 'heightRules.pool.')
+    const poolValue = readSystemRuleValue(context.system, poolSourceKey)
+    if (poolValue !== null && poolValue !== undefined && poolValue !== '') return poolValue
+  }
+
+  return readSystemRuleValue(context.system, sourceKey)
+}
+
+function readSystemRuleValue(system: PublishedPsSystem, sourceKey: string): unknown {
   const source = { heightRules: system.heightRules, metadata: system.metadata }
   return sourceKey.split('.').reduce<unknown>((value, key) => (
     value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : null
   ), source)
+}
+
+function isPoolStructure(structureType: string | null | undefined): boolean {
+  return structureType === 'pool' || structureType === 'pool-fence'
 }
 
 function buildFilename(input: GenerateProducerStatementPackageInput, documentKind: PsGeneratedDocumentKind): string {
