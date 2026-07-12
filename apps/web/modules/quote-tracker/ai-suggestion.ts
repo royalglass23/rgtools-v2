@@ -1,6 +1,10 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
+import {
+  runAiGuidanceGeneration,
+  type AiGuidanceFailureRecord,
+} from '@/modules/ai-guidance/runtime'
 import { quoteAiGenerationFailures, quoteAiSuggestions, quoteConversationSnapshots, quoteEngagement, quoteEvents, quotes } from '@rgtools/db/schema'
 import { classifyQuoteSignal, type QuoteSignalClassification, type QuoteSignalConversationSnapshot, type QuoteSignalEngagement, type QuoteSignalQuote } from './quote-signals'
 import { formatDateTime } from './presentation'
@@ -10,8 +14,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export const AI_SUGGESTION_PROMPT_VERSION = 'quote-ai-guidance-v1'
 export const AI_SUGGESTION_INPUT_VERSION = 'quote-ai-guidance-input-v1'
-export const AI_GUIDANCE_FAILURE_COOLDOWN_MS = 60_000
-export const AI_GUIDANCE_REGENERATION_COOLDOWN_MS = 5 * 60_000
+export {
+  AI_GUIDANCE_FAILURE_COOLDOWN_MS,
+  AI_GUIDANCE_REGENERATION_COOLDOWN_MS,
+} from '@/modules/ai-guidance/runtime'
 
 export const RECOMMENDED_MOVES = [
   'call today',
@@ -190,13 +196,7 @@ export type AiSuggestionDeps = {
   recordFailure: (input: {
     quoteId: string
     conversationSnapshotId: string | null
-    triggeredByUserId: string
-    failureStage: string
-    errorType: string
-    errorMessage: string
-    attemptedAt: Date
-    retryAfter: Date
-  }) => Promise<void>
+  } & AiGuidanceFailureRecord) => Promise<void>
   now: () => Date
   model: string
 }
@@ -216,102 +216,105 @@ export async function generateAiSuggestionForQuote(
   const quote = await deps.findQuote(input.quoteId)
   if (!quote) return { ok: false, message: 'Tracked Quote not found.' }
 
-  const startedAt = deps.now()
   const latestSuggestion = await deps.findLatestSuggestion(input.quoteId)
-  if (latestSuggestion) {
-    const retryAfter = new Date(latestSuggestion.createdAt.getTime() + AI_GUIDANCE_REGENERATION_COOLDOWN_MS)
-    if (retryAfter > startedAt) {
-      return {
-        ok: false,
-        message: `AI Guidance can be regenerated after ${formatDateTime(retryAfter)}.`,
-      }
-    }
-  }
-
   const latestFailure = await deps.findLatestFailure(input.quoteId)
-  if (latestFailure?.retryAfter && latestFailure.retryAfter > startedAt) {
-    return {
-      ok: false,
-      message: `AI Guidance can be retried after ${formatDateTime(latestFailure.retryAfter)}.`,
-    }
+
+  type AiSuggestionRuntimeContext = {
+    quote: AiSuggestionQuote
+    engagement: QuoteSignalEngagement
+    conversationSnapshot: AiSuggestionConversationSnapshot | null
+    signal: QuoteSignalClassification
   }
 
-  const [engagement, conversationSnapshot] = await Promise.all([
-    deps.findEngagement(input.quoteId),
-    deps.findLatestConversationSnapshot(input.quoteId),
-  ])
-  const generatedAt = startedAt
-  const signal = classifyQuoteSignal({
-    quote,
-    engagement,
-    conversationSnapshot: toSignalConversationSnapshot(conversationSnapshot),
-    now: generatedAt,
+  const result = await runAiGuidanceGeneration<AiSuggestionRuntimeContext, ValidatedAiSuggestion, { id: string }>({
+    stage: 'ai_suggestion',
+    model: deps.model,
+    promptVersion: AI_SUGGESTION_PROMPT_VERSION,
+    inputSnapshotVersion: AI_SUGGESTION_INPUT_VERSION,
+    triggeredByUserId: input.triggeredByUserId,
+    now: deps.now,
+    latestSuccessAt: latestSuggestion?.createdAt ?? null,
+    latestFailureRetryAfter: latestFailure?.retryAfter ?? null,
+    formatDateTime,
+    async buildContext({ generatedAt }) {
+      const [engagement, conversationSnapshot] = await Promise.all([
+        deps.findEngagement(input.quoteId),
+        deps.findLatestConversationSnapshot(input.quoteId),
+      ])
+      const signal = classifyQuoteSignal({
+        quote,
+        engagement,
+        conversationSnapshot: toSignalConversationSnapshot(conversationSnapshot),
+        now: generatedAt,
+      })
+
+      return {
+        quote,
+        engagement,
+        conversationSnapshot,
+        signal,
+      }
+    },
+    generate: ({ context, generatedAt }) => deps.generateSuggestion({
+      quote: context.quote,
+      engagement: context.engagement,
+      signal: context.signal,
+      conversationSnapshot: context.conversationSnapshot,
+      generatedAt: generatedAt.toISOString(),
+    }),
+    validate: validateAiSuggestionOutput,
+    async save({ context, output: suggestion, generatedAt, metadata }) {
+      const partialContextNote = context.conversationSnapshot?.sourceStatus === 'partial'
+        ? suggestion.partialContextNote ?? context.conversationSnapshot.safeError ?? 'Generated with partial Conversation Snapshot context.'
+        : suggestion.partialContextNote
+      const record: AiSuggestionRecord = {
+        quoteId: input.quoteId,
+        conversationSnapshotId: context.conversationSnapshot?.id ?? null,
+        triggeredByUserId: input.triggeredByUserId,
+        nextViableMove: suggestion.nextViableMove,
+        suggestedWinPath: suggestion.suggestedWinPath,
+        signalBucket: context.signal.bucket,
+        signalLabel: context.signal.label,
+        analyticsSnapshot: context.signal.analyticsSnapshot,
+        recommendationKind: context.signal.recommendation.kind,
+        revisitAt: context.signal.recommendation.revisitAt ? new Date(context.signal.recommendation.revisitAt) : null,
+        watchForSignals: suggestion.waitRecommendation?.watchForSignals ?? context.signal.recommendation.watchForSignals,
+        staleAt: null,
+        staleReason: null,
+        recommendedMove: suggestion.recommendedMove,
+        suggestedTiming: suggestion.suggestedTiming,
+        timingReason: suggestion.timingReason,
+        confidence: suggestion.confidence,
+        confidenceReason: suggestion.confidenceReason,
+        likelyCustomerState: suggestion.likelyCustomerState,
+        reasoning: suggestion.reasoning,
+        emailDraftSubject: suggestion.emailDraft.subject,
+        emailDraftBody: suggestion.emailDraft.body,
+        phoneTalkingPoints: suggestion.phoneTalkingPoints,
+        useCareGuidance: suggestion.useCareGuidance,
+        includeQuoteLink: suggestion.emailDraft.includeQuoteLink,
+        partialContextNote,
+        waitReason: suggestion.waitRecommendation?.reason ?? null,
+        waitRevisitWindow: suggestion.waitRecommendation?.revisitWindow ?? null,
+        model: metadata.model,
+        promptVersion: metadata.promptVersion,
+        inputSnapshotVersion: metadata.inputSnapshotVersion ?? AI_SUGGESTION_INPUT_VERSION,
+        createdAt: generatedAt,
+      }
+
+      return deps.insertSuggestion(record)
+    },
+    recordFailure: (failure, { context }) => deps.recordFailure({
+      ...failure,
+      quoteId: input.quoteId,
+      conversationSnapshotId: context?.conversationSnapshot?.id ?? null,
+    }),
+    classifyError: classifyAiSuggestionError,
+    safeErrorMessage,
   })
 
-  try {
-    const aiOutput = await deps.generateSuggestion({
-      quote,
-      engagement,
-      signal,
-      conversationSnapshot,
-      generatedAt: generatedAt.toISOString(),
-    })
-    const suggestion = validateAiSuggestionOutput(aiOutput)
-    const partialContextNote = conversationSnapshot?.sourceStatus === 'partial'
-      ? suggestion.partialContextNote ?? conversationSnapshot.safeError ?? 'Generated with partial Conversation Snapshot context.'
-      : suggestion.partialContextNote
-    const record: AiSuggestionRecord = {
-      quoteId: input.quoteId,
-      conversationSnapshotId: conversationSnapshot?.id ?? null,
-      triggeredByUserId: input.triggeredByUserId,
-      nextViableMove: suggestion.nextViableMove,
-      suggestedWinPath: suggestion.suggestedWinPath,
-      signalBucket: signal.bucket,
-      signalLabel: signal.label,
-      analyticsSnapshot: signal.analyticsSnapshot,
-      recommendationKind: signal.recommendation.kind,
-      revisitAt: signal.recommendation.revisitAt ? new Date(signal.recommendation.revisitAt) : null,
-      watchForSignals: suggestion.waitRecommendation?.watchForSignals ?? signal.recommendation.watchForSignals,
-      staleAt: null,
-      staleReason: null,
-      recommendedMove: suggestion.recommendedMove,
-      suggestedTiming: suggestion.suggestedTiming,
-      timingReason: suggestion.timingReason,
-      confidence: suggestion.confidence,
-      confidenceReason: suggestion.confidenceReason,
-      likelyCustomerState: suggestion.likelyCustomerState,
-      reasoning: suggestion.reasoning,
-      emailDraftSubject: suggestion.emailDraft.subject,
-      emailDraftBody: suggestion.emailDraft.body,
-      phoneTalkingPoints: suggestion.phoneTalkingPoints,
-      useCareGuidance: suggestion.useCareGuidance,
-      includeQuoteLink: suggestion.emailDraft.includeQuoteLink,
-      partialContextNote,
-      waitReason: suggestion.waitRecommendation?.reason ?? null,
-      waitRevisitWindow: suggestion.waitRecommendation?.revisitWindow ?? null,
-      model: deps.model,
-      promptVersion: AI_SUGGESTION_PROMPT_VERSION,
-      inputSnapshotVersion: AI_SUGGESTION_INPUT_VERSION,
-      createdAt: generatedAt,
-    }
-
-    const saved = await deps.insertSuggestion(record)
-    return { ok: true, suggestionId: saved.id }
-  } catch (error) {
-    const message = safeErrorMessage(error)
-    const retryAfter = new Date(generatedAt.getTime() + AI_GUIDANCE_FAILURE_COOLDOWN_MS)
-    await deps.recordFailure({
-      quoteId: input.quoteId,
-      conversationSnapshotId: conversationSnapshot?.id ?? null,
-      triggeredByUserId: input.triggeredByUserId,
-      failureStage: 'ai_suggestion',
-      errorType: classifyAiSuggestionError(error),
-      errorMessage: message,
-      attemptedAt: generatedAt,
-      retryAfter,
-    })
-    return { ok: false, message }
-  }
+  if (!result.ok) return result
+  return { ok: true, suggestionId: result.saved.id }
 }
 
 export const realAiSuggestionDeps: AiSuggestionDeps = {
@@ -394,7 +397,10 @@ export const realAiSuggestionDeps: AiSuggestionDeps = {
         errorMessage: quoteAiGenerationFailures.errorMessage,
       })
       .from(quoteAiGenerationFailures)
-      .where(eq(quoteAiGenerationFailures.quoteId, quoteId))
+      .where(and(
+        eq(quoteAiGenerationFailures.quoteId, quoteId),
+        eq(quoteAiGenerationFailures.failureStage, 'ai_suggestion'),
+      ))
       .orderBy(desc(quoteAiGenerationFailures.createdAt))
       .limit(1)
 

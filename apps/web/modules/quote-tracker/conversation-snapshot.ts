@@ -7,10 +7,14 @@ import {
   getJobConversationSnapshotHistory,
   type LeadServiceM8History,
 } from '@/lib/servicem8/client'
+import { buildAiGuidanceFailureRecord, type AiGuidanceFailureRecord } from '@/modules/ai-guidance/runtime'
+import { buildServiceM8FileContext, type ServiceM8FileContext } from '@/modules/ai-guidance/servicem8-file-context'
 import { quoteAiGenerationFailures, quoteConversationSnapshots, quotes } from '@rgtools/db/schema'
 import { AI_GUIDANCE_TIMEOUT_MESSAGE, fetchAiGuidanceOpenAi, isAiGuidanceTimeoutError } from './ai-timeout'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CONVERSATION_SNAPSHOT_PROMPT_VERSION = 'quote-conversation-snapshot-v1'
+const CONVERSATION_SNAPSHOT_INPUT_VERSION = 'quote-conversation-snapshot-input-v1'
 
 const CONVERSATION_SNAPSHOT_RESPONSE_FORMAT = {
   type: 'json_schema',
@@ -23,6 +27,7 @@ const CONVERSATION_SNAPSHOT_RESPONSE_FORMAT = {
       required: [
         'customerEmailSummary',
         'internalNotesSummary',
+        'fileContextSummary',
         'openQuestions',
         'lastKnownPosition',
         'importantDates',
@@ -32,6 +37,7 @@ const CONVERSATION_SNAPSHOT_RESPONSE_FORMAT = {
       properties: {
         customerEmailSummary: { type: 'string' },
         internalNotesSummary: { type: 'string' },
+        fileContextSummary: { type: 'string' },
         openQuestions: {
           type: 'array',
           items: { type: 'string' },
@@ -57,6 +63,7 @@ const CONVERSATION_SNAPSHOT_RESPONSE_FORMAT = {
 export type ConversationSnapshotSummary = {
   customerEmailSummary: string
   internalNotesSummary: string
+  fileContextSummary: string
   openQuestions: string[]
   lastKnownPosition: string
   importantDates: string[]
@@ -101,6 +108,12 @@ export type ConversationSnapshotRecord = {
     latestEmailTimestamp: string | null
     noteCount: number
     emailCount: number
+    fileCount: number
+    interpretedFileCount: number
+    unsupportedFileCount: number
+    failedFileCount: number
+    fileContextStatus: ServiceM8FileContext['sourceStatus']
+    partialContext: Record<string, string>
     sourceStatus: ConversationSnapshotHistory['sourceStatus']
     sourceHash: string
   }
@@ -111,19 +124,19 @@ export type ConversationSnapshotDeps = {
   findQuote: (quoteId: string) => Promise<ConversationSnapshotQuote | null>
   findLatestSnapshot: (quoteId: string) => Promise<{ snapshotCursor: unknown } | null>
   fetchHistory: (jobUuid: string) => Promise<ConversationSnapshotHistory>
+  buildFileContext: (jobUuid: string) => Promise<ServiceM8FileContext>
   summarizeHistory: (input: {
     quote: ConversationSnapshotQuote
     history: LeadServiceM8History
+    fileContext: ServiceM8FileContext
     previousCursor: SnapshotCursor | null
   }) => Promise<unknown>
   insertSnapshot: (record: ConversationSnapshotRecord) => Promise<{ id: string }>
   recordFailure: (input: {
     quoteId: string
-    triggeredByUserId: string
-    failureStage: string
-    errorMessage: string
-  }) => Promise<void>
+  } & AiGuidanceFailureRecord) => Promise<void>
   now: () => Date
+  model: string
 }
 
 export type GenerateConversationSnapshotResult =
@@ -143,22 +156,28 @@ export async function generateConversationSnapshotForQuote(
 
   const previousSnapshot = await deps.findLatestSnapshot(input.quoteId)
   const previousCursor = parseSnapshotCursor(previousSnapshot?.snapshotCursor ?? null)
+  const attemptedAt = deps.now()
 
   try {
-    const fetchedAt = deps.now()
+    const fetchedAt = attemptedAt
     const historyResult = await deps.fetchHistory(quote.servicem8Uuid)
+    const { fileContext, fileSafeError } = await fetchFileContext(quote.servicem8Uuid, deps)
     const scopedHistory = scopeHistory(historyResult, quote.createdAt, previousCursor)
     const structuredSummary = validateConversationSnapshotSummary(
       await deps.summarizeHistory({
         quote,
         history: scopedHistory,
+        fileContext,
         previousCursor,
       }),
     )
-    const sourceStatus = historyResult.sourceStatus.notes.ok && historyResult.sourceStatus.emails.ok
+    const filePartialError = fileSafeError ?? describePartialFileContext(fileContext)
+    const sourceStatus = historyResult.sourceStatus.notes.ok
+      && historyResult.sourceStatus.emails.ok
+      && fileContext.sourceStatus.status === 'complete'
       ? 'complete'
       : 'partial'
-    const safeError = collectSafeErrors(historyResult.sourceStatus)
+    const safeError = collectSafeErrors(historyResult.sourceStatus, filePartialError)
     const latestNoteTimestamp = historyResult.sourceStatus.notes.latestTimestamp
     const latestEmailTimestamp = historyResult.sourceStatus.emails.latestTimestamp
     const snapshotCursor = { latestNoteTimestamp, latestEmailTimestamp }
@@ -176,8 +195,14 @@ export async function generateConversationSnapshotForQuote(
         latestEmailTimestamp,
         noteCount: historyResult.sourceStatus.notes.count,
         emailCount: historyResult.sourceStatus.emails.count,
+        fileCount: fileContext.sourceStatus.total,
+        interpretedFileCount: fileContext.sourceStatus.interpreted,
+        unsupportedFileCount: fileContext.sourceStatus.unsupported,
+        failedFileCount: fileContext.sourceStatus.failed,
+        fileContextStatus: fileContext.sourceStatus,
+        partialContext: buildPartialContext(historyResult.sourceStatus, filePartialError),
         sourceStatus: historyResult.sourceStatus,
-        sourceHash: sourceHash(scopedHistory),
+        sourceHash: sourceHash({ history: scopedHistory, fileContext }),
       },
       safeError,
     }
@@ -185,14 +210,21 @@ export async function generateConversationSnapshotForQuote(
     const snapshot = await deps.insertSnapshot(record)
     return { ok: true, snapshotId: snapshot.id, partial: sourceStatus === 'partial' }
   } catch (error) {
-    const message = safeErrorMessage(error)
-    await deps.recordFailure({
-      quoteId: input.quoteId,
+    const failure = buildAiGuidanceFailureRecord({
+      stage: 'conversation_snapshot',
+      error,
+      attemptedAt,
       triggeredByUserId: input.triggeredByUserId,
-      failureStage: 'conversation_snapshot',
-      errorMessage: message,
+      model: deps.model,
+      promptVersion: CONVERSATION_SNAPSHOT_PROMPT_VERSION,
+      inputSnapshotVersion: CONVERSATION_SNAPSHOT_INPUT_VERSION,
+      safeErrorMessage,
     })
-    return { ok: false, message }
+    await deps.recordFailure({
+      ...failure,
+      quoteId: input.quoteId,
+    })
+    return { ok: false, message: failure.errorMessage }
   }
 }
 
@@ -228,10 +260,11 @@ export const realConversationSnapshotDeps: ConversationSnapshotDeps = {
   async fetchHistory(jobUuid) {
     const history = await getJobConversationSnapshotHistory(jobUuid)
     if (!history.sourceStatus.notes.ok && !history.sourceStatus.emails.ok) {
-      throw new Error(collectSafeErrors(history.sourceStatus) ?? 'ServiceM8 history could not be fetched.')
+      throw new Error(collectSafeErrors(history.sourceStatus, null) ?? 'ServiceM8 history could not be fetched.')
     }
     return history
   },
+  buildFileContext: (jobUuid) => buildServiceM8FileContext({ servicem8JobUuid: jobUuid }),
   summarizeHistory: generateConversationSnapshotSummary,
   async insertSnapshot(record) {
     const [snapshot] = await db
@@ -253,14 +286,10 @@ export const realConversationSnapshotDeps: ConversationSnapshotDeps = {
     return snapshot
   },
   async recordFailure(input) {
-    await db.insert(quoteAiGenerationFailures).values({
-      quoteId: input.quoteId,
-      triggeredByUserId: input.triggeredByUserId,
-      failureStage: input.failureStage,
-      errorMessage: input.errorMessage,
-    })
+    await db.insert(quoteAiGenerationFailures).values(input)
   },
   now: () => new Date(),
+  model: process.env.OPENAI_MODEL ?? 'gpt-4o',
 }
 
 function scopeHistory(
@@ -286,7 +315,7 @@ function scopeHistory(
 function validateConversationSnapshotSummary(value: unknown): ConversationSnapshotSummary {
   if (!value || typeof value !== 'object') throw new Error('Conversation Snapshot summary was not valid JSON')
   const candidate = value as Record<string, unknown>
-  const requiredStrings = ['customerEmailSummary', 'internalNotesSummary', 'lastKnownPosition']
+  const requiredStrings = ['customerEmailSummary', 'internalNotesSummary', 'fileContextSummary', 'lastKnownPosition']
   const requiredArrays = ['openQuestions', 'importantDates', 'decisionMakers', 'risksBlockers']
 
   for (const key of requiredStrings) {
@@ -301,6 +330,7 @@ function validateConversationSnapshotSummary(value: unknown): ConversationSnapsh
   return {
     customerEmailSummary: candidate.customerEmailSummary,
     internalNotesSummary: candidate.internalNotesSummary,
+    fileContextSummary: candidate.fileContextSummary,
     openQuestions: candidate.openQuestions,
     lastKnownPosition: candidate.lastKnownPosition,
     importantDates: candidate.importantDates,
@@ -310,12 +340,15 @@ function validateConversationSnapshotSummary(value: unknown): ConversationSnapsh
 }
 
 function formatSnapshotSummary(summary: ConversationSnapshotSummary): string {
-  return [summary.customerEmailSummary, summary.internalNotesSummary].filter(Boolean).join('\n\n')
+  return [summary.customerEmailSummary, summary.internalNotesSummary, summary.fileContextSummary]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 async function generateConversationSnapshotSummary(input: {
   quote: ConversationSnapshotQuote
   history: LeadServiceM8History
+  fileContext: ServiceM8FileContext
   previousCursor: SnapshotCursor | null
 }): Promise<ConversationSnapshotSummary> {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
@@ -337,6 +370,7 @@ async function generateConversationSnapshotSummary(input: {
             'Summarise ServiceM8 history for Royal Glass staff as JSON matching the provided schema.',
             'Do not include raw full note or email bodies in the output.',
             'Separate customer/email context from internal notes context.',
+            'Use fileContextSummary to summarise interpreted ServiceM8 image/PDF context and mention unsupported or failed files at a high level.',
             'Use empty arrays when there are no open questions, important dates, decision-makers, or risks/blockers.',
           ].join(' '),
         },
@@ -382,12 +416,47 @@ function isAfterCursor(value: string | null, cursorValue: string | null | undefi
   return !Number.isNaN(time) && !Number.isNaN(cursorTime) && time > cursorTime
 }
 
-function sourceHash(history: LeadServiceM8History): string {
-  return createHash('sha256').update(JSON.stringify(history)).digest('hex')
+function sourceHash(source: unknown): string {
+  return createHash('sha256').update(JSON.stringify(source)).digest('hex')
 }
 
-function collectSafeErrors(status: ConversationSnapshotHistory['sourceStatus']): string | null {
-  const errors = [status.notes.safeError, status.emails.safeError].filter(Boolean)
+async function fetchFileContext(
+  jobUuid: string,
+  deps: Pick<ConversationSnapshotDeps, 'buildFileContext'>,
+): Promise<{ fileContext: ServiceM8FileContext; fileSafeError: string | null }> {
+  try {
+    return { fileContext: await deps.buildFileContext(jobUuid), fileSafeError: null }
+  } catch (error) {
+    const message = `ServiceM8 file context could not be fetched: ${safeErrorMessage(error)}`
+    return {
+      fileSafeError: message,
+      fileContext: {
+        servicem8JobUuid: jobUuid,
+        files: [],
+        sourceStatus: { status: 'partial', total: 0, interpreted: 0, unsupported: 0, failed: 1 },
+      },
+    }
+  }
+}
+
+function describePartialFileContext(fileContext: ServiceM8FileContext): string | null {
+  if (fileContext.sourceStatus.status === 'complete') return null
+  return `ServiceM8 file context is partial: ${fileContext.sourceStatus.unsupported} unsupported, ${fileContext.sourceStatus.failed} failed.`
+}
+
+function buildPartialContext(
+  status: ConversationSnapshotHistory['sourceStatus'],
+  filePartialError: string | null,
+): Record<string, string> {
+  const partialContext: Record<string, string> = {}
+  if (status.notes.safeError) partialContext.notes = status.notes.safeError
+  if (status.emails.safeError) partialContext.emails = status.emails.safeError
+  if (filePartialError) partialContext.files = filePartialError
+  return partialContext
+}
+
+function collectSafeErrors(status: ConversationSnapshotHistory['sourceStatus'], filePartialError: string | null): string | null {
+  const errors = [status.notes.safeError, status.emails.safeError, filePartialError].filter(Boolean)
   return errors.length > 0 ? errors.join(' ') : null
 }
 

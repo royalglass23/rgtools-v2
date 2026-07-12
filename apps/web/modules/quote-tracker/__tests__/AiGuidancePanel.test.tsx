@@ -234,6 +234,9 @@ describe('AiGuidancePanel', () => {
             errorMessage: 'ServiceM8 history could not be fetched.',
             attemptedAt: new Date('2026-06-29T01:10:00Z'),
             retryAfter: new Date('2026-06-29T01:11:00Z'),
+            model: 'gpt-4o',
+            promptVersion: 'quote-conversation-snapshot-v1',
+            inputSnapshotVersion: 'quote-conversation-snapshot-input-v1',
             createdAt: new Date('2026-06-29T01:10:00Z'),
           },
         }}

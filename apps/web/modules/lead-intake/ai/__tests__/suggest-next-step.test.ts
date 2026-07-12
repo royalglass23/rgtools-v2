@@ -159,7 +159,7 @@ describe('buildSuggestionPrompt', () => {
 })
 
 describe('generateSuggestion', () => {
-  it('posts to OpenAI chat completions with gpt-4o and returns parsed text', async () => {
+  it('posts to OpenAI responses with the configured model and returns parsed text', async () => {
     const mockResponse = [
       'NEXT ACTION: Call Jane today to book a site measure.',
       'SALES ANGLE: Lead with our frameless shower portfolio and quick turnaround.',
@@ -175,13 +175,13 @@ describe('generateSuggestion', () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: mockResponse } }],
+        output_text: mockResponse,
       }),
     } as Response)
 
     await expect(generateSuggestion(lead)).resolves.toEqual({ text: mockResponse })
 
-    expect(fetch).toHaveBeenCalledWith('https://api.openai.com/v1/chat/completions', expect.objectContaining({
+    expect(fetch).toHaveBeenCalledWith('https://api.openai.com/v1/responses', expect.objectContaining({
       method: 'POST',
       headers: {
         Authorization: 'Bearer test-key',
@@ -191,23 +191,24 @@ describe('generateSuggestion', () => {
     }))
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
     expect(body.model).toBe('test-model')
-    expect(body.messages[0].role).toBe('system')
-    expect(body.messages[1].role).toBe('user')
+    expect(body.instructions).toContain('You are an expert glazing sales consultant')
+    expect(body.input).toContain('=== CLIENT ===')
+    expect(body.input).toContain('Name: Jane Smith')
   })
 
-  it('uses gpt-4o when no OPENAI_MODEL env var is set', async () => {
+  it('uses gpt-5.4-mini when no OPENAI_MODEL env var is set', async () => {
     delete process.env.OPENAI_MODEL
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: 'NEXT ACTION: Call now.' } }],
+        output_text: 'NEXT ACTION: Call now.',
       }),
     } as Response)
 
     await generateSuggestion(lead)
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
-    expect(body.model).toBe('gpt-4o')
+    expect(body.model).toBe('gpt-5.4-mini')
   })
 
   it('throws MissingOpenAIKeyError without making a network call when the API key is missing', async () => {

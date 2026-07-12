@@ -4,28 +4,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockAuth = vi.hoisted(() => vi.fn())
 const mockGetLeadDetail = vi.hoisted(() => vi.fn())
-const mockGenerateSuggestion = vi.hoisted(() => vi.fn())
-const mockGetJobNotesAndEmails = vi.hoisted(() => vi.fn())
+const mockGenerateLeadAiGuidance = vi.hoisted(() => vi.fn())
 const mockUpdateWhere = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const mockUpdateSet = vi.hoisted(() => vi.fn(() => ({ where: mockUpdateWhere })))
 const mockUpdate = vi.hoisted(() => vi.fn(() => ({ set: mockUpdateSet })))
 const mockRevalidatePath = vi.hoisted(() => vi.fn())
 const mockLogAudit = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const mockRedirect = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth', () => ({ auth: mockAuth }))
 vi.mock('@/lib/db', () => ({ db: { update: mockUpdate } }))
 vi.mock('@/lib/audit-db', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/modules/leads/queries', () => ({ getLeadDetail: mockGetLeadDetail }))
-vi.mock('@/modules/lead-intake/ai/suggest-next-step', () => ({
-  MissingOpenAIKeyError: class MissingOpenAIKeyError extends Error {},
-  generateSuggestion: mockGenerateSuggestion,
-}))
-vi.mock('@/lib/servicem8/client', () => ({ getJobNotesAndEmails: mockGetJobNotesAndEmails }))
+vi.mock('@/modules/leads/ai-guidance', () => ({ generateLeadAiGuidance: mockGenerateLeadAiGuidance }))
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidatePath }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
+vi.mock('next/navigation', () => ({ redirect: mockRedirect }))
 vi.mock('drizzle-orm', () => ({ eq: vi.fn((column, value) => ({ column, value })) }))
 
-import { deleteLeadAction, generateLeadSuggestionAction } from '../actions'
+import { deleteLeadAction, generateLeadGuidanceAction, generateLeadSuggestionAction } from '../actions'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -52,23 +48,29 @@ describe('generateLeadSuggestionAction', () => {
     const result = await generateLeadSuggestionAction('lead-1')
 
     expect(result).toEqual({ error: 'This lead is read-only because ServiceM8 status is no longer Quote.' })
-    expect(mockGenerateSuggestion).not.toHaveBeenCalled()
+    expect(mockGenerateLeadAiGuidance).not.toHaveBeenCalled()
     expect(mockUpdate).not.toHaveBeenCalled()
   })
 
-  it('enforces 60-second cooldown when aiSuggestionAt is recent', async () => {
-    const recentTime = new Date(Date.now() - 30_000) // 30 seconds ago — within 60s window
+  it('returns the durable generator blocked message for unlinked leads', async () => {
     mockGetLeadDetail.mockResolvedValue({
       id: 'lead-1',
       servicem8JobUuid: null,
       servicem8Status: null,
-      aiSuggestionAt: recentTime,
+    })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: false,
+      blocked: true,
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
     })
 
     const result = await generateLeadSuggestionAction('lead-1')
 
-    expect(result).toEqual({ error: 'Please wait before generating another suggestion.' })
-    expect(mockGenerateSuggestion).not.toHaveBeenCalled()
+    expect(result).toEqual({ error: 'Link this lead to ServiceM8 to generate AI Guidance.' })
+    expect(mockGenerateLeadAiGuidance).toHaveBeenCalledWith({
+      leadId: 'lead-1',
+      triggeredByUserId: 'user-1',
+    })
   })
 
   it('still generates a suggestion for linked Quote leads', async () => {
@@ -77,39 +79,93 @@ describe('generateLeadSuggestionAction', () => {
       servicem8JobUuid: 'job-1',
       servicem8Status: 'Quote',
     })
-    mockGetJobNotesAndEmails.mockResolvedValue({ notes: [] })
-    mockGenerateSuggestion.mockResolvedValue({ text: 'Call this Quote lead.' })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: true,
+      snapshotId: 'snapshot-1',
+      suggestionId: 'suggestion-1',
+      text: 'Call this Quote lead.',
+    })
 
     const result = await generateLeadSuggestionAction('lead-1')
 
     expect(result).toEqual({ text: 'Call this Quote lead.' })
-    expect(mockGenerateSuggestion).toHaveBeenCalled()
-    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
-      aiSuggestion: 'Call this Quote lead.',
-      updatedAt: expect.any(Date),
-    }))
+    expect(mockGenerateLeadAiGuidance).toHaveBeenCalledWith({
+      leadId: 'lead-1',
+      triggeredByUserId: 'user-1',
+    })
+    expect(mockUpdateSet).not.toHaveBeenCalledWith(expect.objectContaining({ aiSuggestion: expect.any(String) }))
     expect(mockRevalidatePath).toHaveBeenCalledWith('/leads/lead-1')
   })
 
   it('logs an audit event on successful generation', async () => {
     mockGetLeadDetail.mockResolvedValue({
       id: 'lead-1',
-      servicem8JobUuid: null,
-      servicem8Status: null,
+      servicem8JobUuid: 'job-1',
+      servicem8Status: 'Quote',
     })
-    mockGenerateSuggestion.mockResolvedValue({ text: 'Follow up on quote.' })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: true,
+      snapshotId: 'snapshot-1',
+      suggestionId: 'suggestion-1',
+      text: 'Follow up on quote.',
+    })
 
     await generateLeadSuggestionAction('lead-1')
 
     expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
       actorId: 'user-1',
       entityType: 'lead',
-      action: 'lead.ai_suggestion_generated',
+      action: 'lead.ai_guidance_generated',
       targetId: 'lead-1',
     }))
     const call = mockLogAudit.mock.calls[0][0]
-    expect(call.after).toHaveProperty('aiSuggestionAt')
-    expect(call.after).not.toHaveProperty('aiSuggestion') // no suggestion text in log
+    expect(call.after).toEqual({
+      conversationSnapshotId: 'snapshot-1',
+      aiSuggestionId: 'suggestion-1',
+    })
+    expect(call.after).not.toHaveProperty('aiSuggestion')
+  })
+})
+
+describe('generateLeadGuidanceAction', () => {
+  it('redirects back to the Lead detail page after saved AI Guidance', async () => {
+    mockGetLeadDetail.mockResolvedValue({
+      id: 'lead-1',
+      servicem8JobUuid: 'job-1',
+      servicem8Status: 'Quote',
+    })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: true,
+      snapshotId: 'snapshot-1',
+      suggestionId: 'suggestion-1',
+      text: 'Call this Quote lead.',
+    })
+    const formData = new FormData()
+    formData.set('leadId', 'lead-1')
+
+    await generateLeadGuidanceAction(formData)
+
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/leads/lead-1')
+    expect(mockRedirect).toHaveBeenCalledWith('/leads/lead-1?aiGuidanceSaved=1')
+  })
+
+  it('redirects back to the Lead detail page with generation errors', async () => {
+    mockGetLeadDetail.mockResolvedValue({
+      id: 'lead-1',
+      servicem8JobUuid: null,
+      servicem8Status: null,
+    })
+    mockGenerateLeadAiGuidance.mockResolvedValue({
+      ok: false,
+      blocked: true,
+      message: 'Link this lead to ServiceM8 to generate AI Guidance.',
+    })
+    const formData = new FormData()
+    formData.set('leadId', 'lead-1')
+
+    await generateLeadGuidanceAction(formData)
+
+    expect(mockRedirect).toHaveBeenCalledWith('/leads/lead-1?aiGuidanceError=Link%20this%20lead%20to%20ServiceM8%20to%20generate%20AI%20Guidance.')
   })
 })
 

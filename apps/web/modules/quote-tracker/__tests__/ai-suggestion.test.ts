@@ -46,6 +46,7 @@ function deps(overrides: Partial<AiSuggestionDeps> = {}): AiSuggestionDeps {
       structuredSummary: {
         customerEmailSummary: 'Jane asked whether low iron glass can be included.',
         internalNotesSummary: 'Install timing before July is the key internal follow-up.',
+        fileContextSummary: 'A ServiceM8 site photo shows a tiled shower opening with a nib wall.',
         openQuestions: ['Can Royal Glass install before July?'],
         lastKnownPosition: 'Customer is reviewing the quote details.',
         importantDates: ['before July'],
@@ -107,6 +108,7 @@ describe('generateAiSuggestionForQuote', () => {
         id: snapshotId,
         structuredSummary: expect.objectContaining({
           lastKnownPosition: 'Customer is reviewing the quote details.',
+          fileContextSummary: 'A ServiceM8 site photo shows a tiled shower opening with a nib wall.',
         }),
       }),
     }))
@@ -197,6 +199,9 @@ describe('generateAiSuggestionForQuote', () => {
       errorMessage: 'AI Suggestion output has invalid confidence',
       attemptedAt: new Date('2026-06-25T00:00:00Z'),
       retryAfter: new Date('2026-06-25T00:01:00Z'),
+      model: 'gpt-4o-mini',
+      promptVersion: 'quote-ai-guidance-v1',
+      inputSnapshotVersion: 'quote-ai-guidance-input-v1',
     })
   })
 
@@ -284,6 +289,9 @@ describe('generateAiSuggestionForQuote', () => {
       errorType,
       errorMessage: message,
       retryAfter: new Date('2026-06-25T00:01:00Z'),
+      model: 'gpt-4o-mini',
+      promptVersion: 'quote-ai-guidance-v1',
+      inputSnapshotVersion: 'quote-ai-guidance-input-v1',
     }))
   })
 

@@ -52,6 +52,7 @@ export function LeadIntakeForm({
   const [isComputingDistance, setIsComputingDistance] = useState(false)
   const [isPending, startTransition] = useTransition()
   const lastPrefilledDate = useRef<string | null>(null)
+  const distanceRequestId = useRef(0)
 
   function update<K extends keyof LeadIntakeInput>(key: K, value: LeadIntakeInput[K]) {
     setInput((current) => {
@@ -75,6 +76,29 @@ export function LeadIntakeForm({
         router.push(`/leads/${nextResult.leadId}?intakeSaved=${status}`)
       }
     })
+  }
+
+  function cancelDistanceLookup() {
+    distanceRequestId.current += 1
+    setIsComputingDistance(false)
+  }
+
+  async function computeDistanceForAddress(address: string) {
+    const requestId = distanceRequestId.current + 1
+    distanceRequestId.current = requestId
+    setIsComputingDistance(true)
+
+    try {
+      const band = await computeLeadDistance(address)
+      if (requestId !== distanceRequestId.current) return
+
+      setDistanceBand(band)
+      setInput((current) => applyFollowUpPrefill(current, band, lastPrefilledDate))
+    } finally {
+      if (requestId === distanceRequestId.current) {
+        setIsComputingDistance(false)
+      }
+    }
   }
 
   return (
@@ -128,13 +152,11 @@ export function LeadIntakeForm({
               update('location', address)
               update('suburb', suburb)
               setDistanceBand(null)
-              if (address && source !== 'input') {
-                setIsComputingDistance(true)
-                const band = await computeLeadDistance(address)
-                setDistanceBand(band)
-                setInput((current) => applyFollowUpPrefill(current, band, lastPrefilledDate))
-                setIsComputingDistance(false)
+              if (!address || source === 'input') {
+                cancelDistanceLookup()
+                return
               }
+              await computeDistanceForAddress(address)
             }}
           />
           <DistanceDisplay band={distanceBand} isComputing={isComputingDistance} />
