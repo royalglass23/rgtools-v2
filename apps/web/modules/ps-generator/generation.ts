@@ -74,6 +74,49 @@ export class PsGenerationError extends Error {
   }
 }
 
+const PROJECT_FIELD_LABELS: Record<string, string> = {
+  clientName: 'Client name',
+  jobAddress: 'Job address',
+  bcNumber: 'BC Number',
+  lotDescription: 'Lot Description',
+}
+
+const FIELD_NAME_LABELS: Record<string, string> = {
+  client_name: 'Client name',
+  job_address: 'Job address',
+  bc_number: 'BC Number',
+  lot_description: 'Lot Description',
+  completion_date: 'Completion Date',
+  pool_description: 'Pool Description',
+}
+
+const OPTION_LABELS: Record<string, string> = {
+  system: 'System',
+  structure_material: 'Structure material',
+  structure_type: 'Structure type',
+  location: 'Location',
+  structure_built: 'Structure built',
+  glass_type: 'Glass type',
+  thickness: 'Thickness',
+  gate_required: 'Gate required',
+}
+
+export function humanizePsIdentifier(value: string | null | undefined): string {
+  if (!value) return ''
+  return PROJECT_FIELD_LABELS[value]
+    ?? FIELD_NAME_LABELS[value]
+    ?? OPTION_LABELS[value]
+    ?? value
+      .split(/[_.-]+/g)
+      .filter(Boolean)
+      .map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
+      .join(' ')
+}
+
+export function humanizePsGenerationMessage(message: string): string {
+  return message.replace(/"([a-z][a-z0-9_.-]*)"/g, (_match, identifier: string) => `"${humanizePsIdentifier(identifier)}"`)
+}
+
 interface GenerationContext {
   configuration: PublishedPsConfiguration
   system: PublishedPsSystem
@@ -109,8 +152,9 @@ export async function generateProducerStatementPackage(
 
   const system = configuration.systems.find((candidate) => candidate.slug === input.selections.system)
   if (!system) {
-    throw new PsGenerationError('published_system_missing', `Published system "${input.selections.system}" is not available.`, {
+    throw new PsGenerationError('published_system_missing', `Published system "${humanizePsIdentifier(input.selections.system)}" is not available.`, {
       systemSlug: input.selections.system,
+      systemLabel: humanizePsIdentifier(input.selections.system),
     })
   }
 
@@ -336,10 +380,13 @@ function validateSelectedOptions(system: PublishedPsSystem, selections: Record<s
     const allowedValues = system.optionRules[categorySlug]
     if (!allowedValues) continue
     if (!allowedValues.some((value) => value.slug === optionSlug)) {
-      throw new PsGenerationError('selected_option_not_allowed', `Option "${optionSlug}" is not allowed for ${system.displayName}.`, {
+      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not allowed for ${system.displayName}.`, {
         categorySlug,
+        categoryLabel: humanizePsIdentifier(categorySlug),
         optionSlug,
+        optionLabel: humanizePsIdentifier(optionSlug),
         systemSlug: system.slug,
+        systemLabel: system.displayName,
       })
     }
   }
@@ -355,24 +402,31 @@ async function fillTemplatePdf(
 
   for (const mapping of template.fieldMappings) {
     if (mapping.fieldType === 'text') {
+      const textValue = resolveTextValue(mapping, context)
       const field = findTextField(form, mapping)
       if (!field) {
-        throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${mapping.fieldName}".`, {
+        if (isOptionalBlankProjectField(mapping, textValue)) continue
+
+        const fieldLabel = fieldLabelForMapping(mapping)
+        throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${fieldLabel}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
+          fieldLabel,
           availableFields: availableTextFields(form),
         })
       }
-      field.setText(resolveTextValue(mapping, context))
+      field.setText(textValue)
       continue
     }
 
     if (mapping.fieldType === 'checkbox') {
       const checkbox = findCheckBox(form, mapping)
       if (!checkbox) {
-        throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${mapping.fieldName}".`, {
+        const fieldLabel = fieldLabelForMapping(mapping)
+        throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${fieldLabel}".`, {
           templateVariantId: template.id,
           fieldName: mapping.fieldName,
+          fieldLabel,
           availableFields: availableCheckBoxFields(form),
         })
       }
@@ -381,9 +435,10 @@ async function fillTemplatePdf(
       continue
     }
 
-    throw new PsGenerationError('unsupported_field_type', `Unsupported field type "${mapping.fieldType}" for "${mapping.fieldName}".`, {
+    throw new PsGenerationError('unsupported_field_type', `Unsupported field type "${humanizePsIdentifier(mapping.fieldType)}" for "${fieldLabelForMapping(mapping)}".`, {
       templateVariantId: template.id,
       fieldName: mapping.fieldName,
+      fieldLabel: fieldLabelForMapping(mapping),
       fieldType: mapping.fieldType,
     })
   }
@@ -459,6 +514,7 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
     if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name']
     if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address']
     if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
+    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription']
   }
 
   if (mapping.sourceType === 'description_template') {
@@ -530,6 +586,19 @@ function normalizeFieldName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+function isOptionalBlankProjectField(
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+  textValue: string,
+): boolean {
+  return mapping.sourceType === 'project_value'
+    && (mapping.sourceKey === 'bcNumber' || mapping.sourceKey === 'lotDescription')
+    && textValue.trim().length === 0
+}
+
+function fieldLabelForMapping(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string {
+  return humanizePsIdentifier(mapping.sourceKey) || humanizePsIdentifier(mapping.fieldName)
+}
+
 function resolveTextValue(
   mapping: PublishedPsTemplateVariant['fieldMappings'][number],
   context: GenerationContext,
@@ -548,8 +617,9 @@ function resolveTextValue(
     case 'fixed_value':
       return mapping.fixedValue ?? ''
     default:
-      throw new PsGenerationError('unsupported_source_type', `Unsupported mapping source type "${mapping.sourceType}" for "${mapping.fieldName}".`, {
+      throw new PsGenerationError('unsupported_source_type', `Unsupported mapping source type "${humanizePsIdentifier(mapping.sourceType)}" for "${fieldLabelForMapping(mapping)}".`, {
         fieldName: mapping.fieldName,
+        fieldLabel: fieldLabelForMapping(mapping),
         sourceType: mapping.sourceType,
       })
   }
@@ -571,7 +641,7 @@ function resolveCheckboxValue(
 function resolveDescriptionTemplate(context: GenerationContext, slug: string | null): string {
   const template = context.configuration.descriptionTemplates.find((candidate) => candidate.slug === slug)
   if (!template) {
-    throw new PsGenerationError('description_template_missing', `Description template "${slug}" is not published.`, {
+    throw new PsGenerationError('description_template_missing', `Description template "${humanizePsIdentifier(slug)}" is not published.`, {
       slug,
     })
   }
