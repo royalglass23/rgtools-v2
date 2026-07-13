@@ -43,6 +43,7 @@ describe('DashboardPage', () => {
   it('does not render Quick Capture on the dashboard', async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }))
 
+    expect(screen.getByRole('heading', { level: 1, name: 'Operations dashboard' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Quick Capture' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Actions Needed' })).toBeInTheDocument()
   })

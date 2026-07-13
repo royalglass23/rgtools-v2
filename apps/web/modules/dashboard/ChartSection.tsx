@@ -11,47 +11,47 @@ import {
   YAxis,
 } from 'recharts'
 import type { WeekLeads, WeekPipeline } from './kpis'
+import styles from './ChartSection.module.css'
 
 function shortWeek(week: string) {
-  // '2026-W26' → 'W26'
   return week.split('-')[1] ?? week
 }
 
 function LeadsPerWeekChart({ data }: { data: WeekLeads[] }) {
   return (
-    <div className="bg-white border border-gray-200 rounded p-5 space-y-3">
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Leads per week</div>
+    <article className={styles.chartCard}>
+      <div className={styles.chartTitle}>Leads per week</div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v) => [v, 'Leads']} labelFormatter={(l) => shortWeek(String(l))} />
-          <Bar dataKey="count" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e9eff1" />
+          <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fontSize: 11, fill: '#71858d' }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#71858d' }} axisLine={false} tickLine={false} />
+          <Tooltip formatter={(value) => [value, 'Leads']} labelFormatter={(label) => shortWeek(String(label))} />
+          <Bar dataKey="count" fill="#1d9dad" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </article>
   )
 }
 
 function QuotePipelineChart({ data }: { data: WeekPipeline[] }) {
   return (
-    <div className="bg-white border border-gray-200 rounded p-5 space-y-3">
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Quote pipeline by week</div>
+    <article className={styles.chartCard}>
+      <div className={styles.chartTitle}>Quote pipeline by week</div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip labelFormatter={(l) => shortWeek(String(l))} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e9eff1" />
+          <XAxis dataKey="week" tickFormatter={shortWeek} tick={{ fontSize: 11, fill: '#71858d' }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#71858d' }} axisLine={false} tickLine={false} />
+          <Tooltip labelFormatter={(label) => shortWeek(String(label))} />
           <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-          <Bar dataKey="hot" stackId="a" fill="#ef4444" />
-          <Bar dataKey="warm" stackId="a" fill="#f97316" />
-          <Bar dataKey="cold" stackId="a" fill="#6b7280" />
-          <Bar dataKey="dead" stackId="a" fill="#d1d5db" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="hot" stackId="a" fill="#d5554e" />
+          <Bar dataKey="warm" stackId="a" fill="#d8942d" />
+          <Bar dataKey="cold" stackId="a" fill="#71878f" />
+          <Bar dataKey="dead" stackId="a" fill="#cbd6da" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </article>
   )
 }
 
@@ -63,9 +63,12 @@ export function ChartSection({
   pipelineByWeek: WeekPipeline[]
 }) {
   return (
-    <section className="space-y-3">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Trends (last 8 weeks)</h2>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <section className={styles.section}>
+      <div className={styles.sectionHeading}>
+        <span>Momentum</span>
+        <h2>Trends (last 8 weeks)</h2>
+      </div>
+      <div className={styles.chartGrid}>
         <LeadsPerWeekChart data={leadsPerWeek} />
         <QuotePipelineChart data={pipelineByWeek} />
       </div>
