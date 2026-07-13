@@ -81,7 +81,9 @@ export interface PsGeneratorSeed {
   descriptionTemplates: PsSeedDescriptionTemplate[]
 }
 
-export const PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS = [
+type PsLegacyPs1FieldMapping = Omit<PsSeedFieldMapping, 'templateKey' | 'sortOrder'>
+
+export const PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS: PsLegacyPs1FieldMapping[] = [
   { fieldName: 'Name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName' },
   { fieldName: 'Address', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress' },
   { fieldName: 'Description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade' },
@@ -100,14 +102,24 @@ export const PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS = [
   { fieldName: 'LaminatedTB', fieldType: 'checkbox', sourceType: 'selected_option', sourceKey: 'glass_type.laminated' },
   { fieldName: 'Direct', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
   { fieldName: 'Cont', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
-] satisfies Array<Omit<PsSeedFieldMapping, 'templateKey' | 'sortOrder'>>
+]
+
+const PS_GENERATOR_LEGACY_PS1_DISCOVERY_MAPPINGS: PsLegacyPs1FieldMapping[] = [
+  ...PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS,
+  { fieldName: 'LotDescription', fieldType: 'text', sourceType: 'project_value', sourceKey: 'lotDescription' },
+  { fieldName: 'Structure', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'structure_type' },
+]
 
 export function legacyPs1FieldMappingsForDiscovery(fieldDiscovery: unknown) {
   const fields = discoveredFieldNames(fieldDiscovery)
-  if (!fields.has('Name') || !fields.has('Address') || !fields.has('Description')) return []
+  if (!hasLegacyField(fields, 'clientName') || !hasLegacyField(fields, 'jobAddress') || !hasLegacyField(fields, 'standard-balustrade')) return []
 
-  return PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS
-    .filter((mapping) => fields.has(mapping.fieldName))
+  return PS_GENERATOR_LEGACY_PS1_DISCOVERY_MAPPINGS
+    .map((mapping) => {
+      const fieldName = legacyFieldNameForMapping(fields, mapping)
+      return fieldName ? { ...mapping, fieldName } : null
+    })
+    .filter((mapping): mapping is PsLegacyPs1FieldMapping => Boolean(mapping))
     .map((mapping, index) => ({
       ...mapping,
       sortOrder: (index + 1) * 10,
@@ -132,6 +144,40 @@ function discoveredFieldNames(fieldDiscovery: unknown) {
     ...(Array.isArray(discovery.fields) ? discovery.fields : []),
   ]
   return new Set(names.filter((name): name is string => typeof name === 'string'))
+}
+
+function hasLegacyField(fields: Set<string>, sourceKey: string) {
+  return [...fields].some((field) => legacyFieldAliases(sourceKey).has(normalizeFieldName(field)))
+}
+
+function legacyFieldNameForMapping(
+  fields: Set<string>,
+  mapping: PsLegacyPs1FieldMapping,
+): string | null {
+  const aliases = legacyFieldAliases(mapping.sourceKey ?? mapping.fieldName)
+  aliases.add(normalizeFieldName(mapping.fieldName))
+  return [...fields].find((field) => aliases.has(normalizeFieldName(field))) ?? null
+}
+
+function legacyFieldAliases(sourceKey: string): Set<string> {
+  const aliases = LEGACY_FIELD_ALIASES[sourceKey] ?? [sourceKey]
+  return new Set(aliases.map(normalizeFieldName))
+}
+
+function normalizeFieldName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+const LEGACY_FIELD_ALIASES: Record<string, string[]> = {
+  clientName: ['Name', 'Name2', 'Name02', 'Name-2', 'Name-02', 'client_name', 'clientName', 'Client Name'],
+  jobAddress: ['Address', 'Address2', 'Address02', 'Address-2', 'Address-02', 'job_address', 'jobAddress', 'Job Address'],
+  'standard-balustrade': ['Description', 'Description2', 'Description02', 'Description-2', 'Description-02', 'description'],
+  today: ['Date0', 'Date', 'Date1', 'Date01', 'Date-1', 'Date-01', 'completion_date', 'Completion Date'],
+  thickness: ['Thickness', 'thickness'],
+  'heightRules.default.height': ['Height', 'height'],
+  'heightRules.default.heightAboveFix': ['HeightAboveFix', 'HeightAbove', 'Height Above Fix', 'Height Above Fixing', 'height_above_fix', 'height_above'],
+  lotDescription: ['LotDescription', 'LotDescription2', 'LotDescription02', 'Lot Description', 'Lot Description2', 'Lot Description02', 'lot_description'],
+  structure_type: ['Structure', 'Structure2', 'Structure02', 'Structure Type', 'structure_type'],
 }
 
 export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {

@@ -194,31 +194,6 @@ export default async function PsConfigurationPage() {
               }))}
               isDraft={isDraft}
             />
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h2 className="text-base font-semibold text-gray-950">Add option value</h2>
-              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto] md:items-end">
-                <label className="text-sm font-medium text-gray-700">
-                  Category
-                  <select name="newOptionCategoryId" disabled={!isDraft} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm">
-                    <option value="">Choose</option>
-                    {optionCategories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm font-medium text-gray-700">
-                  Name
-                  <input name="newOptionLabel" disabled={!isDraft} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm" />
-                </label>
-                <button
-                  type="submit"
-                  disabled={!isDraft}
-                  className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-                >
-                  Add option
-                </button>
-              </div>
-            </div>
             <div className="sticky bottom-0 flex justify-end border-t border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
               <button
                 type="submit"

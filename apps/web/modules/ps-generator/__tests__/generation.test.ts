@@ -7,6 +7,7 @@ import {
   type PublishedPsConfiguration,
 } from '../configuration'
 import { generateProducerStatementPackage } from '../generation'
+import { legacyPs1FieldMappingsForDiscovery } from '../seed-config'
 import type { QuoteStorage } from '@/lib/storage/types'
 
 class MemoryStorage implements QuoteStorage {
@@ -419,6 +420,57 @@ describe('Producer Statement generation', () => {
     expect(form.getCheckBox('ToughenedTB').isChecked()).toBe(true)
     expect(form.getCheckBox('Direct').isChecked()).toBe(true)
     expect(form.getCheckBox('Cont').isChecked()).toBe(true)
+  })
+
+  it('fills numbered AcroForm field aliases from uploaded templates', async () => {
+    const aliasedFields: Array<{ name: string; type: 'text' | 'checkbox' }> = [
+      { name: 'Name-2', type: 'text' },
+      { name: 'Address02', type: 'text' },
+      { name: 'Date01', type: 'text' },
+      { name: 'Description02', type: 'text' },
+      { name: 'LotDescription02', type: 'text' },
+      { name: 'Structure02', type: 'text' },
+      { name: 'HeightAbove', type: 'text' },
+    ]
+    const configuration = withStandardPs1Mappings(
+      buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()),
+      legacyPs1FieldMappingsForDiscovery({ text: aliasedFields.map((field) => field.name), checkbox: [] }).map((mapping) => ({
+        fieldName: mapping.fieldName,
+        fieldType: mapping.fieldType,
+        sourceType: mapping.sourceType,
+        sourceKey: mapping.sourceKey ?? null,
+        fixedValue: mapping.fixedValue ?? null,
+        checkboxValue: mapping.checkboxValue ?? null,
+      })),
+    )
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(aliasedFields),
+    }
+
+    const input = defaultInput('ps1_only')
+    const result = await generateProducerStatementPackage({
+      ...input,
+      projectDetails: {
+        ...input.projectDetails,
+        lotDescription: 'Lot 4 DP 12345',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('Name-2').getText()).toBe('Jane Customer')
+    expect(form.getTextField('Address02').getText()).toBe('12 Glass Lane')
+    expect(form.getTextField('Date01').getText()).toBe('26/06/2026')
+    expect(form.getTextField('Description02').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
+    )
+    expect(form.getTextField('LotDescription02').getText()).toBe('Lot 4 DP 12345')
+    expect(form.getTextField('Structure02').getText()).toBe('Deck')
+    expect(form.getTextField('HeightAbove').getText()).toBe('1.05')
   })
 
   it('does not require optional BC number or lot description fields when those values are blank', async () => {

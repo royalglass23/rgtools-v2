@@ -255,7 +255,7 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
     }
 
     const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
-    const newLabel = String(formData.get('newOptionLabel') ?? '').trim()
+    const newLabel = String(formData.get(`newOptionLabel:${newCategoryId}`) ?? formData.get('newOptionLabel') ?? '').trim()
     const newSlug = slugify(newLabel)
     if (newCategoryId && newSlug && newLabel) {
       const [category] = await tx
@@ -270,7 +270,10 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
         categoryId: newCategoryId,
         slug: newSlug,
         label: newLabel,
-        sortOrder: parseInteger(formData.get('newOptionSortOrder'), optionValueIds.length + 1),
+        sortOrder: parseInteger(
+          formData.get(`newOptionSortOrder:${newCategoryId}`) ?? formData.get('newOptionSortOrder'),
+          optionValueIds.length + 1,
+        ),
         isActive: true,
         createdAt: now,
         updatedAt: now,
