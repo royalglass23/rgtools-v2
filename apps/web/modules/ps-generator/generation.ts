@@ -14,7 +14,7 @@ import {
   type PublishedPsSystem,
   type PublishedPsTemplateVariant,
 } from './configuration'
-import { PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS } from './seed-config'
+import { legacyPs1FieldMappingsForDiscovery } from './seed-config'
 
 export type PsGenerationMode = 'ps1_only' | 'ps3_only' | 'both'
 export type PsGeneratedDocumentKind = 'ps1' | 'ps3'
@@ -469,8 +469,7 @@ function fieldMappingsWithLegacyDefaults(
   if (discovered.size === 0) return template.fieldMappings
 
   const existing = new Set(template.fieldMappings.map(mappingSemanticKey))
-  const defaults = PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS
-    .filter((mapping) => discovered.has(mapping.fieldName))
+  const defaults = legacyPs1FieldMappingsForDiscovery(template.fieldDiscovery)
     .filter((mapping) => !existing.has(mappingSemanticKey(mapping)))
     .map((mapping) => ({
       fieldName: mapping.fieldName,
@@ -582,18 +581,18 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
   const key = mapping.sourceKey ?? mapping.fieldName
 
   if (mapping.sourceType === 'project_value') {
-    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name']
-    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address']
+    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name', 'Name2', 'Name02', 'Name-2']
+    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address', 'Address2', 'Address02']
     if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
-    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription']
+    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription', 'LotDescription2', 'LotDescription02']
   }
 
   if (mapping.sourceType === 'description_template') {
-    return ['description', 'Description', 'pool_description', 'Pool Description']
+    return ['description', 'Description', 'Description2', 'Description02', 'pool_description', 'Pool Description']
   }
 
   if (mapping.sourceType === 'date') {
-    return ['completion_date', 'Completion Date', 'Date0', 'Date']
+    return ['completion_date', 'Completion Date', 'Date0', 'Date', 'Date1', 'Date01']
   }
 
   if (mapping.sourceType === 'selected_option') {
@@ -602,7 +601,7 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
 
   if (mapping.sourceType === 'system_rule') {
     if (key === 'heightRules.default.height') return ['height', 'Height']
-    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'HeightAboveFix', 'Height Above Fix']
+    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'height_above', 'HeightAboveFix', 'HeightAbove', 'Height Above Fix', 'Height Above Fixing']
   }
 
   return []
@@ -612,6 +611,8 @@ function selectedOptionAliases(sourceKey: string | null): string[] {
   switch (sourceKey) {
     case 'thickness':
       return ['thickness', 'Thickness']
+    case 'structure_type':
+      return ['structure_type', 'Structure', 'Structure2', 'Structure02', 'Structure Type']
     case 'structure_material.timber':
       return ['structure_material_timber', 'TimberTB']
     case 'structure_material.concrete':

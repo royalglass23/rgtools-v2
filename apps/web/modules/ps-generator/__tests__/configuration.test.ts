@@ -37,6 +37,21 @@ describe('published PS Generator configuration', () => {
     ])
   })
 
+  it('maps numbered PDF field aliases from newer templates', () => {
+    expect(legacyPs1FieldMappingsForDiscovery({
+      text: ['Name-2', 'Address02', 'Date01', 'Description02', 'LotDescription02', 'Structure02', 'HeightAbove'],
+      checkbox: [],
+    })).toEqual([
+      expect.objectContaining({ fieldName: 'Name-2', sourceType: 'project_value', sourceKey: 'clientName', sortOrder: 10 }),
+      expect.objectContaining({ fieldName: 'Address02', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 }),
+      expect.objectContaining({ fieldName: 'Description02', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 30 }),
+      expect.objectContaining({ fieldName: 'Date01', sourceType: 'date', sourceKey: 'today', sortOrder: 40 }),
+      expect.objectContaining({ fieldName: 'HeightAbove', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix', sortOrder: 50 }),
+      expect.objectContaining({ fieldName: 'LotDescription02', sourceType: 'project_value', sourceKey: 'lotDescription', sortOrder: 60 }),
+      expect.objectContaining({ fieldName: 'Structure02', sourceType: 'selected_option', sourceKey: 'structure_type', sortOrder: 70 }),
+    ])
+  })
+
   it('exposes the seeded WordPress configuration through the application read model', () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
 
