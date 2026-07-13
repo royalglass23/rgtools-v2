@@ -50,6 +50,7 @@ test.describe('ps generator', () => {
     const doubleDiscRow = page.getByRole('row').filter({ hasText: 'Double Disc' }).first()
     await expect(doubleDiscRow).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Add option value' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add option' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Save draft' })).toBeVisible()
   })
 })
