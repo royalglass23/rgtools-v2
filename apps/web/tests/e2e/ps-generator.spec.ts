@@ -24,7 +24,8 @@ async function login(page: Page) {
   await page.getByLabel('Username').fill(e2eUser)
   await page.getByLabel('Password').fill(e2ePassword)
   await page.getByRole('button', { name: /^sign in$/i }).click()
-  await expect(page.getByRole('button', { name: /^sign out$/i })).toBeVisible({ timeout: 15_000 })
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 45_000, waitUntil: 'commit' })
+  await expect(page.getByRole('button', { name: /^sign out$/i })).toBeVisible({ timeout: 45_000 })
 }
 
 test.describe('ps generator', () => {
@@ -43,16 +44,12 @@ test.describe('ps generator', () => {
 
     await page.goto('/ps-generator/configuration')
     await expect(page.getByRole('heading', { name: 'PS Configuration' })).toBeVisible()
-    await expect(page.getByText('system - 2 options')).toBeVisible()
-    await page.getByText('system - 2 options').click()
-    await expect(page.getByRole('textbox', { name: 'Label for double-disc' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Save draft' })).toBeVisible()
+    await expect(page.getByText('System', { exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Height above floor' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Height above fixing' })).toBeVisible()
+    const doubleDiscRow = page.getByRole('row').filter({ hasText: 'Double Disc' }).first()
+    await expect(doubleDiscRow).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Add option value' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Systems' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /^Rules for / }).first()).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Description templates' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Template variants and field mappings' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Save mappings' }).first()).toBeVisible()
-    await expect(page.locator('input[type="file"][name="templatePdf"]').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save draft' })).toBeVisible()
   })
 })

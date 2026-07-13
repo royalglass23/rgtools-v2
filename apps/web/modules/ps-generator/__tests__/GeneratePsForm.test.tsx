@@ -52,7 +52,7 @@ describe('GeneratePsForm', () => {
     ])
   })
 
-  it('updates option choices when a different published system is selected', () => {
+  it('keeps option choices global when a different published system is selected', () => {
     render(<GeneratePsForm configuration={configuration} />)
 
     fireEvent.change(screen.getByLabelText('System'), { target: { value: 'frameless-spigot' } })
@@ -61,7 +61,7 @@ describe('GeneratePsForm', () => {
     expect(screen.getByLabelText('Location')).toHaveValue('external')
     expect(within(screen.getByLabelText('Location')).getAllByRole('option').map((option) => option.textContent)).toEqual(['External', 'Internal', 'External and Internal'])
     expect(screen.getByLabelText('Thickness')).toHaveValue('12mm')
-    expect(within(screen.getByLabelText('Thickness')).getAllByRole('option').map((option) => option.textContent)).toEqual(['12mm'])
+    expect(within(screen.getByLabelText('Thickness')).getAllByRole('option').map((option) => option.textContent)).toEqual(['12mm', '15mm', '17.52mm'])
   })
 
   it('prefills only client name and job address for a matching job number', async () => {

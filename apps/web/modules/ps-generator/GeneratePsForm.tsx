@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useRef, useState, useTransition } from 'react'
+import { FormEvent, useRef, useState, useTransition } from 'react'
 
 import { PlacesAutocomplete } from '@/modules/lead-intake/PlacesAutocomplete'
 
@@ -54,10 +54,6 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
   const [message, setMessage] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPending, startTransition] = useTransition()
-
-  const selectedSystem = useMemo(() => (
-    configuration.systems.find((system) => system.slug === selections.system) ?? configuration.systems[0]
-  ), [configuration.systems, selections.system])
 
   function setProjectField(field: keyof typeof projectDetails, value: string) {
     setProjectDetails((current) => ({ ...current, [field]: value }))
@@ -224,7 +220,7 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
                 key={category.slug}
                 label={category.label}
                 value={selections[category.slug] ?? ''}
-                options={selectedSystem?.optionRules[category.slug] ?? []}
+                options={category.values}
                 onChange={(value) => setSelection(category.slug, value)}
               />
             ))}
@@ -333,7 +329,7 @@ function normalizeSelectionsForSystem(
   for (const category of configuration.optionCategories) {
     const values = category.slug === 'system'
       ? configuration.systems.map((candidate) => ({ slug: candidate.slug }))
-      : system.optionRules[category.slug] ?? []
+      : category.values
     if (!values.some((value) => value.slug === next[category.slug])) {
       next[category.slug] = values[0]?.slug ?? ''
     }

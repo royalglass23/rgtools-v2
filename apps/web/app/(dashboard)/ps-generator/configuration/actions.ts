@@ -368,6 +368,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
   const slug = slugify(displayName)
   const standardFile = formData.get('standardPs1Template')
   const poolFile = formData.get('poolPs1Template')
+  const heightRules = heightRulesFromForm(formData)
 
   if (!displayName || !slug) throw new Error('System name is required.')
 
@@ -416,7 +417,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
       displayName,
       state: 'draft',
       sortOrder: (existingSystems.length + 1) * 10,
-      heightRules: {},
+      heightRules,
       metadata: {},
       createdAt: now,
       updatedAt: now,
@@ -484,7 +485,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
         action: 'draft_saved',
         configVersionId,
         before: null,
-        after: { slug, displayName },
+        after: { slug, displayName, heightRules },
         createdAt: now,
       },
       {
@@ -575,8 +576,10 @@ export async function updatePsConfigurationSystemAction(formData: FormData): Pro
     if (!before) throw new Error('Draft system was not found.')
 
     const archivedAt = isActive ? null : before.archivedAt ?? now
+    const heightRules = heightRulesFromForm(formData, before.heightRules)
     await tx.update(psSystems).set({
       displayName,
+      heightRules,
       archivedAt,
       updatedAt: now,
     }).where(eq(psSystems.id, systemId))
@@ -631,7 +634,7 @@ export async function updatePsConfigurationSystemAction(formData: FormData): Pro
       action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
       configVersionId,
       before,
-      after: { ...before, displayName, archivedAt },
+      after: { ...before, displayName, heightRules, archivedAt },
       createdAt: now,
     })
     if (beforeOption && afterOption) {
@@ -1160,6 +1163,30 @@ function titleCase(value: FormDataEntryValue | string | null) {
     .replace(/\s+/g, ' ')
     .toLowerCase()
     .replace(/\b[a-z0-9]/g, (letter) => letter.toUpperCase())
+}
+
+function heightRulesFromForm(formData: FormData, currentRules?: unknown) {
+  const height = String(formData.get('defaultHeight') ?? '').trim()
+  const heightAboveFix = String(formData.get('defaultHeightAboveFix') ?? '').trim()
+  if (!height || !heightAboveFix) {
+    throw new Error('Height above floor and height above fixing are required.')
+  }
+
+  const source = currentRules && typeof currentRules === 'object'
+    ? { ...(currentRules as Record<string, unknown>) }
+    : {}
+  const currentDefault = source.default && typeof source.default === 'object'
+    ? source.default as Record<string, unknown>
+    : {}
+
+  return {
+    ...source,
+    default: {
+      ...currentDefault,
+      height,
+      heightAboveFix,
+    },
+  }
 }
 
 function isUpload(value: FormDataEntryValue | null): value is File {

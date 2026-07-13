@@ -177,6 +177,7 @@ export interface PsConfigurationSystemRow {
   slug: string
   displayName: string
   isActive: boolean
+  heightRules: PsSystemHeightRules
   standardPs1Template: {
     id: string
     label: string
@@ -189,6 +190,17 @@ export interface PsConfigurationSystemRow {
     originalFilename: string | null
     r2ObjectKey: string
   } | null
+}
+
+export interface PsSystemHeightRules {
+  default: {
+    height: string
+    heightAboveFix: string
+  }
+  pool: {
+    height: string
+    heightAboveFix: string
+  }
 }
 
 export interface PublishedPsDescriptionTemplate {
@@ -465,10 +477,32 @@ export function buildPsConfigurationSystemRows(configuration: PublishedPsConfigu
       slug: system.slug,
       displayName: system.displayName,
       isActive: true,
+      heightRules: normalizeHeightRules(system.heightRules),
       standardPs1Template: templateSummary(templates.find((template) => template.variantKind === 'standard_ps1')),
       poolPs1Template: templateSummary(templates.find((template) => template.variantKind === 'pool_ps1')),
     }
   })
+}
+
+function normalizeHeightRules(value: unknown): PsSystemHeightRules {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    default: normalizeHeightRule(source.default),
+    pool: normalizeHeightRule(source.pool),
+  }
+}
+
+function normalizeHeightRule(value: unknown): PsSystemHeightRules['default'] {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    height: stringifyHeightRuleValue(source.height),
+    heightAboveFix: stringifyHeightRuleValue(source.heightAboveFix),
+  }
+}
+
+function stringifyHeightRuleValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return String(value)
 }
 
 export async function getPublishedPsConfiguration(database?: Awaited<ReturnType<typeof loadDefaultDb>>): Promise<PublishedPsConfiguration> {
