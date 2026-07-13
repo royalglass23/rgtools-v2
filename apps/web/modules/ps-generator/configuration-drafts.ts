@@ -235,6 +235,7 @@ export function createDraftSystemRow(
     configVersionId: string
     displayName: string
     isActive?: boolean
+    heightRules?: unknown
     standardPs1Template: DraftTemplateInput
     poolPs1Template?: DraftTemplateInput | null
   },
@@ -261,7 +262,7 @@ export function createDraftSystemRow(
     displayName,
     state: 'draft',
     sortOrder,
-    heightRules: {},
+    heightRules: input.heightRules ?? {},
     metadata: {},
     createdAt: input.now,
     updatedAt: input.now,
@@ -343,6 +344,7 @@ export function updateDraftSystemRow(
     systemSlug: string
     displayName: string
     isActive?: boolean
+    heightRules?: unknown
     standardPs1Template?: DraftTemplateInput | null
     poolPs1Template?: DraftTemplateInput | null
   },
@@ -362,6 +364,7 @@ export function updateDraftSystemRow(
   const after: SystemRow = {
     ...before,
     displayName,
+    heightRules: input.heightRules ?? before.heightRules,
     archivedAt: isActive ? null : input.now,
     updatedAt: input.now,
   }

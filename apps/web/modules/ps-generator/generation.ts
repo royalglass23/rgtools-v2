@@ -164,7 +164,7 @@ export async function generateProducerStatementPackage(
     })
   }
 
-  validateSelectedOptions(system, input.selections)
+  validateSelectedOptions(configuration, input.selections)
 
   const context: GenerationContext = { configuration, system, input, now }
   const operationId = dependencies.operationId ?? randomUUID()
@@ -310,7 +310,7 @@ function buildSelectionsSnapshot(
   for (const [categorySlug, selectedSlug] of Object.entries(selections)) {
     if (categorySlug === 'system') continue
     const category = categoriesBySlug.get(categorySlug)
-    const label = system.optionRules[categorySlug]?.find((value) => value.slug === selectedSlug)?.label ?? selectedSlug
+    const label = findGlobalOptionLabel(configuration, categorySlug, selectedSlug) ?? selectedSlug
     options[categorySlug] = {
       categoryLabel: category?.label ?? categorySlug,
       slug: selectedSlug,
@@ -382,18 +382,18 @@ function selectTemplateVariant(
     ?? null
 }
 
-function validateSelectedOptions(system: PublishedPsSystem, selections: Record<string, string>) {
+function validateSelectedOptions(configuration: PublishedPsConfiguration, selections: Record<string, string>) {
   for (const [categorySlug, optionSlug] of Object.entries(selections)) {
-    const allowedValues = system.optionRules[categorySlug]
+    const allowedValues = categorySlug === 'system'
+      ? configuration.systems.map((system) => ({ slug: system.slug, label: system.displayName }))
+      : configuration.optionCategories.find((category) => category.slug === categorySlug)?.values
     if (!allowedValues) continue
     if (!allowedValues.some((value) => value.slug === optionSlug)) {
-      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not allowed for ${system.displayName}.`, {
+      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not available for ${humanizePsIdentifier(categorySlug)}.`, {
         categorySlug,
         categoryLabel: humanizePsIdentifier(categorySlug),
         optionSlug,
         optionLabel: humanizePsIdentifier(optionSlug),
-        systemSlug: system.slug,
-        systemLabel: system.displayName,
       })
     }
   }
@@ -726,7 +726,7 @@ function tokenValue(context: GenerationContext, token: string): string {
 
   const selectedSlug = context.input.selections[token]
   if (!selectedSlug) return ''
-  return context.system.optionRules[token]?.find((value) => value.slug === selectedSlug)?.label ?? selectedSlug
+  return findGlobalOptionLabel(context.configuration, token, selectedSlug) ?? selectedSlug
 }
 
 function selectedOptionLabel(context: GenerationContext, sourceKey: string | null): string {
@@ -734,7 +734,22 @@ function selectedOptionLabel(context: GenerationContext, sourceKey: string | nul
   const [categorySlug, expectedSlug] = sourceKey.split('.')
   const selectedSlug = context.input.selections[categorySlug]
   const optionSlug = expectedSlug ?? selectedSlug
-  return context.system.optionRules[categorySlug]?.find((value) => value.slug === optionSlug)?.label ?? optionSlug ?? ''
+  return findGlobalOptionLabel(context.configuration, categorySlug, optionSlug) ?? optionSlug ?? ''
+}
+
+function findGlobalOptionLabel(
+  configuration: PublishedPsConfiguration,
+  categorySlug: string,
+  optionSlug: string | undefined,
+): string | null {
+  if (!optionSlug) return null
+  if (categorySlug === 'system') {
+    return configuration.systems.find((system) => system.slug === optionSlug)?.displayName ?? null
+  }
+  return configuration.optionCategories
+    .find((category) => category.slug === categorySlug)
+    ?.values.find((value) => value.slug === optionSlug)
+    ?.label ?? null
 }
 
 function selectedOptionMatches(selections: Record<string, string>, sourceKey: string | null): boolean {

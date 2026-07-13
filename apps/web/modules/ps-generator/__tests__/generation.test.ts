@@ -211,7 +211,7 @@ describe('Producer Statement generation', () => {
         location: 'external',
         structure_built: 'new',
         glass_type: 'toughened',
-        thickness: '12mm',
+        thickness: '15mm',
         gate_required: 'yes',
       },
     }, {

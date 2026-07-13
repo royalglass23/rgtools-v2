@@ -96,6 +96,7 @@ export default async function PsConfigurationPage() {
       id: psSystems.id,
       slug: psSystems.slug,
       displayName: psSystems.displayName,
+      heightRules: psSystems.heightRules,
       sortOrder: psSystems.sortOrder,
       archivedAt: psSystems.archivedAt,
     })
@@ -127,6 +128,7 @@ export default async function PsConfigurationPage() {
         slug: system.slug,
         displayName: system.displayName,
         isActive: !system.archivedAt,
+        heightRules: normalizeHeightRules(system.heightRules),
         standardPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'standard_ps1')),
         poolPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'pool_ps1')),
       }
@@ -239,4 +241,25 @@ function templateSummary(template: {
     originalFilename: template.originalFilename,
     r2ObjectKey: template.r2ObjectKey,
   }
+}
+
+function normalizeHeightRules(value: unknown): PsConfigurationSystemRow['heightRules'] {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    default: normalizeHeightRule(source.default),
+    pool: normalizeHeightRule(source.pool),
+  }
+}
+
+function normalizeHeightRule(value: unknown): PsConfigurationSystemRow['heightRules']['default'] {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    height: stringifyHeightRuleValue(source.height),
+    heightAboveFix: stringifyHeightRuleValue(source.heightAboveFix),
+  }
+}
+
+function stringifyHeightRuleValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return String(value)
 }

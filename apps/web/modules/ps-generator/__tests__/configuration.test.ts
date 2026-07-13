@@ -139,6 +139,10 @@ describe('published PS Generator configuration', () => {
         slug: 'double-disc',
         displayName: 'Double Disc',
         isActive: true,
+        heightRules: {
+          default: { height: '1.00', heightAboveFix: '1.05' },
+          pool: { height: '1.20', heightAboveFix: '1.25' },
+        },
         standardPs1Template: {
           id: 'seed-template:double-disc-standard-ps1',
           label: 'Double Disc PS1',
@@ -152,6 +156,10 @@ describe('published PS Generator configuration', () => {
         slug: 'frameless-spigot',
         displayName: 'Frameless Spigot',
         isActive: true,
+        heightRules: {
+          default: { height: '1.00', heightAboveFix: '1.00' },
+          pool: { height: '1.20', heightAboveFix: '1.20' },
+        },
         standardPs1Template: null,
         poolPs1Template: {
           id: 'seed-template:frameless-spigot-pool-ps1',
@@ -331,6 +339,9 @@ describe('published PS Generator configuration', () => {
         originalFilename: 'Face Fixed.pdf',
         fieldDiscovery: { fields: ['client_name'] },
       },
+      heightRules: {
+        default: { height: '1.10', heightAboveFix: '1.15' },
+      },
       poolPs1Template: {
         r2ObjectKey: 'drafts/face-fixed/pool.pdf',
         originalFilename: 'Face Fixed Pool.pdf',
@@ -345,6 +356,9 @@ describe('published PS Generator configuration', () => {
     expect(system).toMatchObject({
       slug: 'face-fixed',
       displayName: 'Face Fixed',
+      heightRules: {
+        default: { height: '1.10', heightAboveFix: '1.15' },
+      },
       optionRules: expect.objectContaining({
         system: [{ slug: 'face-fixed', label: 'Face Fixed' }],
         structure_material: [],
