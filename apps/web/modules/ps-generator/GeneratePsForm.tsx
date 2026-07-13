@@ -205,9 +205,6 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
           <h1 className="text-2xl font-semibold text-gray-950">Generate PS</h1>
           <p className="mt-1 text-sm text-gray-500">Create PS1 and PS3 producer statement packages from the published configuration.</p>
         </div>
-        <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
-          Published config: <span className="font-medium text-gray-950">{configuration.versionLabel}</span>
-        </div>
       </div>
 
       <section className="grid gap-3 md:grid-cols-3" aria-label="Generation mode">

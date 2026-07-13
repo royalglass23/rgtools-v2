@@ -226,6 +226,36 @@ const EMPTY_CONFIGURATION: PublishedPsConfiguration = {
   descriptionTemplates: [],
 }
 
+const DRAFT_LABEL_TOKEN_PATTERN = /-draft-\d{4}-\d{2}-\d{2}(?:-\d+)?/g
+
+export function formatPsConfigurationVersionLabel(versionLabel: string | null | undefined): string {
+  if (!versionLabel) return ''
+  const draftTokens = versionLabel.match(DRAFT_LABEL_TOKEN_PATTERN)
+  if (!draftTokens?.length) return versionLabel
+
+  const baseLabel = versionLabel.replace(DRAFT_LABEL_TOKEN_PATTERN, '')
+  return `${baseLabel}${draftTokens.at(-1)}`
+}
+
+export function nextPsConfigurationDraftLabel(
+  publishedVersionLabel: string,
+  now: Date,
+  existingVersionLabels: string[] = [],
+): string {
+  const baseLabel = publishedVersionLabel.replace(DRAFT_LABEL_TOKEN_PATTERN, '')
+  const draftToken = `draft-${now.toISOString().slice(0, 10)}`
+  const usedLabels = new Set(existingVersionLabels)
+  let candidate = `${baseLabel}-${draftToken}`
+  let suffix = 2
+
+  while (usedLabels.has(candidate)) {
+    candidate = `${baseLabel}-${draftToken}-${suffix}`
+    suffix += 1
+  }
+
+  return candidate
+}
+
 export function createPsGeneratorSeedRows(): PsConfigurationRows {
   const versionId = 'seed-version:wordpress-plugin-v1'
   const archivedAt = '2026-01-01T00:00:00.000Z'

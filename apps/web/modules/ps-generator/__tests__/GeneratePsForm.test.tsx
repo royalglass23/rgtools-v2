@@ -18,6 +18,7 @@ describe('GeneratePsForm', () => {
     render(<GeneratePsForm configuration={configuration} />)
 
     expect(screen.getByRole('heading', { name: 'Generate PS' })).toBeInTheDocument()
+    expect(screen.queryByText(/Published config:/)).not.toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'PS1 only' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'PS3 only' })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: 'PS1 + PS3' })).not.toBeChecked()

@@ -9,7 +9,7 @@ import {
   psSystems,
   psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
-import { normalizePsSystemHeightRules } from '@/modules/ps-generator/configuration'
+import { formatPsConfigurationVersionLabel, normalizePsSystemHeightRules } from '@/modules/ps-generator/configuration'
 import {
   createPsConfigurationSystemAction,
   createPsConfigurationDraftAction,
@@ -62,6 +62,8 @@ export default async function PsConfigurationPage() {
 
   const version = draftVersion ?? publishedVersion
   const isDraft = version?.state === 'draft'
+  const activeEditorLabel = formatPsConfigurationVersionLabel(version?.versionLabel)
+  const publishedVersionLabel = formatPsConfigurationVersionLabel(publishedVersion?.versionLabel)
 
   const categories = version ? await db
     .select({
@@ -153,11 +155,16 @@ export default async function PsConfigurationPage() {
         <>
           <div className="flex flex-col gap-3 rounded border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 md:flex-row md:items-center md:justify-between">
             <div>
-              Active editor: <span className="font-medium text-gray-950">{version?.versionLabel}</span>
+              Active editor: <span className="font-medium text-gray-950" title={version?.versionLabel}>{activeEditorLabel}</span>
               <span className="ml-2 rounded border border-gray-200 px-2 py-0.5 text-xs uppercase text-gray-500">{isDraft ? 'Draft' : 'Published'}</span>
               {publishedVersion ? (
                 <span className="mt-1 block text-xs text-gray-500">
-                  Generate PS uses {publishedVersion.versionLabel} until a draft is published.
+                  Published config: <span title={publishedVersion.versionLabel}>{publishedVersionLabel}</span>. Generate PS uses this until a draft is published.
+                </span>
+              ) : null}
+              {version?.versionLabel && activeEditorLabel !== version.versionLabel ? (
+                <span className="mt-1 block break-all text-xs text-gray-400">
+                  Full label: {version.versionLabel}
                 </span>
               ) : null}
             </div>
