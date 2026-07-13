@@ -14,9 +14,11 @@ import {
   createPsConfigurationSystemAction,
   createPsConfigurationDraftAction,
   publishPsConfigurationDraftAction,
+  updatePsConfigurationGlobalTemplateAction,
   updatePsConfigurationSystemAction,
   updatePsConfigurationOptionsAction,
 } from './actions'
+import { PsConfigurationGlobalTemplatesEditor } from './PsConfigurationGlobalTemplatesEditor'
 import { PsConfigurationOptionsEditor } from './PsConfigurationOptionsEditor'
 import { PsConfigurationSystemsEditor, type PsConfigurationSystemRow } from './PsConfigurationSystemsEditor'
 
@@ -134,6 +136,7 @@ export default async function PsConfigurationPage() {
         poolPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'pool_ps1')),
       }
     })
+  const ps3Template = templateSummary(templateVariants.find((template) => template.variantKind === 'ps3' && !template.archivedAt))
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -175,6 +178,13 @@ export default async function PsConfigurationPage() {
               )}
             </div>
           </div>
+
+          <PsConfigurationGlobalTemplatesEditor
+            configVersionId={version.id}
+            ps3Template={ps3Template}
+            isDraft={isDraft}
+            updateAction={updatePsConfigurationGlobalTemplateAction}
+          />
 
           {systemCategory ? (
             <PsConfigurationSystemsEditor

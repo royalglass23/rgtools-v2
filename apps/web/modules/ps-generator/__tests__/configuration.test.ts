@@ -6,7 +6,7 @@ import {
   createPsGeneratorSeedRows,
   normalizePsSystemHeightRules,
 } from '../configuration'
-import { legacyPs1FieldMappingsForDiscovery } from '../seed-config'
+import { legacyPs1FieldMappingsForDiscovery, legacyPs3FieldMappingsForDiscovery } from '../seed-config'
 import {
   createConfigurationDraft,
   createDraftSystemRow,
@@ -50,6 +50,25 @@ describe('published PS Generator configuration', () => {
       expect.objectContaining({ fieldName: 'HeightAbove', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix', sortOrder: 50 }),
       expect.objectContaining({ fieldName: 'LotDescription02', sourceType: 'project_value', sourceKey: 'lotDescription', sortOrder: 60 }),
       expect.objectContaining({ fieldName: 'Structure02', sourceType: 'selected_option', sourceKey: 'structure_type', sortOrder: 70 }),
+    ])
+  })
+
+  it('maps legacy WordPress PS3 PDF fields from discovery output', () => {
+    expect(legacyPs3FieldMappingsForDiscovery({
+      text: ['BC', 'Address02', 'Description3', 'Description2', 'Date03', 'Legal'],
+      checkbox: ['B1TB', 'B2TB', 'F4TB', 'GlassTB', 'PS1TB'],
+    })).toEqual([
+      expect.objectContaining({ fieldName: 'BC', sourceType: 'project_value', sourceKey: 'bcNumber', sortOrder: 10 }),
+      expect.objectContaining({ fieldName: 'Address02', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 }),
+      expect.objectContaining({ fieldName: 'Description3', sourceType: 'selected_option', sourceKey: 'structure_type', sortOrder: 30 }),
+      expect.objectContaining({ fieldName: 'Description2', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 40 }),
+      expect.objectContaining({ fieldName: 'Date03', sourceType: 'date', sourceKey: 'today', sortOrder: 50 }),
+      expect.objectContaining({ fieldName: 'Legal', sourceType: 'project_value', sourceKey: 'lotDescription', sortOrder: 60 }),
+      expect.objectContaining({ fieldName: 'B1TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 70 }),
+      expect.objectContaining({ fieldName: 'B2TB', sourceType: 'fixed_value', fixedValue: 'false', checkboxValue: false, sortOrder: 80 }),
+      expect.objectContaining({ fieldName: 'F4TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 90 }),
+      expect.objectContaining({ fieldName: 'GlassTB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 100 }),
+      expect.objectContaining({ fieldName: 'PS1TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 110 }),
     ])
   })
 

@@ -842,6 +842,90 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
   revalidateConfigurationPaths()
 }
 
+export async function updatePsConfigurationGlobalTemplateAction(formData: FormData): Promise<void> {
+  const actorId = await requireConfigEditor()
+  const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
+  const templateVariantId = String(formData.get('templateVariantId') ?? '').trim()
+  const upload = await resolveGlobalPs3TemplateUpload(formData, configVersionId)
+  if (!upload) throw new Error('Choose a PS3 template PDF to upload.')
+
+  await db.transaction(async (tx) => {
+    const now = new Date()
+    let before: typeof psTemplateVariants.$inferSelect | undefined
+
+    if (templateVariantId) {
+      ;[before] = await tx
+        .select()
+        .from(psTemplateVariants)
+        .where(and(
+          eq(psTemplateVariants.id, templateVariantId),
+          eq(psTemplateVariants.configVersionId, configVersionId),
+          eq(psTemplateVariants.state, 'draft'),
+        ))
+        .limit(1)
+    }
+
+    if (!before) {
+      ;[before] = await tx
+        .select()
+        .from(psTemplateVariants)
+        .where(and(
+          eq(psTemplateVariants.configVersionId, configVersionId),
+          eq(psTemplateVariants.variantKind, 'ps3'),
+          eq(psTemplateVariants.state, 'draft'),
+          isNull(psTemplateVariants.archivedAt),
+        ))
+        .limit(1)
+    }
+
+    const values = {
+      systemId: null,
+      configVersionId,
+      documentKind: 'ps3' as const,
+      variantKind: 'ps3' as const,
+      label: 'Shared PS3',
+      r2ObjectKey: upload.objectKey,
+      originalFilename: upload.originalFilename,
+      fieldDiscovery: upload.fieldDiscovery,
+      state: 'draft' as const,
+      updatedAt: now,
+      archivedAt: null,
+    }
+
+    if (before) {
+      await tx.update(psTemplateVariants).set(values).where(eq(psTemplateVariants.id, before.id))
+      await tx.insert(psConfigurationAuditEntries).values({
+        actorId,
+        entityType: 'template_variant',
+        entityId: before.id,
+        action: 'draft_saved',
+        configVersionId,
+        before,
+        after: { ...before, ...values },
+        createdAt: now,
+      })
+      return
+    }
+
+    const [inserted] = await tx.insert(psTemplateVariants).values({
+      ...values,
+      createdAt: now,
+    }).returning({ id: psTemplateVariants.id })
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'template_variant',
+      entityId: inserted.id,
+      action: 'draft_saved',
+      configVersionId,
+      before: null,
+      after: values,
+      createdAt: now,
+    })
+  })
+
+  revalidateConfigurationPaths()
+}
+
 export async function updatePsConfigurationFieldMappingsAction(formData: FormData): Promise<void> {
   const actorId = await requireConfigEditor()
   const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
@@ -1215,10 +1299,27 @@ async function resolveTemplateUpload(
   return null
 }
 
+async function resolveGlobalPs3TemplateUpload(
+  formData: FormData,
+  configVersionId: string,
+) {
+  const objectKey = String(formData.get('ps3TemplateObjectKey') ?? '').trim()
+  const originalFilename = String(formData.get('ps3TemplateOriginalFilename') ?? '').trim()
+  if (objectKey && originalFilename) {
+    return prepareStoredTemplateUpload(configVersionId, 'global', 'ps3', objectKey, originalFilename)
+  }
+
+  const file = formData.get('ps3Template')
+  if (isUpload(file)) {
+    return prepareTemplateUpload(configVersionId, 'global', 'ps3', file)
+  }
+  return null
+}
+
 async function prepareTemplateUpload(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
   file: File,
 ) {
   if (file.type && file.type !== 'application/pdf') throw new Error('Template upload must be a PDF.')
@@ -1236,12 +1337,12 @@ async function prepareTemplateUpload(
 async function prepareStoredTemplateUpload(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
   objectKey: string,
   originalFilename: string,
 ) {
   if (!objectKey.startsWith(templateObjectPrefix(configVersionId, systemPart, variantKind))) {
-    throw new Error('Uploaded template does not match this draft system.')
+    throw new Error('Uploaded template does not match this draft template slot.')
   }
   if (!originalFilename.toLowerCase().endsWith('.pdf')) throw new Error('Template upload must be a PDF.')
   const bytes = await getStorage().get(objectKey)
@@ -1257,7 +1358,7 @@ async function prepareStoredTemplateUpload(
 function templateObjectPrefix(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
 ) {
   return `drafts/ps-generator/templates/${configVersionId}/${sanitizeObjectPart(systemPart)}/${variantKind}/`
 }

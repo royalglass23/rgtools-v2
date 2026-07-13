@@ -82,6 +82,7 @@ export interface PsGeneratorSeed {
 }
 
 type PsLegacyPs1FieldMapping = Omit<PsSeedFieldMapping, 'templateKey' | 'sortOrder'>
+type PsLegacyPs3FieldMapping = Omit<PsSeedFieldMapping, 'templateKey' | 'sortOrder'>
 
 export const PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS: PsLegacyPs1FieldMapping[] = [
   { fieldName: 'Name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName' },
@@ -108,6 +109,20 @@ const PS_GENERATOR_LEGACY_PS1_DISCOVERY_MAPPINGS: PsLegacyPs1FieldMapping[] = [
   ...PS_GENERATOR_LEGACY_PS1_FIELD_MAPPINGS,
   { fieldName: 'LotDescription', fieldType: 'text', sourceType: 'project_value', sourceKey: 'lotDescription' },
   { fieldName: 'Structure', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'structure_type' },
+]
+
+const PS_GENERATOR_LEGACY_PS3_DISCOVERY_MAPPINGS: PsLegacyPs3FieldMapping[] = [
+  { fieldName: 'BC', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber' },
+  { fieldName: 'Address02', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress' },
+  { fieldName: 'Description3', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'structure_type' },
+  { fieldName: 'Description2', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade' },
+  { fieldName: 'Date03', fieldType: 'text', sourceType: 'date', sourceKey: 'today' },
+  { fieldName: 'Legal', fieldType: 'text', sourceType: 'project_value', sourceKey: 'lotDescription' },
+  { fieldName: 'B1TB', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
+  { fieldName: 'B2TB', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'false', checkboxValue: false },
+  { fieldName: 'F4TB', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
+  { fieldName: 'GlassTB', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
+  { fieldName: 'PS1TB', fieldType: 'checkbox', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true },
 ]
 
 export function legacyPs1FieldMappingsForDiscovery(fieldDiscovery: unknown) {
@@ -146,6 +161,22 @@ function discoveredFieldNames(fieldDiscovery: unknown) {
   return new Set(names.filter((name): name is string => typeof name === 'string'))
 }
 
+export function legacyPs3FieldMappingsForDiscovery(fieldDiscovery: unknown) {
+  const fields = discoveredFieldNames(fieldDiscovery)
+  if (!hasLegacyField(fields, 'bcNumber') && !hasLegacyField(fields, 'ps3Description')) return []
+
+  return PS_GENERATOR_LEGACY_PS3_DISCOVERY_MAPPINGS
+    .map((mapping) => {
+      const fieldName = legacyFieldNameForMapping(fields, mapping)
+      return fieldName ? { ...mapping, fieldName } : null
+    })
+    .filter((mapping): mapping is PsLegacyPs3FieldMapping => Boolean(mapping))
+    .map((mapping, index) => ({
+      ...mapping,
+      sortOrder: (index + 1) * 10,
+    }))
+}
+
 function hasLegacyField(fields: Set<string>, sourceKey: string) {
   return [...fields].some((field) => legacyFieldAliases(sourceKey).has(normalizeFieldName(field)))
 }
@@ -154,6 +185,10 @@ function legacyFieldNameForMapping(
   fields: Set<string>,
   mapping: PsLegacyPs1FieldMapping,
 ): string | null {
+  const normalizedFieldName = normalizeFieldName(mapping.fieldName)
+  const directField = [...fields].find((field) => normalizeFieldName(field) === normalizedFieldName)
+  if (directField) return directField
+
   const aliases = legacyFieldAliases(mapping.sourceKey ?? mapping.fieldName)
   aliases.add(normalizeFieldName(mapping.fieldName))
   return [...fields].find((field) => aliases.has(normalizeFieldName(field))) ?? null
@@ -170,14 +205,19 @@ function normalizeFieldName(value: string) {
 
 const LEGACY_FIELD_ALIASES: Record<string, string[]> = {
   clientName: ['Name', 'Name2', 'Name02', 'Name-2', 'Name-02', 'client_name', 'clientName', 'Client Name'],
-  jobAddress: ['Address', 'Address2', 'Address02', 'Address-2', 'Address-02', 'job_address', 'jobAddress', 'Job Address'],
-  'standard-balustrade': ['Description', 'Description2', 'Description02', 'Description-2', 'Description-02', 'description'],
-  today: ['Date0', 'Date', 'Date1', 'Date01', 'Date-1', 'Date-01', 'completion_date', 'Completion Date'],
+  jobAddress: ['Address', 'Address2', 'Address02', 'Address-2', 'Address-02', 'Address-4', 'job_address', 'jobAddress', 'Job Address'],
+  bcNumber: ['BC', 'BC Number', 'BCNumber', 'bc_number', 'bcNumber'],
+  jobNumber: ['Job Number', 'JobNumber', 'job_number', 'jobNumber'],
+  'standard-balustrade': ['Description', 'Description2', 'Description02', 'Description-2', 'Description-02', 'description', 'Description3'],
+  ps3Description: ['Description2', 'Description3', 'description'],
+  today: ['Date0', 'Date', 'Date1', 'Date01', 'Date-1', 'Date-01', 'Date-4', 'Date03', 'completion_date', 'Completion Date'],
   thickness: ['Thickness', 'thickness'],
   'heightRules.default.height': ['Height', 'height'],
   'heightRules.default.heightAboveFix': ['HeightAboveFix', 'HeightAbove', 'Height Above Fix', 'Height Above Fixing', 'height_above_fix', 'height_above'],
-  lotDescription: ['LotDescription', 'LotDescription2', 'LotDescription02', 'Lot Description', 'Lot Description2', 'Lot Description02', 'lot_description'],
-  structure_type: ['Structure', 'Structure2', 'Structure02', 'Structure Type', 'structure_type'],
+  lotDescription: ['Legal', 'LotDescription', 'LotDescription2', 'LotDescription02', 'Lot Description', 'Lot Description2', 'Lot Description02', 'lot_description'],
+  structure_type: ['Structure', 'Structure2', 'Structure02', 'Structure Type', 'Description3', 'structure_type'],
+  'fixed:true': ['B1TB', 'F4TB', 'GlassTB', 'PS1TB', 'Direct'],
+  'fixed:false': ['B2TB'],
 }
 
 export const PS_GENERATOR_WORDPRESS_SEED: PsGeneratorSeed = {
