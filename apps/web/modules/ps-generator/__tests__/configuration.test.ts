@@ -4,6 +4,8 @@ import {
   buildPublishedPsConfigurationReadModel,
   buildPsConfigurationSystemRows,
   createPsGeneratorSeedRows,
+  formatPsConfigurationVersionLabel,
+  nextPsConfigurationDraftLabel,
   normalizePsSystemHeightRules,
 } from '../configuration'
 import { legacyPs1FieldMappingsForDiscovery, legacyPs3FieldMappingsForDiscovery } from '../seed-config'
@@ -152,6 +154,16 @@ describe('published PS Generator configuration', () => {
       'gate-balustrade',
       'standard-balustrade',
     ])
+  })
+
+  it('keeps repeated draft dates compact for display and future draft labels', () => {
+    const longLabel = 'wordpress-plugin-v1-draft-2026-07-01-draft-2026-07-01-draft-2026-07-02-draft-2026-07-13-draft-2026-07-13'
+
+    expect(formatPsConfigurationVersionLabel(longLabel)).toBe('wordpress-plugin-v1-draft-2026-07-13')
+    expect(nextPsConfigurationDraftLabel(longLabel, new Date('2026-07-14T00:00:00.000Z'))).toBe('wordpress-plugin-v1-draft-2026-07-14')
+    expect(nextPsConfigurationDraftLabel('wordpress-plugin-v1-draft-2026-07-14', new Date('2026-07-14T00:00:00.000Z'), [
+      'wordpress-plugin-v1-draft-2026-07-14',
+    ])).toBe('wordpress-plugin-v1-draft-2026-07-14-2')
   })
 
   it('keeps Structure type and Location aligned with form defaults when persisted rows are stale', () => {

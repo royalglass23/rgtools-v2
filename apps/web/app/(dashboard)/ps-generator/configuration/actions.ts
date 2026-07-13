@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { getStorage } from '@/lib/storage'
 import {
   buildConfigurationReadModel,
+  nextPsConfigurationDraftLabel,
   type PsConfigurationRows,
 } from '@/modules/ps-generator/configuration'
 import { generateProducerStatementPackage, type PsGenerationMode } from '@/modules/ps-generator/generation'
@@ -50,10 +51,16 @@ export async function createPsConfigurationDraftAction(): Promise<void> {
       .limit(1)
     if (existingDraft) return
 
+    const existingVersionLabels = (await tx
+      .select({ versionLabel: psConfigVersions.versionLabel })
+      .from(psConfigVersions))
+      .map((version) => version.versionLabel)
+    const draftVersionLabel = nextPsConfigurationDraftLabel(published.versionLabel, now, existingVersionLabels)
+
     const [draft] = await tx
       .insert(psConfigVersions)
       .values({
-        versionLabel: `${published.versionLabel}-draft-${now.toISOString().slice(0, 10)}`,
+        versionLabel: draftVersionLabel,
         state: 'draft',
         createdBy: actorId,
         createdAt: now,

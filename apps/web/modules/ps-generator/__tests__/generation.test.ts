@@ -323,6 +323,43 @@ describe('Producer Statement generation', () => {
     expect(form.getCheckBox('PS1TB').isChecked()).toBe(true)
   })
 
+  it('enables multiline wrapping for PS1 descriptions and PS3 legal descriptions', async () => {
+    const configuration = withPs3Template(
+      buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()),
+      [],
+      {
+        text: legacyPs3FixtureFields().filter((field) => field.type === 'text').map((field) => field.name),
+        checkbox: legacyPs3FixtureFields().filter((field) => field.type === 'checkbox').map((field) => field.name),
+      },
+    )
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf(legacyPs1FixtureFields()),
+      'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf(legacyPs3FixtureFields()),
+    }
+
+    const result = await generateProducerStatementPackage({
+      ...defaultInput('both'),
+      projectDetails: {
+        ...defaultInput('both').projectDetails,
+        lotDescription: 'SECTION 4 BLOCK II OMARA SD 1599440M2, SECTION 5 BLOCK I OMARA SD 3235500M2, SBDY',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const ps1Form = await readForm(result.outputs.find((output) => output.documentKind === 'ps1')!.bytes)
+    expect(ps1Form.getTextField('Name').isMultiline()).toBe(false)
+    expect(ps1Form.getTextField('Description').isMultiline()).toBe(true)
+
+    const ps3Form = await readForm(result.outputs.find((output) => output.documentKind === 'ps3')!.bytes)
+    expect(ps3Form.getTextField('BC').isMultiline()).toBe(false)
+    expect(ps3Form.getTextField('Description2').isMultiline()).toBe(true)
+    expect(ps3Form.getTextField('Legal').isMultiline()).toBe(true)
+  })
+
   it('uses the shared PS3 template for systems without their own PS3 template', async () => {
     const rows = createPsGeneratorSeedRows()
     rows.systems.push({
@@ -584,15 +621,18 @@ describe('Producer Statement generation', () => {
     })
   })
 
-  it('uses human-readable labels for missing optional fields when a value was entered', async () => {
+  it('does not require optional BC number fields on PS1 templates when a value was entered', async () => {
     const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
       { fieldName: 'bc_number', fieldType: 'text', sourceType: 'project_value', sourceKey: 'bcNumber', fixedValue: null, checkboxValue: null },
     ])
     const objects: Record<string, Buffer> = {
-      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([]),
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
+        { name: 'client_name', type: 'text' },
+      ]),
     }
 
-    await expect(generateProducerStatementPackage({
+    const result = await generateProducerStatementPackage({
       ...defaultInput('ps1_only'),
       projectDetails: {
         clientName: 'Jane Customer',
@@ -602,15 +642,12 @@ describe('Producer Statement generation', () => {
     }, {
       configuration,
       storage: new MemoryStorage(objects),
-    })).rejects.toMatchObject({
-      name: 'PsGenerationError',
-      code: 'pdf_text_field_missing',
-      message: 'Template "Double Disc PS1" is missing text field "BC Number".',
-      details: expect.objectContaining({
-        fieldName: 'bc_number',
-        fieldLabel: 'BC Number',
-      }),
+      flattenGeneratedPdf: false,
     })
+
+    expect(result.outputs).toEqual([expect.objectContaining({ documentKind: 'ps1' })])
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('client_name').getText()).toBe('Jane Customer')
   })
 
   it('returns a clear generation error when the published template PDF is missing', async () => {

@@ -424,7 +424,7 @@ async function fillTemplatePdf(
       const textValue = resolveTextValue(mapping, context)
       const field = findTextField(form, mapping)
       if (!field) {
-        if (isOptionalBlankProjectField(mapping, textValue)) continue
+        if (isOptionalProjectField(mapping)) continue
         if (mapping.legacyDefault) continue
 
         const fieldLabel = fieldLabelForMapping(mapping)
@@ -435,6 +435,7 @@ async function fillTemplatePdf(
           availableFields: availableTextFields(form),
         })
       }
+      if (shouldWrapTextField(mapping)) field.enableMultiline()
       field.setText(textValue)
       continue
     }
@@ -672,13 +673,14 @@ function normalizeFieldName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function isOptionalBlankProjectField(
-  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
-  textValue: string,
-): boolean {
+function isOptionalProjectField(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): boolean {
   return mapping.sourceType === 'project_value'
     && (mapping.sourceKey === 'bcNumber' || mapping.sourceKey === 'lotDescription')
-    && textValue.trim().length === 0
+}
+
+function shouldWrapTextField(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): boolean {
+  return mapping.sourceType === 'description_template'
+    || (mapping.sourceType === 'project_value' && mapping.sourceKey === 'lotDescription')
 }
 
 function fieldLabelForMapping(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string {
