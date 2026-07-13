@@ -113,6 +113,51 @@ describe('GeneratePsForm', () => {
     expect(screen.getByLabelText('Client name')).toHaveValue('Manual Customer')
   })
 
+  it('fills the lot description from LINZ for the current job address', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        found: true,
+        lotDescription: 'LOT 18 DP 192386 756M2, LOT 27 DP 192386 236M2',
+        confidence: 'high',
+      }),
+    } as Response)
+    render(<GeneratePsForm configuration={configuration} />)
+
+    fireEvent.change(screen.getByLabelText('Job address'), { target: { value: '18 Lucia Glade Meadowbank, Auckland 1072' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Find lot' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/ps-generator/lot-description', expect.objectContaining({
+      method: 'POST',
+    })))
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      address: '18 Lucia Glade Meadowbank, Auckland 1072',
+    })
+    expect(await screen.findByText('Loaded lot description from LINZ.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Lot description')).toHaveValue('LOT 18 DP 192386 756M2, LOT 27 DP 192386 236M2')
+  })
+
+  it('warns staff when the LINZ lot description needs confirmation', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        found: true,
+        lotDescription: 'LOT 1 DP 92924 5641M2, LOT 2 DP 92924 7473M2',
+        confidence: 'needs_confirmation',
+        warning: 'LINZ linked this property to multiple titles/parcels. Review before generating.',
+      }),
+    } as Response)
+    render(<GeneratePsForm configuration={configuration} />)
+
+    fireEvent.change(screen.getByLabelText('Job address'), { target: { value: '217 Kupe Street, Orakei, Auckland 1071' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Find lot' }))
+
+    expect(await screen.findByText('LINZ linked this property to multiple titles/parcels. Review before generating.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Lot description')).toHaveValue('LOT 1 DP 92924 5641M2, LOT 2 DP 92924 7473M2')
+  })
+
   it('does not generate from implicit form submit', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,

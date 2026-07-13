@@ -382,7 +382,7 @@ export function buildConfigurationReadModel(
       id: system.id,
       slug: system.slug,
       displayName: system.displayName,
-      heightRules: system.heightRules,
+      heightRules: normalizePsSystemHeightRules(system.heightRules, system),
       metadata: system.metadata,
       optionRules: withCompatibilityOptionRules(optionRules),
     }
@@ -477,18 +477,33 @@ export function buildPsConfigurationSystemRows(configuration: PublishedPsConfigu
       slug: system.slug,
       displayName: system.displayName,
       isActive: true,
-      heightRules: normalizeHeightRules(system.heightRules),
+      heightRules: normalizePsSystemHeightRules(system.heightRules, system),
       standardPs1Template: templateSummary(templates.find((template) => template.variantKind === 'standard_ps1')),
       poolPs1Template: templateSummary(templates.find((template) => template.variantKind === 'pool_ps1')),
     }
   })
 }
 
-function normalizeHeightRules(value: unknown): PsSystemHeightRules {
+export function normalizePsSystemHeightRules(
+  value: unknown,
+  system?: { slug?: string | null; displayName?: string | null },
+): PsSystemHeightRules {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-  return {
+  const fallback = defaultHeightRulesForSystem(system, source)
+  const normalized = {
     default: normalizeHeightRule(source.default),
     pool: normalizeHeightRule(source.pool),
+  }
+
+  return {
+    default: {
+      height: normalized.default.height || fallback.default.height,
+      heightAboveFix: normalized.default.heightAboveFix || fallback.default.heightAboveFix,
+    },
+    pool: {
+      height: normalized.pool.height || fallback.pool.height,
+      heightAboveFix: normalized.pool.heightAboveFix || fallback.pool.heightAboveFix,
+    },
   }
 }
 
@@ -503,6 +518,30 @@ function normalizeHeightRule(value: unknown): PsSystemHeightRules['default'] {
 function stringifyHeightRuleValue(value: unknown): string {
   if (value === null || value === undefined) return ''
   return String(value)
+}
+
+function defaultHeightRulesForSystem(
+  system: { slug?: string | null; displayName?: string | null } | undefined,
+  source: Record<string, unknown>,
+): PsSystemHeightRules {
+  const key = normalizeSystemKey(system?.slug ?? system?.displayName ?? '')
+  const maxHeightMm = stringifyHeightRuleValue(source.maxHeightMm)
+
+  if (key === 'doubledisc' || maxHeightMm === '1000') {
+    return {
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    }
+  }
+
+  return {
+    default: { height: '1.00', heightAboveFix: '1.00' },
+    pool: { height: '1.20', heightAboveFix: '1.20' },
+  }
+}
+
+function normalizeSystemKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 export async function getPublishedPsConfiguration(database?: Awaited<ReturnType<typeof loadDefaultDb>>): Promise<PublishedPsConfiguration> {

@@ -4,6 +4,7 @@ import {
   buildPublishedPsConfigurationReadModel,
   buildPsConfigurationSystemRows,
   createPsGeneratorSeedRows,
+  normalizePsSystemHeightRules,
 } from '../configuration'
 import { legacyPs1FieldMappingsForDiscovery } from '../seed-config'
 import {
@@ -68,6 +69,8 @@ describe('published PS Generator configuration', () => {
       { slug: 'concrete', label: 'Concrete' },
       { slug: 'steel', label: 'Steel' },
     ])
+    expect(configuration.optionCategories.find((category) => category.slug === 'structure_type')?.values).toHaveLength(7)
+    expect(configuration.optionCategories.find((category) => category.slug === 'location')?.values).toHaveLength(3)
     expect(configuration.systems.find((system) => system.slug === 'double-disc')?.optionRules).toMatchObject({
       system: [{ slug: 'double-disc', label: 'Double Disc' }],
       structure_material: [
@@ -130,6 +133,76 @@ describe('published PS Generator configuration', () => {
       'gate-balustrade',
       'standard-balustrade',
     ])
+  })
+
+  it('keeps Structure type and Location aligned with form defaults when persisted rows are stale', () => {
+    const rows = createPsGeneratorSeedRows()
+    const categoryIdBySlug = new Map(rows.optionCategories.map((category) => [category.slug, category.id]))
+    rows.optionValues = rows.optionValues.filter((value) => {
+      if (value.categoryId === categoryIdBySlug.get('structure_type')) {
+        return ['deck', 'balcony', 'pool', 'stair'].includes(value.slug)
+      }
+      if (value.categoryId === categoryIdBySlug.get('location')) {
+        return ['external', 'internal'].includes(value.slug)
+      }
+      return true
+    })
+
+    const configuration = buildPublishedPsConfigurationReadModel(rows)
+
+    expect(configuration.optionCategories.find((category) => category.slug === 'structure_type')?.values).toEqual([
+      { slug: 'deck', label: 'Deck' },
+      { slug: 'balcony', label: 'Balcony' },
+      { slug: 'pool', label: 'Pool Area' },
+      { slug: 'stair', label: 'Stair Area' },
+      { slug: 'landing', label: 'Landing' },
+      { slug: 'stair-and-landing', label: 'Stair and Landing' },
+      { slug: 'stair-and-balcony', label: 'Stair and Balcony Area' },
+    ])
+    expect(configuration.optionCategories.find((category) => category.slug === 'location')?.values).toEqual([
+      { slug: 'external', label: 'External' },
+      { slug: 'internal', label: 'Internal' },
+      { slug: 'both', label: 'External and Internal' },
+    ])
+  })
+
+  it('prefills floor and fixing heights from legacy or empty system height rules', () => {
+    expect(normalizePsSystemHeightRules({ maxHeightMm: 1000 }, { slug: 'double-disc', displayName: 'Double Disc' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    })
+    expect(normalizePsSystemHeightRules({ maxHeightMm: 1200 }, { slug: 'frameless-spigot', displayName: 'Hidden Face' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+    expect(normalizePsSystemHeightRules({}, { slug: 'jh-clamp', displayName: 'Jh Clamp' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+    expect(normalizePsSystemHeightRules({}, { slug: 'lugano', displayName: 'Lugano' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+  })
+
+  it('publishes normalized height rules when persisted systems still use old shapes', () => {
+    const rows = createPsGeneratorSeedRows()
+    rows.systems = rows.systems.map((system) => {
+      if (system.slug === 'double-disc') return { ...system, heightRules: { maxHeightMm: 1000 } }
+      if (system.slug === 'frameless-spigot') return { ...system, displayName: 'Hidden Face', heightRules: {} }
+      return system
+    })
+
+    const configuration = buildPublishedPsConfigurationReadModel(rows)
+
+    expect(configuration.systems.find((system) => system.slug === 'double-disc')?.heightRules).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    })
+    expect(configuration.systems.find((system) => system.slug === 'frameless-spigot')?.heightRules).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
   })
 
   it('does not treat archived systems or disabled option values as staff-facing choices', () => {

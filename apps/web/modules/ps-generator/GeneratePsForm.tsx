@@ -23,6 +23,24 @@ interface GeneratedOutput {
   base64: string
 }
 
+type LotDescriptionLookupResult =
+  | {
+    ok: true
+    found: true
+    lotDescription: string
+    confidence: 'high' | 'needs_confirmation'
+    warning?: string
+  }
+  | {
+    ok: true
+    found: false
+    message?: string
+  }
+  | {
+    ok: false
+    error?: string
+  }
+
 const DEFAULT_SELECTIONS: Record<string, string> = {
   system: 'double-disc',
   structure_material: 'timber',
@@ -53,6 +71,7 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
   const [selections, setSelections] = useState<Record<string, string>>(() => defaultsForConfiguration(configuration))
   const [message, setMessage] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isLookingUpLot, setIsLookingUpLot] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function setProjectField(field: keyof typeof projectDetails, value: string) {
@@ -96,6 +115,47 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+  }
+
+  async function handleLookupLotDescription() {
+    const address = projectDetails.jobAddress.trim()
+    if (!address) {
+      setMessage('Enter a job address before looking up the lot description.')
+      return
+    }
+
+    setMessage(null)
+    setIsLookingUpLot(true)
+
+    try {
+      const response = await fetch('/api/ps-generator/lot-description', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address }),
+      })
+      const body = await response.json() as LotDescriptionLookupResult
+      if (body.ok === false) {
+        setMessage(body.error ?? 'Unable to look up lot description from LINZ.')
+        return
+      }
+      if (!response.ok) {
+        setMessage('Unable to look up lot description from LINZ.')
+        return
+      }
+      if (!body.found) {
+        setMessage(body.message ?? 'No lot description found in LINZ. You can keep entering it manually.')
+        return
+      }
+
+      setProjectField('lotDescription', body.lotDescription)
+      setMessage(body.confidence === 'needs_confirmation'
+        ? body.warning ?? 'LINZ found a lot description, but review it before generating.'
+        : 'Loaded lot description from LINZ.')
+    } catch {
+      setMessage('Unable to look up lot description from LINZ.')
+    } finally {
+      setIsLookingUpLot(false)
+    }
   }
 
   async function handleGenerate() {
@@ -200,7 +260,25 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
             updateOnInput
           />
           <TextInput label="BC number" value={projectDetails.bcNumber} onChange={(value) => setProjectField('bcNumber', value)} />
-          <TextInput label="Lot description" value={projectDetails.lotDescription} onChange={(value) => setProjectField('lotDescription', value)} />
+          <label className="text-sm font-medium text-gray-700">
+            <span className="flex items-center gap-2">Lot description</span>
+            <div className="mt-1 flex gap-2">
+              <input
+                aria-label="Lot description"
+                value={projectDetails.lotDescription}
+                onChange={(event) => setProjectField('lotDescription', event.target.value)}
+                className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleLookupLotDescription}
+                disabled={isLookingUpLot || !projectDetails.jobAddress.trim()}
+                className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isLookingUpLot ? 'Finding...' : 'Find lot'}
+              </button>
+            </div>
+          </label>
         </div>
       </section>
 

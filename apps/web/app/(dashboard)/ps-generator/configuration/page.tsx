@@ -9,6 +9,7 @@ import {
   psSystems,
   psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
+import { normalizePsSystemHeightRules } from '@/modules/ps-generator/configuration'
 import {
   createPsConfigurationSystemAction,
   createPsConfigurationDraftAction,
@@ -128,7 +129,7 @@ export default async function PsConfigurationPage() {
         slug: system.slug,
         displayName: system.displayName,
         isActive: !system.archivedAt,
-        heightRules: normalizeHeightRules(system.heightRules),
+        heightRules: normalizePsSystemHeightRules(system.heightRules, system),
         standardPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'standard_ps1')),
         poolPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'pool_ps1')),
       }
@@ -223,25 +224,4 @@ function templateSummary(template: {
     originalFilename: template.originalFilename,
     r2ObjectKey: template.r2ObjectKey,
   }
-}
-
-function normalizeHeightRules(value: unknown): PsConfigurationSystemRow['heightRules'] {
-  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-  return {
-    default: normalizeHeightRule(source.default),
-    pool: normalizeHeightRule(source.pool),
-  }
-}
-
-function normalizeHeightRule(value: unknown): PsConfigurationSystemRow['heightRules']['default'] {
-  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-  return {
-    height: stringifyHeightRuleValue(source.height),
-    heightAboveFix: stringifyHeightRuleValue(source.heightAboveFix),
-  }
-}
-
-function stringifyHeightRuleValue(value: unknown): string {
-  if (value === null || value === undefined) return ''
-  return String(value)
 }
