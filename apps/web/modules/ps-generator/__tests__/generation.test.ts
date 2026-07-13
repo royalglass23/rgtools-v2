@@ -280,6 +280,49 @@ describe('Producer Statement generation', () => {
     expect(result.outputs[0].templateLabel).toBe('Double Disc PS3')
   })
 
+  it('fills legacy WordPress PS3 AcroForm fields from discovered template names', async () => {
+    const configuration = withPs3Template(
+      buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()),
+      [],
+      {
+        text: legacyPs3FixtureFields().filter((field) => field.type === 'text').map((field) => field.name),
+        checkbox: legacyPs3FixtureFields().filter((field) => field.type === 'checkbox').map((field) => field.name),
+      },
+    )
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf(legacyPs3FixtureFields()),
+    }
+    const input = defaultInput('ps3_only')
+
+    const result = await generateProducerStatementPackage({
+      ...input,
+      projectDetails: {
+        ...input.projectDetails,
+        lotDescription: 'Lot 4 DP 12345',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('BC').getText()).toBe('BC-123')
+    expect(form.getTextField('Address02').getText()).toBe('12 Glass Lane')
+    expect(form.getTextField('Description3').getText()).toBe('Deck')
+    expect(form.getTextField('Description2').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
+    )
+    expect(form.getTextField('Date03').getText()).toBe('26/06/2026')
+    expect(form.getTextField('Legal').getText()).toBe('Lot 4 DP 12345')
+    expect(form.getCheckBox('B1TB').isChecked()).toBe(true)
+    expect(form.getCheckBox('B2TB').isChecked()).toBe(false)
+    expect(form.getCheckBox('F4TB').isChecked()).toBe(true)
+    expect(form.getCheckBox('GlassTB').isChecked()).toBe(true)
+    expect(form.getCheckBox('PS1TB').isChecked()).toBe(true)
+  })
+
   it('uses the shared PS3 template for systems without their own PS3 template', async () => {
     const rows = createPsGeneratorSeedRows()
     rows.systems.push({
@@ -729,6 +772,22 @@ function legacyPs1FixtureFields(): Array<{ name: string; type: 'text' | 'checkbo
   ]
 }
 
+function legacyPs3FixtureFields(): Array<{ name: string; type: 'text' | 'checkbox' }> {
+  return [
+    { name: 'BC', type: 'text' },
+    { name: 'Address02', type: 'text' },
+    { name: 'Description3', type: 'text' },
+    { name: 'Description2', type: 'text' },
+    { name: 'Date03', type: 'text' },
+    { name: 'Legal', type: 'text' },
+    { name: 'B1TB', type: 'checkbox' },
+    { name: 'B2TB', type: 'checkbox' },
+    { name: 'F4TB', type: 'checkbox' },
+    { name: 'GlassTB', type: 'checkbox' },
+    { name: 'PS1TB', type: 'checkbox' },
+  ]
+}
+
 function withStandardPs1Mappings(
   configuration: PublishedPsConfiguration,
   fieldMappings: PublishedPsConfiguration['templateVariants'][number]['fieldMappings'],
@@ -752,6 +811,21 @@ function withPoolPs1Mappings(
     templateVariants: configuration.templateVariants.map((variant) => (
       variant.systemSlug === 'frameless-spigot' && variant.variantKind === 'pool_ps1'
         ? { ...variant, fieldMappings }
+        : variant
+    )),
+  }
+}
+
+function withPs3Template(
+  configuration: PublishedPsConfiguration,
+  fieldMappings: PublishedPsConfiguration['templateVariants'][number]['fieldMappings'],
+  fieldDiscovery: Record<string, unknown>,
+): PublishedPsConfiguration {
+  return {
+    ...configuration,
+    templateVariants: configuration.templateVariants.map((variant) => (
+      variant.documentKind === 'ps3'
+        ? { ...variant, fieldMappings, fieldDiscovery }
         : variant
     )),
   }

@@ -14,7 +14,7 @@ import {
   type PublishedPsSystem,
   type PublishedPsTemplateVariant,
 } from './configuration'
-import { legacyPs1FieldMappingsForDiscovery } from './seed-config'
+import { legacyPs1FieldMappingsForDiscovery, legacyPs3FieldMappingsForDiscovery } from './seed-config'
 
 export type PsGenerationMode = 'ps1_only' | 'ps3_only' | 'both'
 export type PsGeneratedDocumentKind = 'ps1' | 'ps3'
@@ -473,13 +473,16 @@ async function fillTemplatePdf(
 function fieldMappingsWithLegacyDefaults(
   template: PublishedPsTemplateVariant,
 ): PsResolvedFieldMapping[] {
-  if (template.documentKind !== 'ps1') return template.fieldMappings
+  if (template.documentKind !== 'ps1' && template.documentKind !== 'ps3') return template.fieldMappings
 
   const discovered = discoveredTemplateFields(template.fieldDiscovery)
   if (discovered.size === 0) return template.fieldMappings
 
   const existing = new Set(template.fieldMappings.map(mappingSemanticKey))
-  const defaults = legacyPs1FieldMappingsForDiscovery(template.fieldDiscovery)
+  const legacyMappings = template.documentKind === 'ps3'
+    ? legacyPs3FieldMappingsForDiscovery(template.fieldDiscovery)
+    : legacyPs1FieldMappingsForDiscovery(template.fieldDiscovery)
+  const defaults = legacyMappings
     .filter((mapping) => !existing.has(mappingSemanticKey(mapping)))
     .map((mapping) => ({
       fieldName: mapping.fieldName,
@@ -592,17 +595,18 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
 
   if (mapping.sourceType === 'project_value') {
     if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name', 'Name2', 'Name02', 'Name-2']
-    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address', 'Address2', 'Address02']
-    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
-    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription', 'LotDescription2', 'LotDescription02']
+    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address', 'Address2', 'Address02', 'Address-2', 'Address-4']
+    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber', 'BC']
+    if (key === 'jobNumber') return ['job_number', 'jobNumber', 'Job Number', 'JobNumber']
+    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription', 'LotDescription2', 'LotDescription02', 'Legal']
   }
 
   if (mapping.sourceType === 'description_template') {
-    return ['description', 'Description', 'Description2', 'Description02', 'pool_description', 'Pool Description']
+    return ['description', 'Description', 'Description2', 'Description02', 'Description3', 'pool_description', 'Pool Description']
   }
 
   if (mapping.sourceType === 'date') {
-    return ['completion_date', 'Completion Date', 'Date0', 'Date', 'Date1', 'Date01']
+    return ['completion_date', 'Completion Date', 'Date0', 'Date', 'Date1', 'Date01', 'Date-4', 'Date03']
   }
 
   if (mapping.sourceType === 'selected_option') {
@@ -622,25 +626,25 @@ function selectedOptionAliases(sourceKey: string | null): string[] {
     case 'thickness':
       return ['thickness', 'Thickness']
     case 'structure_type':
-      return ['structure_type', 'Structure', 'Structure2', 'Structure02', 'Structure Type']
+      return ['structure_type', 'Structure', 'Structure2', 'Structure02', 'Structure Type', 'Description3']
     case 'structure_material.timber':
-      return ['structure_material_timber', 'TimberTB']
+      return ['structure_material_timber', 'TimberTB', 'Timber']
     case 'structure_material.concrete':
-      return ['structure_material_concrete', 'ConcreteTB']
+      return ['structure_material_concrete', 'ConcreteTB', 'Concrete']
     case 'structure_material.steel':
-      return ['structure_material_steel', 'SteelTB']
+      return ['structure_material_steel', 'SteelTB', 'Steel']
     case 'location.internal':
-      return ['location_internal', 'InternalTB']
+      return ['location_internal', 'InternalTB', 'Internal']
     case 'location.external':
-      return ['location_external', 'ExternalTB']
+      return ['location_external', 'ExternalTB', 'External']
     case 'structure_built.new':
-      return ['structure_built_new', 'NewTB']
+      return ['structure_built_new', 'NewTB', 'New']
     case 'structure_built.existing':
-      return ['structure_built_existing', 'ExistingTB']
+      return ['structure_built_existing', 'ExistingTB', 'Existing']
     case 'glass_type.toughened':
-      return ['glass_type_toughened', 'ToughenedTB']
+      return ['glass_type_toughened', 'ToughenedTB', 'Toughened']
     case 'glass_type.laminated':
-      return ['glass_type_laminated', 'LaminatedTB']
+      return ['glass_type_laminated', 'LaminatedTB', 'Laminated']
     default:
       return []
   }

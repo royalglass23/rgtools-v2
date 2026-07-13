@@ -8,7 +8,7 @@ import { getStorageDriver } from '@/lib/storage'
 import { createR2PresignedPutUrl } from '@/lib/storage/r2'
 import { psConfigVersions } from '@rgtools/db/schema-ps-generator'
 
-const VARIANT_KINDS = new Set(['standard_ps1', 'pool_ps1'])
+const VARIANT_KINDS = new Set(['standard_ps1', 'pool_ps1', 'ps3'])
 const MAX_TEMPLATE_UPLOAD_BYTES = 25 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
@@ -64,7 +64,7 @@ async function readUploadRequest(request: NextRequest): Promise<
   | { ok: true; input: {
     configVersionId: string
     systemPart: string
-    variantKind: 'standard_ps1' | 'pool_ps1'
+    variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3'
     filename: string
     contentType: string
     size: number
@@ -100,7 +100,7 @@ async function readUploadRequest(request: NextRequest): Promise<
     input: {
       configVersionId,
       systemPart,
-      variantKind: variantKind as 'standard_ps1' | 'pool_ps1',
+      variantKind: variantKind as 'standard_ps1' | 'pool_ps1' | 'ps3',
       filename,
       contentType,
       size,
@@ -111,7 +111,7 @@ async function readUploadRequest(request: NextRequest): Promise<
 function templateObjectKey(input: {
   configVersionId: string
   systemPart: string
-  variantKind: 'standard_ps1' | 'pool_ps1'
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3'
   filename: string
 }) {
   return `drafts/ps-generator/templates/${input.configVersionId}/${sanitizeObjectPart(input.systemPart)}/${input.variantKind}/${sanitizeObjectPart(input.filename)}`

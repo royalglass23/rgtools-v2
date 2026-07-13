@@ -55,6 +55,24 @@ describe('POST /api/ps-generator/template-upload', () => {
     })
   })
 
+  it('returns a direct R2 upload URL for the shared PS3 template', async () => {
+    const response = await POST(request({
+      systemPart: 'global',
+      variantKind: 'ps3',
+      filename: 'PS3 Template.pdf',
+    }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(createR2PresignedPutUrlMock).toHaveBeenCalledWith({
+      key: 'drafts/ps-generator/templates/config-1/global/ps3/PS3-Template.pdf',
+      contentType: 'application/pdf',
+      expiresSeconds: 600,
+    })
+    expect(body.objectKey).toBe('drafts/ps-generator/templates/config-1/global/ps3/PS3-Template.pdf')
+    expect(body.originalFilename).toBe('PS3 Template.pdf')
+  })
+
   it('rejects large template metadata before issuing a signed URL', async () => {
     const response = await POST(request({ size: 26 * 1024 * 1024 }))
     const body = await response.json()

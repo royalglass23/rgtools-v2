@@ -27,7 +27,7 @@ describe('PsConfigurationSystemsEditor', () => {
         },
       }))
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
-    const createAction = vi.fn(async () => undefined)
+    const createAction = vi.fn(async (_formData: FormData) => undefined)
 
     render(
       <PsConfigurationSystemsEditor
