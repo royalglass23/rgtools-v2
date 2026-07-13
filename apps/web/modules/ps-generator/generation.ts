@@ -173,7 +173,10 @@ export async function generateProducerStatementPackage(
   for (const documentKind of documentKindsForMode(input.mode)) {
     const template = selectTemplateVariant(configuration, system.slug, documentKind, input.selections)
     if (!template) {
-      throw new PsGenerationError('published_template_missing', `No published ${documentKind.toUpperCase()} template is available for ${system.displayName}.`, {
+      const message = documentKind === 'ps3'
+        ? 'No published PS3 template is available.'
+        : `No published ${documentKind.toUpperCase()} template is available for ${system.displayName}.`
+      throw new PsGenerationError('published_template_missing', message, {
         systemSlug: system.slug,
         documentKind,
       })
@@ -367,10 +370,17 @@ function selectTemplateVariant(
   documentKind: PsGeneratedDocumentKind,
   selections: Record<string, string>,
 ): PublishedPsTemplateVariant | null {
+  if (documentKind === 'ps3') {
+    const candidates = configuration.templateVariants.filter((variant) => variant.documentKind === 'ps3')
+    return candidates.find((variant) => variant.systemSlug === null && variant.variantKind === 'ps3')
+      ?? candidates.find((variant) => variant.variantKind === 'ps3')
+      ?? candidates[0]
+      ?? null
+  }
+
   const candidates = configuration.templateVariants.filter((variant) => (
     variant.systemSlug === systemSlug && variant.documentKind === documentKind
   ))
-  if (documentKind === 'ps3') return candidates.find((variant) => variant.variantKind === 'ps3') ?? candidates[0] ?? null
 
   const preferredKind = isPoolStructure(selections.structure_type)
     ? 'pool_ps1'

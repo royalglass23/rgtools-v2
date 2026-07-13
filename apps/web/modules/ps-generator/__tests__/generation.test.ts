@@ -280,6 +280,46 @@ describe('Producer Statement generation', () => {
     expect(result.outputs[0].templateLabel).toBe('Double Disc PS3')
   })
 
+  it('uses the shared PS3 template for systems without their own PS3 template', async () => {
+    const rows = createPsGeneratorSeedRows()
+    rows.systems.push({
+      id: 'seed-system:jh-clamp',
+      configVersionId: rows.versions[0].id,
+      slug: 'jh-clamp',
+      displayName: 'Jh Clamp',
+      state: 'published',
+      sortOrder: 30,
+      heightRules: {},
+      metadata: {},
+      archivedAt: null,
+    })
+    const configuration = buildPublishedPsConfigurationReadModel(rows)
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps3.pdf': await createFixturePdf([
+        { name: 'completion_date', type: 'text' },
+        { name: 'description', type: 'text' },
+      ]),
+    }
+
+    const result = await generateProducerStatementPackage({
+      ...defaultInput('ps3_only'),
+      selections: {
+        ...defaultInput('ps3_only').selections,
+        system: 'jh-clamp',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+    })
+
+    expect(result.outputs.map((output) => output.documentKind)).toEqual(['ps3'])
+    expect(result.outputs[0]).toMatchObject({
+      templateLabel: 'Double Disc PS3',
+      sourceObjectKey: 'templates/ps-generator/wordpress/double-disc/ps3.pdf',
+    })
+  })
+
   it('ignores draft template variants when generating from the published read model', async () => {
     const rows = createPsGeneratorSeedRows()
     rows.templateVariants.unshift({
