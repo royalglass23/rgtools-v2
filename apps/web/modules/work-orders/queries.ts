@@ -363,6 +363,7 @@ function listOrderBy(sort: WorkOrderSort) {
       desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
       sql`${workOrders.installDate} asc nulls last`,
       asc(workOrders.updatedAt),
+      asc(workOrders.id),
     ]
   }
   if (sort === 'lead_score_asc') {

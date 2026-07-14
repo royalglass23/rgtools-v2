@@ -2,10 +2,9 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { batchDeleteWorkOrdersAction } from './actions'
-import type { WorkOrderLevel } from './domain'
-import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection, WorkOrderSortKey } from './list-filters'
+import type { WorkOrderListFilters } from './list-filters'
 import type { WorkOrderRow } from './queries'
 import type { WorkOrderSummaryFieldConfig } from './summary-config'
 import { WorkOrderItemsSummary } from './WorkOrderItemsSummary'
@@ -99,11 +98,10 @@ export function WorkOrdersTableControls({
       )}
 
       <WorkOrdersTable
+        key={JSON.stringify(filters)}
         rows={rows}
         filters={filters}
         fields={fields}
-        basePath={basePath}
-        paramPrefix={paramPrefix}
         isAdmin={isAdmin}
         selectedSet={selectedSet}
         allVisibleSelected={allVisibleSelected}
@@ -217,8 +215,6 @@ function WorkOrdersTable({
   rows,
   filters,
   fields,
-  basePath,
-  paramPrefix,
   isAdmin,
   selectedSet,
   allVisibleSelected,
@@ -228,152 +224,127 @@ function WorkOrdersTable({
   rows: WorkOrderRow[]
   filters: WorkOrderListFilters
   fields: WorkOrderSummaryFieldConfig[]
-  basePath: string
-  paramPrefix: string
   isAdmin: boolean
   selectedSet: Set<string>
   allVisibleSelected: boolean
   onToggleWorkOrder: (workOrderId: string) => void
   onToggleAllVisible: () => void
 }) {
-  const searchParams = useSearchParams()
+  const [collapsedWorkOrderIds, setCollapsedWorkOrderIds] = useState<string[]>([])
   const emptyMessage = hasActiveListFilters(filters)
     ? 'No Work Orders match these filters.'
     : 'No current Work Orders yet.'
-  const visibleFields = fields.filter((field) => field.visible)
+
+  function toggleExpanded(workOrderId: string) {
+    setCollapsedWorkOrderIds((current) => (
+      current.includes(workOrderId)
+        ? current.filter((id) => id !== workOrderId)
+        : [...current, workOrderId]
+    ))
+  }
 
   return (
     <div className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1280px] table-auto divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <tr>
-              {isAdmin && (
-                <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={onToggleAllVisible}
-                    aria-label="Select all visible Work Orders"
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                </th>
-              )}
-              {visibleFields.map((field) => (
-                <SortHeader
-                  key={field.id}
-                  field={field}
-                  filters={filters}
-                  basePath={basePath}
-                  paramPrefix={paramPrefix}
-                  searchParams={searchParams}
-                />
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {rows.map((row) => (
-              <Fragment key={row.id}>
-                <tr className="hover:bg-gray-50">
+      {isAdmin && rows.length > 0 && (
+        <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={onToggleAllVisible}
+              aria-label="Select all visible Work Orders"
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            Select all visible Work Orders
+          </label>
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-200">
+        {rows.map((row) => {
+          const isExpanded = !collapsedWorkOrderIds.includes(row.id)
+          const workOrderLabel = row.jobNumber ?? row.id
+
+          return (
+            <section key={row.id} role="group" aria-label={`Work Order ${workOrderLabel}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3 bg-gray-50 px-4 py-3">
+                <div className="flex min-w-0 items-start gap-3">
                   {isAdmin && (
-                    <td className="px-4 py-3 align-top">
-                      <input
-                        type="checkbox"
-                        checked={selectedSet.has(row.id)}
-                        onChange={() => onToggleWorkOrder(row.id)}
-                        aria-label={`Select Work Order for ${row.clientName}`}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                    </td>
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(row.id)}
+                      onChange={() => onToggleWorkOrder(row.id)}
+                      aria-label={`Select Work Order for ${row.clientName}`}
+                      className="mt-1 h-4 w-4 rounded border-gray-300"
+                    />
                   )}
-                  {visibleFields.map((field) => <SummaryCell key={field.id} field={field} row={row} />)}
-                </tr>
-                <tr className="bg-white">
-                  <td colSpan={visibleFields.length + (isAdmin ? 1 : 0)}>
-                    <WorkOrderItemsSummary items={row.items} />
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={visibleFields.length + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">
-                  {emptyMessage}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} Work Order ${workOrderLabel}`}
+                    onClick={() => toggleExpanded(row.id)}
+                    className="mt-0.5 rounded p-1 text-gray-600 hover:bg-gray-200 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-[#142B3A]"
+                  >
+                    <span aria-hidden="true">{isExpanded ? '⌄' : '›'}</span>
+                  </button>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <Link href={`/work-orders/${row.id}`} className="font-semibold text-gray-950 hover:underline">
+                        {row.jobNumber ?? 'No job number'}
+                      </Link>
+                      <span className="font-medium text-gray-800">{row.clientName}</span>
+                      <span className="rounded bg-white px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+                        {row.activeItemCount} active {row.activeItemCount === 1 ? 'item' : 'items'}
+                      </span>
+                      <span className="rounded bg-white px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+                        Lead Score {row.leadScore ?? 'Not scored'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600">{row.jobAddress ?? 'No job address'}</p>
+                  </div>
+                </div>
+                <ParentSummaryFields row={row} fields={fields} />
+              </div>
+
+              {isExpanded && <WorkOrderItemsSummary items={row.items} showCount={false} />}
+            </section>
+          )
+        })}
+        {rows.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-gray-500">{emptyMessage}</p>
+        )}
       </div>
     </div>
   )
 }
 
-function SortHeader({
-  field,
-  filters,
-  basePath,
-  paramPrefix,
-  searchParams,
-}: {
-  field: WorkOrderSummaryFieldConfig
-  filters: WorkOrderListFilters
-  basePath: string
-  paramPrefix: string
-  searchParams: ReturnType<typeof useSearchParams>
-}) {
-  const sortKey = sortKeyForField(field.id)
-  const current = splitSort(filters.sort)
-  const isActive = current.key === sortKey
-  const direction = isActive ? current.direction : defaultDirectionFor(sortKey)
-  const nextDirection = isActive ? oppositeDirection(direction) : direction
-  const params = paramsFor(filters, paramPrefix, searchParams)
-  params.set(`${paramPrefix}sort`, `${sortKey}_${nextDirection}` as WorkOrderSort)
-  params.set(`${paramPrefix}page`, '1')
+function ParentSummaryFields({ row, fields }: { row: WorkOrderRow; fields: WorkOrderSummaryFieldConfig[] }) {
+  const parentContextFields = new Set(['client', 'jobNumber', 'jobAddress', 'leadScore'])
+  const supplementaryFields = fields.filter((field) => field.visible && !parentContextFields.has(field.id))
+  if (supplementaryFields.length === 0) return null
 
   return (
-    <th className="px-4 py-3">
-      <Link
-        href={`${basePath}?${params}`}
-        className="inline-flex items-center gap-1 rounded text-left hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-[#142B3A] focus:ring-offset-2"
-        aria-label={`Sort by ${field.label} ${nextDirection === 'asc' ? 'ascending' : 'descending'}`}
-      >
-        <span>{field.label}</span>
-        <span className={isActive ? 'text-gray-700' : 'text-gray-300'}>{isActive ? (direction === 'asc' ? '↑' : '↓') : '↕'}</span>
-      </Link>
-    </th>
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3 lg:grid-cols-4">
+      {supplementaryFields.map((field) => (
+        <div key={field.id}>
+          <dt className="text-gray-500">{field.label}</dt>
+          <dd className="font-medium text-gray-800">{summaryValue(field.id, row)}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
-function SummaryCell({ field, row }: { field: WorkOrderSummaryFieldConfig; row: WorkOrderRow }) {
-  const href = `/work-orders/${row.id}`
-
-  if (field.id === 'client') {
-    return (
-      <td className="align-top">
-        <Link href={href} className="block px-4 py-3">
-          <span className="font-medium text-gray-950">{row.clientName}</span>
-          {row.companyName && <span className="block text-xs text-gray-500">{row.companyName}</span>}
-        </Link>
-      </td>
-    )
-  }
-  if (field.id === 'jobNumber') {
-    return (
-      <LinkedCell href={href}>
-        <span>{row.jobNumber ?? '-'}</span>
-        <span className="mt-1 block text-xs text-gray-500">
-          {row.activeItemCount} active {row.activeItemCount === 1 ? 'item' : 'items'}
-        </span>
-      </LinkedCell>
-    )
-  }
-  if (field.id === 'importance') return <LinkedCell href={href}><LevelBadge level={row.importance} /></LinkedCell>
-  if (field.id === 'risk') return <LinkedCell href={href}><LevelBadge level={row.riskLevel} /></LinkedCell>
-  const values: Record<string, string | number | null> = {
+function summaryValue(fieldId: WorkOrderSummaryFieldConfig['id'], row: WorkOrderRow) {
+  if (fieldId === 'importance') return row.importance ? titleCase(row.importance) : '-'
+  if (fieldId === 'risk') return row.riskLevel ? titleCase(row.riskLevel) : '-'
+  const values: Record<WorkOrderSummaryFieldConfig['id'], string | number | null> = {
+    client: row.clientName,
     jobNumber: row.jobNumber,
     jobAddress: row.jobAddress,
     leadScore: row.leadScore,
+    importance: row.importance,
+    risk: row.riskLevel,
     installer: row.installerName,
     stage: row.stageName,
     hardware: row.hardwareStatusName,
@@ -383,17 +354,7 @@ function SummaryCell({ field, row }: { field: WorkOrderSummaryFieldConfig; row: 
     servicem8Status: row.servicem8Status,
     jobDescription: row.jobDescription,
   }
-  return <LinkedCell href={href}>{values[field.id] ?? '-'}</LinkedCell>
-}
-
-function LinkedCell({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <td className="align-top text-gray-700">
-      <Link href={href} className="block px-4 py-3">
-        {children}
-      </Link>
-    </td>
-  )
+  return values[fieldId] ?? '-'
 }
 
 function hasActiveListFilters(filters: WorkOrderListFilters) {
@@ -421,16 +382,6 @@ function Select({ name, label, value, options }: { name: string; label: string; 
       </select>
     </label>
   )
-}
-
-function LevelBadge({ level }: { level: WorkOrderLevel | null }) {
-  if (!level) return <span className="text-gray-400">-</span>
-  const classes = {
-    high: 'bg-red-100 text-red-800',
-    medium: 'bg-amber-100 text-amber-800',
-    low: 'bg-green-100 text-green-800',
-  }[level]
-  return <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${classes}`}>{titleCase(level)}</span>
 }
 
 function PageLink({
@@ -470,7 +421,7 @@ function PageSizeSelect({ filters, basePath, paramPrefix }: { filters: WorkOrder
           onChange={(event) => event.currentTarget.form?.requestSubmit()}
           className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-950"
         >
-          {(['10', '20', '50', '100'] as const).map((n) => <option key={n} value={n}>{n}</option>)}
+          {(['5', '10', '20', '50'] as const).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </label>
     </form>
@@ -497,53 +448,6 @@ function paramsFor(filters: WorkOrderListFilters, paramPrefix: string, searchPar
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}page`, String(filters.page))
   return params
-}
-
-function sortKeyForField(fieldId: WorkOrderSummaryFieldConfig['id']): WorkOrderSortKey {
-  const keys: Record<WorkOrderSummaryFieldConfig['id'], WorkOrderSortKey> = {
-    client: 'client',
-    jobNumber: 'job_number',
-    jobAddress: 'job_address',
-    leadScore: 'lead_score',
-    importance: 'importance',
-    risk: 'risk',
-    installer: 'installer',
-    stage: 'stage',
-    hardware: 'hardware',
-    maintenanceProgram: 'maintenance_program',
-    installDate: 'install_date',
-    dateCompleted: 'date_completed',
-    servicem8Status: 'servicem8_status',
-    jobDescription: 'job_description',
-  }
-  return keys[fieldId]
-}
-
-function splitSort(sort: WorkOrderSort): { key: WorkOrderSortKey; direction: WorkOrderSortDirection } {
-  const direction = sort.endsWith('_asc') ? 'asc' : 'desc'
-  return {
-    key: sort.slice(0, -`_${direction}`.length) as WorkOrderSortKey,
-    direction,
-  }
-}
-
-function defaultDirectionFor(key: WorkOrderSortKey): WorkOrderSortDirection {
-  if (key === 'client'
-    || key === 'job_number'
-    || key === 'job_address'
-    || key === 'installer'
-    || key === 'stage'
-    || key === 'hardware'
-    || key === 'maintenance_program'
-    || key === 'servicem8_status'
-    || key === 'job_description') {
-    return 'asc'
-  }
-  return 'desc'
-}
-
-function oppositeDirection(direction: WorkOrderSortDirection): WorkOrderSortDirection {
-  return direction === 'asc' ? 'desc' : 'asc'
 }
 
 function formatNullableDate(value: string | null) {
