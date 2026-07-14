@@ -135,6 +135,8 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
         lineTotalExcludingGst: workOrderItems.lineTotalExcludingGst,
         generatedLabel: workOrderItems.generatedLabel,
         manualLabelOverride: workOrderItems.manualLabelOverride,
+        labelStatus: workOrderItems.labelStatus,
+        sourceDescriptionFingerprint: workOrderItems.sourceDescriptionFingerprint,
         isActive: workOrderItems.isActive,
       })
       .from(workOrderItems)

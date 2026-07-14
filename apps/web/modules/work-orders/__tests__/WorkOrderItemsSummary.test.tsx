@@ -1,5 +1,10 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../actions', () => ({
+  updateWorkOrderItemLabelAction: vi.fn(),
+  regenerateWorkOrderItemLabelAction: vi.fn(),
+}))
 
 import { WorkOrderItemsSummary } from '../WorkOrderItemsSummary'
 
@@ -71,5 +76,68 @@ describe('WorkOrderItemsSummary', () => {
       'title',
       'Original ServiceM8 glass description\nLine total excluding GST: Not available',
     )
+  })
+
+  it('shows a truncated source fallback and clear pending state after label generation fails', () => {
+    const originalDescription = 'Supply and install a very long frameless shower screen description with dimensions, hardware, finish, and additional production notes'
+
+    render(<WorkOrderItemsSummary items={[{
+      id: 'item-pending',
+      itemCode: 'GLASS-001',
+      quantity: '1.000',
+      originalDescription,
+      lineTotalExcludingGst: '900.00',
+      generatedLabel: null,
+      manualLabelOverride: null,
+      labelStatus: 'failed',
+      isActive: true,
+    }]} />)
+
+    expect(screen.getByText(`${originalDescription.slice(0, 77)}...`)).toBeInTheDocument()
+    expect(screen.getByText('Label pending')).toBeInTheDocument()
+    expect(screen.queryByText(originalDescription)).not.toBeInTheDocument()
+  })
+
+  it('keeps a manual label visible when its ServiceM8 source description changed', () => {
+    render(<WorkOrderItemsSummary items={[{
+      id: 'item-source-changed',
+      itemCode: 'GLASS-001',
+      quantity: '1.000',
+      originalDescription: 'Updated source description',
+      lineTotalExcludingGst: '900.00',
+      generatedLabel: 'Old generated label',
+      manualLabelOverride: 'Staff-approved production label',
+      labelStatus: 'source_changed',
+      isActive: true,
+    }]} />)
+
+    expect(screen.getByText('Staff-approved production label')).toBeInTheDocument()
+    expect(screen.getByText('Source description changed')).toBeInTheDocument()
+  })
+
+  it('lets manage users edit only the short label and confirms AI regeneration', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<WorkOrderItemsSummary canManage items={[{
+      id: 'item-editable',
+      itemCode: 'GLASS-001',
+      quantity: '2.000',
+      originalDescription: 'Immutable ServiceM8 source description',
+      lineTotalExcludingGst: '900.00',
+      generatedLabel: 'Generated production label',
+      manualLabelOverride: null,
+      labelStatus: 'generated',
+      isActive: true,
+    }]} />)
+
+    expect(screen.getByRole('textbox', { name: 'Short label for GLASS-001' })).toHaveValue('Generated production label')
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.getByText('Qty 2')).not.toHaveAttribute('contenteditable')
+    expect(screen.getByText('GLASS-001')).not.toHaveAttribute('contenteditable')
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Regenerate with AI' }).closest('form')!)
+    expect(confirm).toHaveBeenCalledWith('Regenerate this label with AI? This will replace the current label.')
+
+    confirm.mockRestore()
   })
 })

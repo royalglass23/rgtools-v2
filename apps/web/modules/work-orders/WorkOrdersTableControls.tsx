@@ -26,6 +26,7 @@ export function WorkOrdersTableControls({
   basePath = '/work-orders',
   paramPrefix = '',
   isAdmin = false,
+  canManage = false,
 }: {
   rows: WorkOrderRow[]
   filters: WorkOrderListFilters
@@ -36,6 +37,7 @@ export function WorkOrdersTableControls({
   basePath?: string
   paramPrefix?: string
   isAdmin?: boolean
+  canManage?: boolean
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -103,6 +105,7 @@ export function WorkOrdersTableControls({
         filters={filters}
         fields={fields}
         isAdmin={isAdmin}
+        canManage={canManage}
         selectedSet={selectedSet}
         allVisibleSelected={allVisibleSelected}
         onToggleWorkOrder={toggleWorkOrder}
@@ -216,6 +219,7 @@ function WorkOrdersTable({
   filters,
   fields,
   isAdmin,
+  canManage,
   selectedSet,
   allVisibleSelected,
   onToggleWorkOrder,
@@ -225,6 +229,7 @@ function WorkOrdersTable({
   filters: WorkOrderListFilters
   fields: WorkOrderSummaryFieldConfig[]
   isAdmin: boolean
+  canManage: boolean
   selectedSet: Set<string>
   allVisibleSelected: boolean
   onToggleWorkOrder: (workOrderId: string) => void
@@ -306,7 +311,7 @@ function WorkOrdersTable({
                 <ParentSummaryFields row={row} fields={fields} />
               </div>
 
-              {isExpanded && <WorkOrderItemsSummary items={row.items} showCount={false} />}
+              {isExpanded && <WorkOrderItemsSummary items={row.items} showCount={false} canManage={canManage} />}
             </section>
           )
         })}

@@ -69,6 +69,7 @@ export default async function WorkOrdersPage({
         options={options}
         total={total}
         pageCount={pageCount}
+        canManage={permissions.canManage}
       />
     </div>
   )

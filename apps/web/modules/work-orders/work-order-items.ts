@@ -6,6 +6,8 @@ export type WorkOrderItemSummaryRow = {
   lineTotalExcludingGst: string | null
   generatedLabel: string | null
   manualLabelOverride: string | null
+  labelStatus?: 'pending' | 'generated' | 'manual' | 'failed' | 'source_changed'
+  sourceDescriptionFingerprint?: string | null
   isActive: boolean
 }
 
@@ -29,6 +31,8 @@ export function attachActiveItemsToWorkOrders<T extends { id: string }>(
       lineTotalExcludingGst: item.lineTotalExcludingGst,
       generatedLabel: item.generatedLabel,
       manualLabelOverride: item.manualLabelOverride,
+      labelStatus: item.labelStatus,
+      sourceDescriptionFingerprint: item.sourceDescriptionFingerprint,
       isActive: item.isActive,
     }
     groupedItems.push(summaryItem)

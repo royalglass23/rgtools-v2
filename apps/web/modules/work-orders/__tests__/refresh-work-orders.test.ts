@@ -8,14 +8,18 @@ const transactionUpdates = vi.hoisted(() => [] as Array<{ table: string; values:
 const transactionConflictSets = vi.hoisted(() => [] as Array<{ table: string; values: Record<string, unknown> }>)
 const mockTransaction = vi.hoisted(() => vi.fn())
 const mockSelect = vi.hoisted(() => vi.fn())
+const mockUpdate = vi.hoisted(() => vi.fn())
 const mockRecordRefreshInsert = vi.hoisted(() => vi.fn())
 const refreshRunValues = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+const persistedLabelRows = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+const labelUpdates = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 const mockGetWorkOrderBillingExclusions = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/db', () => ({
   db: {
     insert: mockRecordRefreshInsert,
     select: mockSelect,
+    update: mockUpdate,
     transaction: mockTransaction,
   },
 }))
@@ -43,6 +47,8 @@ beforeEach(() => {
   transactionUpdates.length = 0
   transactionConflictSets.length = 0
   refreshRunValues.length = 0
+  persistedLabelRows.length = 0
+  labelUpdates.length = 0
 
   mockRecordRefreshInsert.mockReturnValue({
     values: vi.fn(async (values: Record<string, unknown>) => {
@@ -53,11 +59,22 @@ beforeEach(() => {
   mockGetWorkOrderBillingExclusions.mockResolvedValue(['invoice', 'partial invoice', 'deposit'])
 
   mockSelect.mockReturnValue({
-    from: vi.fn(() => ({
-      where: vi.fn(() => ({
-        limit: vi.fn(async () => []),
-      })),
-    })),
+    from: vi.fn((table: Parameters<typeof getTableName>[0]) => {
+      if (getTableName(table) === 'work_order_items') {
+        return { where: vi.fn(async () => persistedLabelRows) }
+      }
+      return {
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => []),
+        })),
+      }
+    }),
+  })
+  mockUpdate.mockReturnValue({
+    set: vi.fn((values: Record<string, unknown>) => {
+      labelUpdates.push(values)
+      return { where: vi.fn(async () => []) }
+    }),
   })
 
   mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => {
@@ -227,6 +244,43 @@ describe('refreshWorkOrdersFromServiceM8', () => {
       expect(write.values).not.toHaveProperty('hardwareStatusOptionId')
       expect(write.values).not.toHaveProperty('maintenanceProgram')
     }
+  })
+
+  it('keeps a successful ServiceM8 refresh when OpenAI label generation fails', async () => {
+    persistedLabelRows.push({
+      id: 'item-1',
+      originalDescription: 'Shower glass',
+      generatedLabel: null,
+      manualLabelOverride: null,
+      labelStatus: 'pending',
+      sourceDescriptionFingerprint: null,
+    })
+    const generateLabel = vi.fn(async () => {
+      throw new Error('OpenAI unavailable')
+    })
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/job.json')) {
+        return Response.json([{ uuid: 'job-1', active: 1, status: 'Work Order', generated_job_id: 'R260210' }])
+      }
+      if (path.startsWith('/jobmaterial.json')) {
+        return Response.json([{ uuid: 'item-1', active: 1, job_uuid: 'job-1', name: 'Shower glass', quantity: '1' }])
+      }
+      return Response.json([])
+    })
+
+    await expect(refreshWorkOrdersFromServiceM8(request, generateLabel)).resolves.toEqual({
+      synced: 1,
+      itemsSynced: 1,
+      excludedLineCount: 0,
+    })
+
+    expect(generateLabel).toHaveBeenCalledOnce()
+    expect(labelUpdates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelStatus: 'failed', generatedLabel: null }),
+    ]))
+    expect(transactionValues).toEqual(expect.arrayContaining([
+      { table: 'work_order_refresh_runs', values: expect.objectContaining({ status: 'success' }) },
+    ]))
   })
 
   it('applies configured billing exclusions and reports job, item, and exclusion counts', async () => {
