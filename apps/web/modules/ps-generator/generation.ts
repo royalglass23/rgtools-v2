@@ -422,8 +422,8 @@ async function fillTemplatePdf(
   for (const mapping of fieldMappings) {
     if (mapping.fieldType === 'text') {
       const textValue = resolveTextValue(mapping, context)
-      const field = findTextField(form, mapping)
-      if (!field) {
+      const fields = findTextFields(form, mapping, fieldMappings)
+      if (fields.length === 0) {
         if (isOptionalProjectField(mapping)) continue
         if (mapping.legacyDefault) continue
 
@@ -435,8 +435,10 @@ async function fillTemplatePdf(
           availableFields: availableTextFields(form),
         })
       }
-      if (shouldWrapTextField(mapping)) field.enableMultiline()
-      field.setText(textValue)
+      for (const field of fields) {
+        if (shouldWrapTextField(mapping)) field.enableMultiline()
+        field.setText(textValue)
+      }
       continue
     }
 
@@ -543,6 +545,36 @@ function findTextField(
   }
 
   return findNormalizedTextField(form, candidateFieldNames(mapping))
+}
+
+function findTextFields(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+  fieldMappings: PsResolvedFieldMapping[],
+): PDFTextField[] {
+  const firstField = findTextField(form, mapping)
+  if (!firstField) return []
+
+  const normalizedNames = new Set(candidateFieldNames(mapping).map(normalizeFieldName))
+  const matchedFamily = normalizedFieldFamily(firstField.getName())
+  const normalizedMappingFieldName = normalizeFieldName(mapping.fieldName)
+  const fieldsClaimedByOtherMappings = new Set(fieldMappings
+    .filter((candidate) => candidate !== mapping && candidate.fieldType === 'text')
+    .map((candidate) => normalizeFieldName(candidate.fieldName)))
+
+  return form.getFields().filter((field): field is PDFTextField => (
+    field instanceof PDFTextField
+    && normalizedNames.has(normalizeFieldName(field.getName()))
+    && normalizedFieldFamily(field.getName()) === matchedFamily
+    && (
+      normalizeFieldName(field.getName()) === normalizedMappingFieldName
+      || !fieldsClaimedByOtherMappings.has(normalizeFieldName(field.getName()))
+    )
+  ))
+}
+
+function normalizedFieldFamily(value: string): string {
+  return normalizeFieldName(value).replace(/\d+$/, '')
 }
 
 function findCheckBox(
