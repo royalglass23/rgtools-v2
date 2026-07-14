@@ -45,6 +45,7 @@ import {
 } from './item-label-lifecycle'
 import { generateWorkOrderItemLabel, type WorkOrderItemLabelGenerator } from './item-labels'
 import {
+  assertWorkOrderItemOperationalField,
   parseWorkOrderItemOperationalValue,
   readWorkOrderItemOperationalValue,
   workOrderItemOperationalEventName,
@@ -435,6 +436,7 @@ export async function bulkApplyWorkOrderItemOperationalFieldAction(
   field: WorkOrderItemOperationalField,
 ) {
   await assertCurrentUserCanManageWorkOrders()
+  assertWorkOrderItemOperationalField(field)
   const session = await auth()
 
   const result = await db.transaction(async (tx) => {

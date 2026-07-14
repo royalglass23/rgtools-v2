@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   bulkApplyWorkOrderItemOperationalFieldAction,
   regenerateWorkOrderItemLabelAction,
@@ -157,7 +157,7 @@ function ItemOperationalFields({
 
         return (
           <EditableOperationalField
-            key={definition.field}
+            key={`${definition.field}:${definition.value}`}
             itemId={item.id}
             workOrderId={item.workOrderId}
             itemLabel={itemLabel}
@@ -196,11 +196,6 @@ function EditableOperationalField({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const label = operationalFieldLabel(field)
-
-  useEffect(() => {
-    setValue(initialValue)
-    setPersistedValue(initialValue)
-  }, [initialValue])
 
   async function save(nextValue: string) {
     setValue(nextValue)

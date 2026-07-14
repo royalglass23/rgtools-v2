@@ -1,3 +1,5 @@
+import type { WorkOrderLevel } from './domain'
+
 export const WORK_ORDER_ITEM_OPERATIONAL_FIELDS = [
   'installer',
   'stage',
@@ -32,6 +34,7 @@ export function parseWorkOrderItemOperationalValue(
   field: WorkOrderItemOperationalField,
   rawValue: string | null,
 ): WorkOrderItemOperationalValue {
+  assertWorkOrderItemOperationalField(field)
   const value = rawValue?.trim() || null
 
   if (field === 'maintenanceProgram') {
@@ -57,6 +60,13 @@ export function parseWorkOrderItemOperationalValue(
 
   if (value === null || UUID_PATTERN.test(value)) return value
   throw new Error(`${operationalFieldLabel(field)} must be a valid option.`)
+}
+
+export function assertWorkOrderItemOperationalField(
+  field: unknown,
+): asserts field is WorkOrderItemOperationalField {
+  if ((WORK_ORDER_ITEM_OPERATIONAL_FIELDS as readonly unknown[]).includes(field)) return
+  throw new Error(`Work Order Item field ${String(field)} cannot be edited.`)
 }
 
 export function readWorkOrderItemOperationalValue(
@@ -116,4 +126,3 @@ function isIsoDate(value: string) {
     && parsed.getUTCMonth() === month - 1
     && parsed.getUTCDate() === day
 }
-import type { WorkOrderLevel } from './domain'

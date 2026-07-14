@@ -179,6 +179,18 @@ describe('work order action permissions', () => {
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
+  it('rejects a forged Work Order Item field name before starting a write transaction', async () => {
+    await expect(
+      updateWorkOrderItemOperationalFieldAction(
+        'item-1',
+        'clientName' as never,
+        null,
+      ),
+    ).rejects.toThrow('Work Order Item field clientName cannot be edited.')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
   it('bulk applies one field only to changed active sibling items and audits each change', async () => {
     const updateSet = vi.fn(() => ({ where: vi.fn(async () => []) }))
     const insertValues = vi.fn(async () => [])

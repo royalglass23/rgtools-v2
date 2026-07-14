@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { WorkOrdersTableControls } from '../WorkOrdersTableControls'
 import type { WorkOrderListFilters } from '../list-filters'
 import type { WorkOrderRow } from '../queries'
+import type { WorkOrderSummaryFieldConfig } from '../summary-config'
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -84,15 +85,39 @@ describe('WorkOrdersTableControls', () => {
     expect(screen.getByText('Page 1 of 1').parentElement).toHaveClass('justify-center')
     expect(pageSize.closest('div')).toHaveClass('justify-end')
   })
+
+  it('renders operational ownership from items without showing legacy parent values', () => {
+    const row = workOrder({
+      id: 'job-1',
+      jobNumber: 'R100',
+      clientName: 'Aroha Glass',
+      leadScore: 91,
+      itemLabel: 'Shower glass',
+    })
+    row.installerName = 'Legacy parent installer'
+    row.items[0].installerName = 'Item installer'
+
+    renderDashboard([row], [{
+      id: 'installer',
+      label: 'Installer',
+      source: 'rg',
+      visible: true,
+      filterable: false,
+      order: 1,
+    }])
+
+    expect(screen.getByText('Item installer')).toBeInTheDocument()
+    expect(screen.queryByText('Legacy parent installer')).not.toBeInTheDocument()
+  })
 })
 
-function renderDashboard(rows: WorkOrderRow[]) {
+function renderDashboard(rows: WorkOrderRow[], fields: WorkOrderSummaryFieldConfig[] = []) {
   return render(
     <WorkOrdersTableControls
       rows={rows}
       filters={filters}
-      fields={[]}
-      options={{ stages: [], hardwareStatuses: [] }}
+      fields={fields}
+      options={{ installers: [], stages: [], hardwareStatuses: [] }}
       total={rows.length}
       pageCount={1}
     />,
@@ -138,6 +163,7 @@ function workOrder({
     activeItemCount: 1,
     items: [{
       id: `${id}-item`,
+      workOrderId: id,
       itemCode: 'GLASS-01',
       quantity: '1.000',
       originalDescription: `${itemLabel} full ServiceM8 description`,
@@ -145,6 +171,17 @@ function workOrder({
       generatedLabel: itemLabel,
       manualLabelOverride: null,
       isActive: true,
+      installerId: null,
+      installerName: null,
+      stageOptionId: null,
+      stageName: null,
+      hardwareStatusOptionId: null,
+      hardwareStatusName: null,
+      maintenanceProgram: false,
+      installDate: null,
+      dateCompleted: null,
+      riskLevel: null,
+      importance: null,
     }],
   }
 }

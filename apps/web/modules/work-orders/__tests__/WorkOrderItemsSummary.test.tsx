@@ -12,6 +12,27 @@ vi.mock('../actions', () => ({
 }))
 
 import { WorkOrderItemsSummary } from '../WorkOrderItemsSummary'
+import type { WorkOrderItemSummaryRow } from '../work-order-items'
+
+function workOrderItem(
+  item: Partial<WorkOrderItemSummaryRow> & Pick<WorkOrderItemSummaryRow, 'id' | 'itemCode' | 'quantity' | 'originalDescription' | 'lineTotalExcludingGst' | 'generatedLabel' | 'manualLabelOverride' | 'isActive'>,
+): WorkOrderItemSummaryRow {
+  return {
+    workOrderId: 'work-order-1',
+    installerId: null,
+    installerName: null,
+    stageOptionId: null,
+    stageName: null,
+    hardwareStatusOptionId: null,
+    hardwareStatusName: null,
+    maintenanceProgram: false,
+    installDate: null,
+    dateCompleted: null,
+    riskLevel: null,
+    importance: null,
+    ...item,
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -20,7 +41,7 @@ beforeEach(() => {
 describe('WorkOrderItemsSummary', () => {
   it('shows every active ServiceM8 item beneath one parent count', () => {
     render(<WorkOrderItemsSummary items={[
-      {
+      workOrderItem({
         id: 'item-1',
         itemCode: 'GLASS-001',
         quantity: '1.000',
@@ -29,8 +50,8 @@ describe('WorkOrderItemsSummary', () => {
         generatedLabel: null,
         manualLabelOverride: null,
         isActive: true,
-      },
-      {
+      }),
+      workOrderItem({
         id: 'item-2',
         itemCode: 'HARDWARE-001',
         quantity: '2.000',
@@ -39,7 +60,7 @@ describe('WorkOrderItemsSummary', () => {
         generatedLabel: null,
         manualLabelOverride: null,
         isActive: true,
-      },
+      }),
     ]} />)
 
     expect(screen.getByText('2 active items')).toBeInTheDocument()
@@ -58,8 +79,8 @@ describe('WorkOrderItemsSummary', () => {
 
   it('marks removed rows while keeping the active count unchanged', () => {
     render(<WorkOrderItemsSummary items={[
-      { id: 'item-active', itemCode: 'GLASS-001', quantity: '1.000', originalDescription: 'Current glass', lineTotalExcludingGst: '900.00', generatedLabel: null, manualLabelOverride: null, isActive: true },
-      { id: 'item-removed', itemCode: 'OLD-001', quantity: '1.000', originalDescription: 'Removed glass', lineTotalExcludingGst: '800.00', generatedLabel: null, manualLabelOverride: null, isActive: false },
+      workOrderItem({ id: 'item-active', itemCode: 'GLASS-001', quantity: '1.000', originalDescription: 'Current glass', lineTotalExcludingGst: '900.00', generatedLabel: null, manualLabelOverride: null, isActive: true }),
+      workOrderItem({ id: 'item-removed', itemCode: 'OLD-001', quantity: '1.000', originalDescription: 'Removed glass', lineTotalExcludingGst: '800.00', generatedLabel: null, manualLabelOverride: null, isActive: false }),
     ]} />)
 
     expect(screen.getByText('1 active item')).toBeInTheDocument()
@@ -69,7 +90,7 @@ describe('WorkOrderItemsSummary', () => {
 
   it('keeps immutable source detail in the hover text when ServiceM8 has no line total', () => {
     render(<WorkOrderItemsSummary items={[
-      {
+      workOrderItem({
         id: 'item-no-total',
         itemCode: 'GLASS-001',
         quantity: '1.000',
@@ -78,7 +99,7 @@ describe('WorkOrderItemsSummary', () => {
         generatedLabel: 'Generated glass label',
         manualLabelOverride: 'Manual production label',
         isActive: true,
-      },
+      }),
     ]} />)
 
     expect(screen.getByText('Manual production label').parentElement).toHaveAttribute(
@@ -90,7 +111,7 @@ describe('WorkOrderItemsSummary', () => {
   it('shows a truncated source fallback and clear pending state after label generation fails', () => {
     const originalDescription = 'Supply and install a very long frameless shower screen description with dimensions, hardware, finish, and additional production notes'
 
-    render(<WorkOrderItemsSummary items={[{
+    render(<WorkOrderItemsSummary items={[workOrderItem({
       id: 'item-pending',
       itemCode: 'GLASS-001',
       quantity: '1.000',
@@ -100,7 +121,7 @@ describe('WorkOrderItemsSummary', () => {
       manualLabelOverride: null,
       labelStatus: 'failed',
       isActive: true,
-    }]} />)
+    })]} />)
 
     expect(screen.getByText(`${originalDescription.slice(0, 77)}...`)).toBeInTheDocument()
     expect(screen.getByText('Label pending')).toBeInTheDocument()
@@ -108,7 +129,7 @@ describe('WorkOrderItemsSummary', () => {
   })
 
   it('keeps a manual label visible when its ServiceM8 source description changed', () => {
-    render(<WorkOrderItemsSummary items={[{
+    render(<WorkOrderItemsSummary items={[workOrderItem({
       id: 'item-source-changed',
       itemCode: 'GLASS-001',
       quantity: '1.000',
@@ -118,7 +139,7 @@ describe('WorkOrderItemsSummary', () => {
       manualLabelOverride: 'Staff-approved production label',
       labelStatus: 'source_changed',
       isActive: true,
-    }]} />)
+    })]} />)
 
     expect(screen.getByText('Staff-approved production label')).toBeInTheDocument()
     expect(screen.getByText('Source description changed')).toBeInTheDocument()
@@ -127,7 +148,7 @@ describe('WorkOrderItemsSummary', () => {
   it('lets manage users edit only the short label and confirms AI regeneration', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
-    render(<WorkOrderItemsSummary canManage items={[{
+    render(<WorkOrderItemsSummary canManage items={[workOrderItem({
       id: 'item-editable',
       itemCode: 'GLASS-001',
       quantity: '2.000',
@@ -137,7 +158,7 @@ describe('WorkOrderItemsSummary', () => {
       manualLabelOverride: null,
       labelStatus: 'generated',
       isActive: true,
-    }]} />)
+    })]} />)
 
     expect(screen.getByRole('textbox', { name: 'Short label for GLASS-001' })).toHaveValue('Generated production label')
     expect(screen.getAllByRole('textbox')).toHaveLength(1)
@@ -194,6 +215,32 @@ describe('WorkOrderItemsSummary', () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
+  })
+
+  it('shows item operational values without edit or bulk controls for view-only users', () => {
+    render(<WorkOrderItemsSummary items={[workOrderItem({
+      id: 'item-view-only',
+      itemCode: 'GLASS-001',
+      quantity: '1.000',
+      originalDescription: 'Shower glass',
+      lineTotalExcludingGst: '900.00',
+      generatedLabel: 'Shower panel',
+      manualLabelOverride: null,
+      isActive: true,
+      installerName: 'Install Team',
+      stageName: 'Ready to install',
+      hardwareStatusName: 'Hardware ready',
+      maintenanceProgram: true,
+      installDate: '2026-07-20',
+      riskLevel: 'high',
+      importance: 'medium',
+    })]} />)
+
+    for (const value of ['Install Team', 'Ready to install', 'Hardware ready', 'Yes', '2026-07-20', 'High', 'Medium']) {
+      expect(screen.getByText(value)).toBeInTheDocument()
+    }
+    expect(screen.queryByLabelText('Installer for GLASS-001')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Apply .* to all active items/ })).not.toBeInTheDocument()
   })
 
   it('confirms a one-time field copy before bulk applying it to active items', async () => {

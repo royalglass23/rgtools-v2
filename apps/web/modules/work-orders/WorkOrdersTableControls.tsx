@@ -336,7 +336,21 @@ function WorkOrdersTable({
 
 function ParentSummaryFields({ row, fields }: { row: WorkOrderRow; fields: WorkOrderSummaryFieldConfig[] }) {
   const parentContextFields = new Set(['client', 'jobNumber', 'jobAddress', 'leadScore'])
-  const supplementaryFields = fields.filter((field) => field.visible && !parentContextFields.has(field.id))
+  const itemOperationalFields = new Set([
+    'importance',
+    'risk',
+    'installer',
+    'stage',
+    'hardware',
+    'maintenanceProgram',
+    'installDate',
+    'dateCompleted',
+  ])
+  const supplementaryFields = fields.filter((field) => (
+    field.visible
+    && !parentContextFields.has(field.id)
+    && !itemOperationalFields.has(field.id)
+  ))
   if (supplementaryFields.length === 0) return null
 
   return (
