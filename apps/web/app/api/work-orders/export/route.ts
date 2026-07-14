@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     listWorkOrdersForExport(filters),
     getWorkOrderSummaryConfig(),
   ])
-  const visibleFields = fields.filter((field) => field.visible)
+  const visibleFields = fields.filter((field) => field.visible && field.id !== 'item')
   const body = rowsToCsv([
     visibleFields.map((field) => field.label),
     ...rows.map((row) => visibleFields.map((field) => valueForField(row, field))),
@@ -34,6 +34,7 @@ function valueForField(row: WorkOrderBaseRow, field: WorkOrderSummaryFieldConfig
     jobNumber: row.jobNumber,
     jobAddress: row.jobAddress,
     leadScore: row.leadScore,
+    item: null,
     importance: row.importance,
     risk: row.riskLevel,
     installer: row.installerName,

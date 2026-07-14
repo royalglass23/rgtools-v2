@@ -158,20 +158,21 @@ function WorkOrderFilters({
       ))}
       <input type="hidden" name={`${paramPrefix}page`} value="1" />
       <input type="hidden" name={`${paramPrefix}size`} value={String(filters.size)} />
-      <label className="block">
-        <span className="text-xs font-medium text-gray-600">Search</span>
+      <div className="block">
+        <label htmlFor={`${paramPrefix}work-order-search`} className="text-xs font-medium text-gray-600">Search</label>
         <div className="mt-1 flex gap-2">
           <input
+            id={`${paramPrefix}work-order-search`}
             name={`${paramPrefix}q`}
             defaultValue={filters.q}
-            placeholder="Client, address, job number"
+            placeholder="Client, address, job number, item"
             className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
           />
           <button type="submit" className="rounded bg-[#142B3A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]">
             Search
           </button>
         </div>
-      </label>
+      </div>
       <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
         <input
           type="checkbox"
@@ -303,7 +304,9 @@ function WorkOrdersTable({
                       </Link>
                       <span className="font-medium text-gray-800">{row.clientName}</span>
                       <span className="rounded bg-white px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
-                        {row.activeItemCount} active {row.activeItemCount === 1 ? 'item' : 'items'}
+                        {row.matchingActiveItemCount === null || row.matchingActiveItemCount === undefined
+                          ? `${row.activeItemCount} active ${row.activeItemCount === 1 ? 'item' : 'items'}`
+                          : `${row.matchingActiveItemCount} of ${row.activeItemCount} active ${row.activeItemCount === 1 ? 'item' : 'items'}`}
                       </span>
                       <span className="rounded bg-white px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
                         Lead Score {row.leadScore ?? 'Not scored'}

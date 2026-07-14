@@ -19,6 +19,7 @@ vi.mock('drizzle-orm', () => {
     desc: vi.fn((column: unknown) => ({ direction: 'desc', column })),
     eq: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'eq', column: columnName(column), value })),
     ilike: vi.fn((column: { name?: string }, value: unknown) => ({ type: 'ilike', column: columnName(column), value })),
+    inArray: vi.fn((column: { name?: string }, values: unknown[]) => ({ type: 'inArray', column: columnName(column), values })),
     or: vi.fn((...conditions: unknown[]) => ({ type: 'or', conditions })),
     sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
       type: 'sql',
@@ -45,6 +46,30 @@ vi.mock('@rgtools/db/schema-workorders', () => ({
     displayName: { name: 'hardware.display_name' },
     isActive: { name: 'hardware.is_active' },
     sortOrder: { name: 'hardware.sort_order' },
+  },
+  workOrderItems: {
+    id: { name: 'work_order_items.id' },
+    workOrderId: { name: 'work_order_items.work_order_id' },
+    itemCode: { name: 'work_order_items.item_code' },
+    quantity: { name: 'work_order_items.quantity' },
+    originalDescription: { name: 'work_order_items.original_description' },
+    lineTotalExcludingGst: { name: 'work_order_items.line_total_excluding_gst' },
+    generatedLabel: { name: 'work_order_items.generated_label' },
+    manualLabelOverride: { name: 'work_order_items.manual_label_override' },
+    labelStatus: { name: 'work_order_items.label_status' },
+    sourceDescriptionFingerprint: { name: 'work_order_items.source_description_fingerprint' },
+    isActive: { name: 'work_order_items.is_active' },
+    installerId: { name: 'work_order_items.installer_id' },
+    stageOptionId: { name: 'work_order_items.stage_option_id' },
+    hardwareStatusOptionId: { name: 'work_order_items.hardware_status_option_id' },
+    maintenanceProgram: { name: 'work_order_items.maintenance_program' },
+    installDate: { name: 'work_order_items.install_date' },
+    dateCompleted: { name: 'work_order_items.date_completed' },
+    riskLevelOverride: { name: 'work_order_items.risk_level_override' },
+    aiRiskLevel: { name: 'work_order_items.ai_risk_level' },
+    importanceOverride: { name: 'work_order_items.importance_override' },
+    aiImportance: { name: 'work_order_items.ai_importance' },
+    sortOrder: { name: 'work_order_items.sort_order' },
   },
   workOrderInstallers: {
     id: { name: 'installers.id' },
@@ -173,6 +198,11 @@ describe('listWorkOrders', () => {
         }),
       ]),
     }))
+    const searchCondition = (whereCalls[1] as { conditions: Array<{ type?: string; conditions?: unknown[] }> })
+      .conditions.find((condition) => condition.type === 'or')
+    expect(searchCondition?.conditions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'sql', text: expect.stringContaining('exists') }),
+    ]))
   })
 
   it('pages parent Work Orders and uses a deterministic default score order', async () => {
@@ -226,6 +256,26 @@ describe('listWorkOrders', () => {
     }))
   })
 
+  it('derives operational sort values from active items with deterministic tie breakers', async () => {
+    await listWorkOrders({ ...filters, sort: 'importance_desc' })
+    await listWorkOrders({ ...filters, sort: 'risk_asc' })
+    await listWorkOrders({ ...filters, sort: 'install_date_asc' })
+    await listWorkOrders({ ...filters, sort: 'install_date_desc' })
+
+    const importanceAggregate = (orderByCalls[0][0] as { values: Array<{ text?: string }> }).values[0]
+    const riskAggregate = (orderByCalls[1][0] as { values: Array<{ text?: string }> }).values[0]
+    const earliestInstallDate = (orderByCalls[2][0] as { values: Array<{ text?: string }> }).values[0]
+    const latestInstallDate = (orderByCalls[3][0] as { values: Array<{ text?: string }> }).values[0]
+
+    expect(importanceAggregate.text).toContain('select max')
+    expect(riskAggregate.text).toContain('select max')
+    expect(earliestInstallDate.text).toContain('select min')
+    expect(latestInstallDate.text).toContain('select max')
+    for (const orders of orderByCalls) {
+      expect(orders.at(-1)).toEqual({ direction: 'asc', column: 'work_orders.id' })
+    }
+  })
+
   it('exports the filtered and sorted rows without pagination', async () => {
     await listWorkOrdersForExport({ ...filters, q: 'R260210', sort: 'client_asc' })
 
@@ -246,11 +296,16 @@ describe('listWorkOrders', () => {
   it('filters maintenance program rows when requested', async () => {
     await listWorkOrders({ ...filters, maintenanceProgram: 'yes' })
 
-    expect(whereCalls[1]).toEqual(expect.objectContaining({
-      type: 'and',
-      conditions: expect.arrayContaining([
-        { type: 'eq', column: 'work_orders.maintenance_program', value: true },
-      ]),
-    }))
+    const itemExists = (whereCalls[1] as { conditions: Array<{ type?: string; values?: unknown[] }> })
+      .conditions.find((condition) => condition.type === 'sql')
+    const itemConditions = itemExists?.values?.find(
+      (value): value is { type: string; conditions: unknown[] } => Boolean(
+        value && typeof value === 'object' && (value as { type?: string }).type === 'and',
+      ),
+    )
+    expect(itemConditions?.conditions).toEqual(expect.arrayContaining([
+      { type: 'eq', column: 'work_order_items.is_active', value: true },
+      { type: 'eq', column: 'work_order_items.maintenance_program', value: true },
+    ]))
   })
 })
