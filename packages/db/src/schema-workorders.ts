@@ -174,6 +174,7 @@ export const workOrderRefreshRuns = pgTable('work_order_refresh_runs', {
 export const workOrderEvents = pgTable('work_order_events', {
   id: uuid('id').primaryKey().defaultRandom(),
   workOrderId: uuid('work_order_id').notNull().references(() => workOrders.id, { onDelete: 'cascade' }),
+  workOrderItemId: uuid('work_order_item_id').references(() => workOrderItems.id, { onDelete: 'set null' }),
   actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
   fieldName: text('field_name').notNull(),
   previousValue: jsonb('previous_value'),
@@ -187,6 +188,7 @@ export const workOrderEvents = pgTable('work_order_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('work_order_events_work_order_idx').on(table.workOrderId),
+  index('work_order_events_work_order_item_idx').on(table.workOrderItemId),
   index('work_order_events_actor_idx').on(table.actorId),
   index('work_order_events_client_visible_idx').on(table.isClientVisibleCandidate),
   index('work_order_events_created_at_idx').on(table.createdAt),

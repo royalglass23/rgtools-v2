@@ -4,11 +4,10 @@ import { requireModule } from '@/lib/guard'
 import {
   addWorkOrderTimelineNoteAction,
   generateWorkOrderAiSuggestionAction,
-  updateWorkOrderOperationalFieldsAction,
 } from '@/modules/work-orders/actions'
 import { WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS } from '@/modules/work-orders/domain'
 import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permissions'
-import { getWorkOrderDetail, getWorkOrderFilterOptions, type WorkOrderDetail } from '@/modules/work-orders/queries'
+import { getWorkOrderDetail } from '@/modules/work-orders/queries'
 import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export default async function WorkOrderDetailPage({
@@ -21,9 +20,8 @@ export default async function WorkOrderDetailPage({
   await requireModule('work-orders')
   const { id } = await params
   const notices = await searchParams
-  const [detail, options, permissions] = await Promise.all([
+  const [detail, permissions] = await Promise.all([
     getWorkOrderDetail(id),
-    getWorkOrderFilterOptions(),
     getCurrentWorkOrderPermissions(),
   ])
 
@@ -58,40 +56,6 @@ export default async function WorkOrderDetailPage({
           <Field label="Description" value={detail.jobDescription} className="sm:col-span-2" />
         </dl>
       </Section>
-
-      <Section title="Operational State">
-        <dl className="grid gap-4 sm:grid-cols-4">
-          <Field label="Installer" value={detail.installerName} />
-          <Field label="Stage" value={detail.stageName} />
-          <Field label="Hardware" value={detail.hardwareStatusName} />
-          <Field label="Maintenance Program" value={detail.maintenanceProgram ? 'Yes' : 'No'} />
-          <Field label="Install date" value={formatNullableDate(detail.installDate)} />
-          <Field label="Date completed" value={formatNullableDate(detail.dateCompleted)} />
-          <Field label="Risk" value={sourceLabel(detail.riskLevel, detail.riskSource)} />
-          <Field label="Importance" value={sourceLabel(detail.importance, detail.importanceSource)} />
-        </dl>
-      </Section>
-
-      {permissions.canManage && (
-        <section className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-950">Manage Work Order</h2>
-          <form action={updateWorkOrderOperationalFieldsAction.bind(null, detail.id)} className="mt-4 grid gap-3 md:grid-cols-4">
-            <Select name="installerId" label="Installer" options={options.installers} />
-            <Select name="stageOptionId" label="Stage" options={options.stages} />
-            <Select name="hardwareStatusOptionId" label="Hardware" options={options.hardwareStatuses} />
-            <RadioGroup name="maintenanceProgram" label="Maintenance Program" value={detail.maintenanceProgram ? 'yes' : 'no'} />
-            <Input name="installDate" label="Install date" type="date" />
-            <Input name="dateCompleted" label="Date completed" type="date" />
-            <LevelSelect name="riskLevel" label="Risk" />
-            <LevelSelect name="importance" label="Importance" />
-            <div className="md:col-span-4">
-              <button type="submit" className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]">
-                Save changes
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded border border-gray-200 bg-white p-4 shadow-sm">
@@ -149,6 +113,12 @@ export default async function WorkOrderDetailPage({
               <li key={event.id} className="py-3 text-sm">
                 <span className="font-medium text-gray-900">{eventLabel(event.fieldName)}</span>
                 <span className="ml-2 text-xs text-gray-500">{formatDateTime(event.createdAt)}</span>
+                {event.actorUsername && <span className="ml-2 text-xs text-gray-500">by {event.actorUsername}</span>}
+                {event.itemLabel && (
+                  <span className="block text-xs font-medium text-sky-800">
+                    Affected item: {event.itemCode ? `${event.itemCode} - ` : ''}{event.itemLabel}
+                  </span>
+                )}
                 <span className="block text-gray-600">{String(event.note ?? event.newValue ?? '-')}</span>
                 {event.isClientVisibleCandidate && event.portalTitle && (
                   <span className="mt-1 block text-xs font-medium text-green-700">Portal candidate: {event.portalTitle}</span>
@@ -181,51 +151,6 @@ function Field({ label, value, className }: { label: string; value: string | nul
   )
 }
 
-function Select({ name, label, options }: { name: string; label: string; options: Array<{ id: string; label: string }> }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-gray-600">{label}</span>
-      <select name={name} className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950">
-        <option value="">Unassigned</option>
-        {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>
-    </label>
-  )
-}
-
-function Input({ name, label, type }: { name: string; label: string; type: string }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-gray-600">{label}</span>
-      <input name={name} type={type} className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
-    </label>
-  )
-}
-
-function LevelSelect({ name, label }: { name: string; label: string }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-gray-600">{label}</span>
-      <select name={name} className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950">
-        <option value="">None</option>
-        <option value="high">High</option>
-        <option value="medium">Medium</option>
-        <option value="low">Low</option>
-      </select>
-    </label>
-  )
-}
-
-function sourceLabel(value: WorkOrderDetail['riskLevel'], source: WorkOrderDetail['riskSource']) {
-  if (!value) return null
-  return `${titleCase(value)} (${source ?? 'unknown'})`
-}
-
-function formatNullableDate(value: string | null) {
-  if (!value) return '-'
-  return new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
-}
-
 function eventLabel(value: string) {
   return value.split('_').map(titleCase).join(' ')
 }
@@ -236,24 +161,6 @@ function titleCase(value: string) {
 
 function formatDateTime(value: Date) {
   return new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
-}
-
-function RadioGroup({ name, label, value }: { name: string; label: string; value: 'yes' | 'no' }) {
-  return (
-    <fieldset className="block">
-      <legend className="text-xs font-medium text-gray-600">{label}</legend>
-      <div className="mt-1 flex min-h-10 items-center gap-4 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950">
-        <label className="inline-flex items-center gap-2">
-          <input type="radio" name={name} value="yes" defaultChecked={value === 'yes'} />
-          <span>Yes</span>
-        </label>
-        <label className="inline-flex items-center gap-2">
-          <input type="radio" name={name} value="no" defaultChecked={value === 'no'} />
-          <span>No</span>
-        </label>
-      </div>
-    </fieldset>
-  )
 }
 
 function formatRelativeCooldown(value: Date | null) {

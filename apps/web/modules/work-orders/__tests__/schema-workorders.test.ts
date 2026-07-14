@@ -1,7 +1,7 @@
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
-import { workOrderItems, workOrderRefreshRuns } from '@rgtools/db/schema-workorders'
+import { workOrderEvents, workOrderItems, workOrderRefreshRuns } from '@rgtools/db/schema-workorders'
 
 describe('Work Order Item persistence', () => {
   it('separates stable ServiceM8 source values from RG-owned item tracking', () => {
@@ -50,5 +50,19 @@ describe('Work Order refresh run persistence', () => {
       'excluded_line_count',
       'error_message',
     ]))
+  })
+})
+
+describe('Work Order Item audit persistence', () => {
+  it('links an audit event to its affected item without requiring parent events to have one', () => {
+    const config = getTableConfig(workOrderEvents)
+
+    expect(config.columns.map((column) => column.name)).toContain('work_order_item_id')
+    expect(config.foreignKeys.some((foreignKey) => (
+      foreignKey.reference().foreignTable === workOrderItems
+    ))).toBe(true)
+    expect(config.indexes.some((index) => (
+      index.config.name === 'work_order_events_work_order_item_idx'
+    ))).toBe(true)
   })
 })

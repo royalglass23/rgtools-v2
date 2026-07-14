@@ -1,12 +1,21 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockBulkApplyOperationalField = vi.hoisted(() => vi.fn())
+const mockUpdateOperationalField = vi.hoisted(() => vi.fn())
 
 vi.mock('../actions', () => ({
   updateWorkOrderItemLabelAction: vi.fn(),
   regenerateWorkOrderItemLabelAction: vi.fn(),
+  updateWorkOrderItemOperationalFieldAction: mockUpdateOperationalField,
+  bulkApplyWorkOrderItemOperationalFieldAction: mockBulkApplyOperationalField,
 }))
 
 import { WorkOrderItemsSummary } from '../WorkOrderItemsSummary'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 describe('WorkOrderItemsSummary', () => {
   it('shows every active ServiceM8 item beneath one parent count', () => {
@@ -139,5 +148,156 @@ describe('WorkOrderItemsSummary', () => {
     expect(confirm).toHaveBeenCalledWith('Regenerate this label with AI? This will replace the current label.')
 
     confirm.mockRestore()
+  })
+
+  it('gives manage users independent controls for all eight item operational fields', () => {
+    render(<WorkOrderItemsSummary
+      canManage
+      options={{
+        installers: [{ id: 'installer-1', label: 'Install Team' }],
+        stages: [{ id: 'stage-1', label: 'Ready to install' }],
+        hardwareStatuses: [{ id: 'hardware-1', label: 'Hardware ready' }],
+      }}
+      items={[{
+        id: 'item-operational',
+        workOrderId: 'work-order-1',
+        itemCode: 'GLASS-001',
+        quantity: '1.000',
+        originalDescription: 'Shower glass',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: 'Shower panel',
+        manualLabelOverride: null,
+        isActive: true,
+        installerId: 'installer-1',
+        installerName: 'Install Team',
+        stageOptionId: 'stage-1',
+        stageName: 'Ready to install',
+        hardwareStatusOptionId: 'hardware-1',
+        hardwareStatusName: 'Hardware ready',
+        maintenanceProgram: true,
+        installDate: '2026-07-20',
+        dateCompleted: null,
+        riskLevel: 'high',
+        importance: 'medium',
+      }]}
+    />)
+
+    for (const label of [
+      'Installer for GLASS-001',
+      'Stage for GLASS-001',
+      'Hardware for GLASS-001',
+      'Maintenance Program for GLASS-001',
+      'Install date for GLASS-001',
+      'Date completed for GLASS-001',
+      'Risk for GLASS-001',
+      'Importance for GLASS-001',
+    ]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('confirms a one-time field copy before bulk applying it to active items', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockBulkApplyOperationalField.mockResolvedValue({ changedCount: 2 })
+
+    render(<WorkOrderItemsSummary
+      canManage
+      options={{
+        installers: [{ id: 'installer-1', label: 'Install Team' }],
+        stages: [],
+        hardwareStatuses: [],
+      }}
+      items={[{
+        id: 'item-source',
+        workOrderId: 'work-order-1',
+        itemCode: 'GLASS-001',
+        quantity: '1.000',
+        originalDescription: 'Shower glass',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: 'Shower panel',
+        manualLabelOverride: null,
+        isActive: true,
+        installerId: 'installer-1',
+        installerName: 'Install Team',
+        stageOptionId: null,
+        stageName: null,
+        hardwareStatusOptionId: null,
+        hardwareStatusName: null,
+        maintenanceProgram: false,
+        installDate: null,
+        dateCompleted: null,
+        riskLevel: null,
+        importance: null,
+      }]}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply Installer to all active items' }))
+
+    expect(confirm).toHaveBeenCalledWith(
+      'Apply Installer from GLASS-001 to all active items in this Work Order?',
+    )
+    expect(mockBulkApplyOperationalField).toHaveBeenCalledWith(
+      'work-order-1',
+      'item-source',
+      'installer',
+    )
+    expect(await screen.findByText('Applied to 2 items')).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('restores only the failed field and offers retry with actionable feedback', async () => {
+    mockUpdateOperationalField
+      .mockRejectedValueOnce(new Error('Installer could not be saved because the option is no longer active.'))
+      .mockResolvedValueOnce({ value: 'installer-2' })
+
+    render(<WorkOrderItemsSummary
+      canManage
+      options={{
+        installers: [
+          { id: 'installer-1', label: 'Install Team One' },
+          { id: 'installer-2', label: 'Install Team Two' },
+        ],
+        stages: [{ id: 'stage-1', label: 'Ready to install' }],
+        hardwareStatuses: [],
+      }}
+      items={[{
+        id: 'item-save',
+        workOrderId: 'work-order-1',
+        itemCode: 'GLASS-001',
+        quantity: '1.000',
+        originalDescription: 'Shower glass',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: 'Shower panel',
+        manualLabelOverride: null,
+        isActive: true,
+        installerId: 'installer-1',
+        installerName: 'Install Team One',
+        stageOptionId: 'stage-1',
+        stageName: 'Ready to install',
+        hardwareStatusOptionId: null,
+        hardwareStatusName: null,
+        maintenanceProgram: false,
+        installDate: null,
+        dateCompleted: null,
+        riskLevel: null,
+        importance: null,
+      }]}
+    />)
+
+    const installer = screen.getByLabelText('Installer for GLASS-001')
+    const stage = screen.getByLabelText('Stage for GLASS-001')
+    fireEvent.change(installer, { target: { value: 'installer-2' } })
+
+    expect(screen.getByText('Saving')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Installer could not be saved because the option is no longer active.',
+    )
+    expect(installer).toHaveValue('installer-1')
+    expect(stage).toHaveValue('stage-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.getByText('Saved')).toBeInTheDocument())
+    expect(installer).toHaveValue('installer-2')
+    expect(mockUpdateOperationalField).toHaveBeenCalledTimes(2)
   })
 })

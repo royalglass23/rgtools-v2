@@ -45,6 +45,7 @@ vi.mock('../item-labels', async (importOriginal) => {
 import {
   addWorkOrderTimelineNoteAction,
   batchDeleteWorkOrdersAction,
+  bulkApplyWorkOrderItemOperationalFieldAction,
   createWorkOrderInstallerAction,
   deactivateWorkOrderInstallerAction,
   generateWorkOrderAiSuggestionAction,
@@ -52,8 +53,8 @@ import {
   refreshWorkOrdersAction,
   regenerateWorkOrderItemLabelAction,
   saveWorkOrderBillingExclusionsAction,
+  updateWorkOrderItemOperationalFieldAction,
   updateWorkOrderItemLabelAction,
-  updateWorkOrderOperationalFieldsAction,
 } from '../actions'
 
 beforeEach(() => {
@@ -91,6 +92,22 @@ beforeEach(() => {
   })
 })
 
+function operationalItem(id: string, isActive: boolean, installerId: string | null) {
+  return {
+    id,
+    workOrderId: 'work-order-1',
+    isActive,
+    installerId,
+    stageOptionId: null,
+    hardwareStatusOptionId: null,
+    maintenanceProgram: false,
+    installDate: null,
+    dateCompleted: null,
+    riskLevelOverride: null,
+    importanceOverride: null,
+  }
+}
+
 describe('work order action permissions', () => {
   it('requires manage access before refreshing Work Orders from ServiceM8', async () => {
     mockAssertCanManage.mockRejectedValue(new Error('Forbidden: Work Orders manage access is required.'))
@@ -100,14 +117,107 @@ describe('work order action permissions', () => {
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
-  it('requires manage access before updating operational Work Order fields', async () => {
+  it('requires manage access before updating an operational Work Order Item field', async () => {
     mockAssertCanManage.mockRejectedValue(new Error('Forbidden: Work Orders manage access is required.'))
 
-    await expect(updateWorkOrderOperationalFieldsAction('work-order-1', new FormData())).rejects.toThrow(
+    await expect(updateWorkOrderItemOperationalFieldAction('item-1', 'risk', 'high')).rejects.toThrow(
       'Forbidden: Work Orders manage access is required.',
     )
-    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(mockTransaction).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('updates one Work Order Item field and records its item-level audit event', async () => {
+    const updateSet = vi.fn(() => ({ where: vi.fn(async () => []) }))
+    const insertValues = vi.fn(async () => [])
+    mockTransaction.mockImplementationOnce(async (callback: (tx: unknown) => Promise<void>) => callback({
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(async () => [{
+              id: 'item-1',
+              workOrderId: 'work-order-1',
+              isActive: true,
+              installerId: '11111111-1111-4111-8111-111111111111',
+            }]),
+          })),
+        })),
+      })),
+      update: vi.fn(() => ({ set: updateSet })),
+      insert: vi.fn(() => ({ values: insertValues })),
+    }))
+
+    await updateWorkOrderItemOperationalFieldAction(
+      'item-1',
+      'installer',
+      '22222222-2222-4222-8222-222222222222',
+    )
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      installerId: '22222222-2222-4222-8222-222222222222',
+      updatedAt: expect.any(Date),
+    }))
+    expect(updateSet).not.toHaveBeenCalledWith(expect.objectContaining({
+      stageOptionId: expect.anything(),
+    }))
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      workOrderId: 'work-order-1',
+      workOrderItemId: 'item-1',
+      actorId: 'user-1',
+      fieldName: 'item_installer_changed',
+      previousValue: '11111111-1111-4111-8111-111111111111',
+      newValue: '22222222-2222-4222-8222-222222222222',
+      isClientVisibleCandidate: false,
+    }))
+  })
+
+  it('rejects an invalid Work Order Item date before starting a write transaction', async () => {
+    await expect(
+      updateWorkOrderItemOperationalFieldAction('item-1', 'installDate', '14/07/2026'),
+    ).rejects.toThrow('Install date must use YYYY-MM-DD.')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
+  it('bulk applies one field only to changed active sibling items and audits each change', async () => {
+    const updateSet = vi.fn(() => ({ where: vi.fn(async () => []) }))
+    const insertValues = vi.fn(async () => [])
+    mockTransaction.mockImplementationOnce(async (callback: (tx: unknown) => Promise<void>) => callback({
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(async () => [
+            operationalItem('item-source', true, '11111111-1111-4111-8111-111111111111'),
+            operationalItem('item-active-change', true, '22222222-2222-4222-8222-222222222222'),
+            operationalItem('item-active-same', true, '11111111-1111-4111-8111-111111111111'),
+            operationalItem('item-removed', false, '33333333-3333-4333-8333-333333333333'),
+          ]),
+        })),
+      })),
+      update: vi.fn(() => ({ set: updateSet })),
+      insert: vi.fn(() => ({ values: insertValues })),
+    }))
+
+    const result = await bulkApplyWorkOrderItemOperationalFieldAction(
+      'work-order-1',
+      'item-source',
+      'installer',
+    )
+
+    expect(result).toEqual({ changedCount: 1 })
+    expect(updateSet).toHaveBeenCalledTimes(1)
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      installerId: '11111111-1111-4111-8111-111111111111',
+    }))
+    expect(insertValues).toHaveBeenCalledWith([
+      expect.objectContaining({
+        workOrderId: 'work-order-1',
+        workOrderItemId: 'item-active-change',
+        actorId: 'user-1',
+        fieldName: 'item_installer_changed',
+        previousValue: '22222222-2222-4222-8222-222222222222',
+        newValue: '11111111-1111-4111-8111-111111111111',
+      }),
+    ])
   })
 
   it('lets an authorised user replace only the Work Order Item short label', async () => {
@@ -358,52 +468,6 @@ describe('work order action permissions', () => {
     }))
     expect(mockRevalidatePath).toHaveBeenCalledWith('/admin/work-orders')
     expect(mockRevalidatePath).toHaveBeenCalledWith('/work-orders')
-  })
-
-  it('records timeline entries for changed operational fields with actor ownership', async () => {
-    const updateSet = vi.fn(() => ({ where: vi.fn(async () => []) }))
-    mockUpdate.mockReturnValue({ set: updateSet })
-    const insertValues = vi.fn(async () => [])
-    mockInsert.mockReturnValue({ values: insertValues })
-    const formData = new FormData()
-    formData.set('installerId', 'installer-1')
-    formData.set('stageOptionId', 'stage-1')
-    formData.set('hardwareStatusOptionId', 'hardware-1')
-    formData.set('maintenanceProgram', 'yes')
-    formData.set('riskLevel', 'high')
-    formData.set('importance', 'medium')
-    formData.set('notes', 'Call before arrival')
-
-    await updateWorkOrderOperationalFieldsAction('work-order-1', formData)
-
-    expect(insertValues).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({
-        workOrderId: 'work-order-1',
-        actorId: 'user-1',
-        fieldName: 'installer_changed',
-        previousValue: null,
-        newValue: 'installer-1',
-        isClientVisibleCandidate: false,
-      }),
-      expect.objectContaining({
-        fieldName: 'risk_changed',
-        newValue: 'high',
-      }),
-      expect.objectContaining({
-        fieldName: 'importance_changed',
-        newValue: 'medium',
-      }),
-      expect.objectContaining({
-        fieldName: 'maintenance_program_changed',
-        previousValue: false,
-        newValue: true,
-      }),
-    ]))
-    expect(insertValues).not.toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({
-        fieldName: 'client_note_changed',
-      }),
-    ]))
   })
 
   it('lets manage users add internal timeline notes without changing structured fields', async () => {
