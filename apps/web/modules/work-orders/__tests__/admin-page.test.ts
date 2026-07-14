@@ -41,6 +41,8 @@ describe('work order admin page', () => {
     expect(source).toContain('Maintenance Program')
     expect(source).toContain('Visible')
     expect(source).toContain('Filterable')
+    expect(editorSource()).toContain('>Editable<')
+    expect(editorSource()).toContain('canConfigureSummaryFieldAsEditable')
     expect(source).not.toContain('Display order')
   })
 

@@ -1,18 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockBulkApplyOperationalField = vi.hoisted(() => vi.fn())
 const mockUpdateOperationalField = vi.hoisted(() => vi.fn())
 
 vi.mock('../actions', () => ({
   updateWorkOrderItemLabelAction: vi.fn(),
   regenerateWorkOrderItemLabelAction: vi.fn(),
   updateWorkOrderItemOperationalFieldAction: mockUpdateOperationalField,
-  bulkApplyWorkOrderItemOperationalFieldAction: mockBulkApplyOperationalField,
 }))
 
 import { WorkOrderItemsSummary } from '../WorkOrderItemsSummary'
 import type { WorkOrderItemSummaryRow } from '../work-order-items'
+import type { WorkOrderSummaryFieldConfig } from '../summary-config'
 
 function workOrderItem(
   item: Partial<WorkOrderItemSummaryRow> & Pick<WorkOrderItemSummaryRow, 'id' | 'itemCode' | 'quantity' | 'originalDescription' | 'lineTotalExcludingGst' | 'generatedLabel' | 'manualLabelOverride' | 'isActive'>,
@@ -34,11 +33,56 @@ function workOrderItem(
   }
 }
 
+function summaryField(
+  id: WorkOrderSummaryFieldConfig['id'],
+  overrides: Partial<WorkOrderSummaryFieldConfig> = {},
+): WorkOrderSummaryFieldConfig {
+  return {
+    id,
+    label: id === 'item' ? 'Item' : id === 'stage' ? 'Stage' : 'Risk',
+    source: id === 'item' || id === 'stage' || id === 'risk' ? 'rg' : 'context',
+    visible: true,
+    filterable: false,
+    editable: true,
+    order: 1,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
 
 describe('WorkOrderItemsSummary', () => {
+  it('renders configured item fields in order and hides the composite Item cell as one field', () => {
+    render(<WorkOrderItemsSummary
+      fields={[
+        summaryField('stage', { order: 1 }),
+        summaryField('item', { visible: false, order: 2 }),
+        summaryField('risk', { order: 3 }),
+      ]}
+      items={[workOrderItem({
+        id: 'item-configured',
+        itemCode: 'GLASS-HIDDEN',
+        quantity: '3.000',
+        originalDescription: 'Hidden composite description',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: 'Hidden composite label',
+        manualLabelOverride: null,
+        isActive: true,
+        stageName: 'Ready to install',
+        riskLevel: 'high',
+      })]}
+    />)
+
+    const stage = screen.getByText('Stage')
+    const risk = screen.getByText('Risk')
+    expect(stage.compareDocumentPosition(risk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('GLASS-HIDDEN')).not.toBeInTheDocument()
+    expect(screen.queryByText('Qty 3')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hidden composite label')).not.toBeInTheDocument()
+  })
+
   it('shows every active ServiceM8 item beneath one parent count', () => {
     render(<WorkOrderItemsSummary items={[
       workOrderItem({
@@ -68,6 +112,16 @@ describe('WorkOrderItemsSummary', () => {
     expect(screen.getByText('Shower glass')).toBeInTheDocument()
     expect(screen.getByText('HARDWARE-001')).toBeInTheDocument()
     expect(screen.getByText('Shower hardware')).toBeInTheDocument()
+  })
+
+  it('alternates active item cards between white and a Royal Glass navy tint', () => {
+    render(<WorkOrderItemsSummary items={[
+      workOrderItem({ id: 'item-1', itemCode: 'GLASS-001', quantity: '1.000', originalDescription: 'Shower glass', lineTotalExcludingGst: '900.00', generatedLabel: null, manualLabelOverride: null, isActive: true }),
+      workOrderItem({ id: 'item-2', itemCode: 'HARDWARE-001', quantity: '1.000', originalDescription: 'Shower hardware', lineTotalExcludingGst: '150.00', generatedLabel: null, manualLabelOverride: null, isActive: true }),
+    ]} />)
+
+    expect(screen.getByText('GLASS-001').parentElement).toHaveClass('bg-white')
+    expect(screen.getByText('HARDWARE-001').parentElement).toHaveClass('bg-[#E8EEF1]')
   })
 
   it('keeps an empty Work Order visible without inventing a child item', () => {
@@ -217,7 +271,7 @@ describe('WorkOrderItemsSummary', () => {
     }
   })
 
-  it('shows item operational values without edit or bulk controls for view-only users', () => {
+  it('shows item operational values without edit controls for view-only users', () => {
     render(<WorkOrderItemsSummary items={[workOrderItem({
       id: 'item-view-only',
       itemCode: 'GLASS-001',
@@ -240,56 +294,22 @@ describe('WorkOrderItemsSummary', () => {
       expect(screen.getByText(value)).toBeInTheDocument()
     }
     expect(screen.queryByLabelText('Installer for GLASS-001')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Apply .* to all active items/ })).not.toBeInTheDocument()
   })
 
-  it('confirms a one-time field copy before bulk applying it to active items', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    mockBulkApplyOperationalField.mockResolvedValue({ changedCount: 2 })
+  it('does not offer bulk apply controls to manage users', () => {
+    render(<WorkOrderItemsSummary canManage items={[workOrderItem({
+      id: 'item-manage',
+      itemCode: 'GLASS-001',
+      quantity: '1.000',
+      originalDescription: 'Shower glass',
+      lineTotalExcludingGst: '900.00',
+      generatedLabel: 'Shower panel',
+      manualLabelOverride: null,
+      isActive: true,
+    })]} />)
 
-    render(<WorkOrderItemsSummary
-      canManage
-      options={{
-        installers: [{ id: 'installer-1', label: 'Install Team' }],
-        stages: [],
-        hardwareStatuses: [],
-      }}
-      items={[{
-        id: 'item-source',
-        workOrderId: 'work-order-1',
-        itemCode: 'GLASS-001',
-        quantity: '1.000',
-        originalDescription: 'Shower glass',
-        lineTotalExcludingGst: '900.00',
-        generatedLabel: 'Shower panel',
-        manualLabelOverride: null,
-        isActive: true,
-        installerId: 'installer-1',
-        installerName: 'Install Team',
-        stageOptionId: null,
-        stageName: null,
-        hardwareStatusOptionId: null,
-        hardwareStatusName: null,
-        maintenanceProgram: false,
-        installDate: null,
-        dateCompleted: null,
-        riskLevel: null,
-        importance: null,
-      }]}
-    />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Apply Installer to all active items' }))
-
-    expect(confirm).toHaveBeenCalledWith(
-      'Apply Installer from GLASS-001 to all active items in this Work Order?',
-    )
-    expect(mockBulkApplyOperationalField).toHaveBeenCalledWith(
-      'work-order-1',
-      'item-source',
-      'installer',
-    )
-    expect(await screen.findByText('Applied to 2 items')).toBeInTheDocument()
-    confirm.mockRestore()
+    expect(screen.queryByText('Apply to all active items')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Apply .* to all active items/ })).not.toBeInTheDocument()
   })
 
   it('restores only the failed field and offers retry with actionable feedback', async () => {

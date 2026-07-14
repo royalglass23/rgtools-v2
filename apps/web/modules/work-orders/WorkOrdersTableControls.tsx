@@ -321,6 +321,7 @@ function WorkOrdersTable({
                   options={options}
                   showCount={false}
                   canManage={canManage}
+                  fields={fields}
                 />
               )}
             </section>
@@ -373,6 +374,7 @@ function summaryValue(fieldId: WorkOrderSummaryFieldConfig['id'], row: WorkOrder
     jobNumber: row.jobNumber,
     jobAddress: row.jobAddress,
     leadScore: row.leadScore,
+    item: null,
     importance: row.importance,
     risk: row.riskLevel,
     installer: row.installerName,

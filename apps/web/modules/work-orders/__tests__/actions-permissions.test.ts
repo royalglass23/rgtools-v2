@@ -45,7 +45,6 @@ vi.mock('../item-labels', async (importOriginal) => {
 import {
   addWorkOrderTimelineNoteAction,
   batchDeleteWorkOrdersAction,
-  bulkApplyWorkOrderItemOperationalFieldAction,
   createWorkOrderInstallerAction,
   deactivateWorkOrderInstallerAction,
   generateWorkOrderAiSuggestionAction,
@@ -91,22 +90,6 @@ beforeEach(() => {
     where: vi.fn(async () => []),
   })
 })
-
-function operationalItem(id: string, isActive: boolean, installerId: string | null) {
-  return {
-    id,
-    workOrderId: 'work-order-1',
-    isActive,
-    installerId,
-    stageOptionId: null,
-    hardwareStatusOptionId: null,
-    maintenanceProgram: false,
-    installDate: null,
-    dateCompleted: null,
-    riskLevelOverride: null,
-    importanceOverride: null,
-  }
-}
 
 describe('work order action permissions', () => {
   it('requires manage access before refreshing Work Orders from ServiceM8', async () => {
@@ -189,47 +172,6 @@ describe('work order action permissions', () => {
     ).rejects.toThrow('Work Order Item field clientName cannot be edited.')
 
     expect(mockTransaction).not.toHaveBeenCalled()
-  })
-
-  it('bulk applies one field only to changed active sibling items and audits each change', async () => {
-    const updateSet = vi.fn(() => ({ where: vi.fn(async () => []) }))
-    const insertValues = vi.fn(async () => [])
-    mockTransaction.mockImplementationOnce(async (callback: (tx: unknown) => Promise<void>) => callback({
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(async () => [
-            operationalItem('item-source', true, '11111111-1111-4111-8111-111111111111'),
-            operationalItem('item-active-change', true, '22222222-2222-4222-8222-222222222222'),
-            operationalItem('item-active-same', true, '11111111-1111-4111-8111-111111111111'),
-            operationalItem('item-removed', false, '33333333-3333-4333-8333-333333333333'),
-          ]),
-        })),
-      })),
-      update: vi.fn(() => ({ set: updateSet })),
-      insert: vi.fn(() => ({ values: insertValues })),
-    }))
-
-    const result = await bulkApplyWorkOrderItemOperationalFieldAction(
-      'work-order-1',
-      'item-source',
-      'installer',
-    )
-
-    expect(result).toEqual({ changedCount: 1 })
-    expect(updateSet).toHaveBeenCalledTimes(1)
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
-      installerId: '11111111-1111-4111-8111-111111111111',
-    }))
-    expect(insertValues).toHaveBeenCalledWith([
-      expect.objectContaining({
-        workOrderId: 'work-order-1',
-        workOrderItemId: 'item-active-change',
-        actorId: 'user-1',
-        fieldName: 'item_installer_changed',
-        previousValue: '22222222-2222-4222-8222-222222222222',
-        newValue: '11111111-1111-4111-8111-111111111111',
-      }),
-    ])
   })
 
   it('lets an authorised user replace only the Work Order Item short label', async () => {
