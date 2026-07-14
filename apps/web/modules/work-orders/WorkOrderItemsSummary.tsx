@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import {
-  bulkApplyWorkOrderItemOperationalFieldAction,
   regenerateWorkOrderItemLabelAction,
   updateWorkOrderItemLabelAction,
   updateWorkOrderItemOperationalFieldAction,
 } from './actions'
 import { operationalFieldLabel, type WorkOrderItemOperationalField } from './item-operational-fields'
 import type { WorkOrderItemSummaryRow } from './work-order-items'
+import type { WorkOrderSummaryFieldConfig, WorkOrderSummaryFieldId } from './summary-config'
 
 type FilterOption = { id: string; label: string }
 type WorkOrderItemOptions = {
@@ -18,6 +18,29 @@ type WorkOrderItemOptions = {
 }
 
 const EMPTY_OPTIONS: WorkOrderItemOptions = { installers: [], stages: [], hardwareStatuses: [] }
+const OPERATIONAL_FIELD_BY_SUMMARY_ID: Partial<Record<WorkOrderSummaryFieldId, WorkOrderItemOperationalField>> = {
+  installer: 'installer',
+  stage: 'stage',
+  hardware: 'hardware',
+  maintenanceProgram: 'maintenanceProgram',
+  installDate: 'installDate',
+  dateCompleted: 'dateCompleted',
+  risk: 'risk',
+  importance: 'importance',
+}
+const DEFAULT_ITEM_FIELDS = [
+  'item',
+  'installer',
+  'stage',
+  'hardware',
+  'maintenanceProgram',
+  'installDate',
+  'dateCompleted',
+  'risk',
+  'importance',
+].map((id, index) => ({ id: id as WorkOrderSummaryFieldId, visible: true, editable: true, order: index + 1 }))
+
+type ItemFieldConfig = Pick<WorkOrderSummaryFieldConfig, 'id' | 'visible' | 'editable' | 'order'>
 
 export function WorkOrderItemsSummary({
   items,
@@ -47,7 +70,7 @@ export function WorkOrderItemsSummary({
     <section aria-label="Work Order items" className="space-y-2 px-4 py-3">
       {showCount && <ItemCount count={activeItemCount} />}
       <div className="grid gap-2">
-        {items.map((item) => {
+        {items.map((item, itemIndex) => {
           const effectiveLabel = item.manualLabelOverride ?? item.generatedLabel ?? truncateDescription(item.originalDescription)
           const isLabelPending = !item.manualLabelOverride
             && !item.generatedLabel
@@ -61,7 +84,11 @@ export function WorkOrderItemsSummary({
             <div
               key={item.id}
               title={hoverDetail}
-              className={`grid gap-1 rounded border px-3 py-2 text-sm md:grid-cols-[90px_160px_1fr] ${item.isActive ? 'border-gray-200 bg-gray-50' : 'border-amber-200 bg-amber-50'}`}
+              className={`grid gap-1 rounded border px-3 py-2 text-sm md:grid-cols-[90px_160px_1fr] ${item.isActive
+                ? itemIndex % 2 === 0
+                  ? 'border-[#142B3A]/20 bg-white'
+                  : 'border-[#142B3A]/25 bg-[#E8EEF1]'
+                : 'border-amber-200 bg-amber-50'}`}
             >
               <span className="font-medium text-gray-700">Qty {formatQuantity(item.quantity)}</span>
               <span className="font-mono text-xs text-gray-600">{item.itemCode ?? 'No item code'}</span>
@@ -159,7 +186,6 @@ function ItemOperationalFields({
           <EditableOperationalField
             key={`${definition.field}:${definition.value}`}
             itemId={item.id}
-            workOrderId={item.workOrderId}
             itemLabel={itemLabel}
             field={definition.field}
             initialValue={definition.value}
@@ -174,7 +200,6 @@ function ItemOperationalFields({
 
 function EditableOperationalField({
   itemId,
-  workOrderId,
   itemLabel,
   field,
   initialValue,
@@ -182,7 +207,6 @@ function EditableOperationalField({
   type,
 }: {
   itemId: string
-  workOrderId: string
   itemLabel: string
   field: WorkOrderItemOperationalField
   initialValue: string
@@ -194,7 +218,6 @@ function EditableOperationalField({
   const [retryValue, setRetryValue] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const label = operationalFieldLabel(field)
 
   async function save(nextValue: string) {
@@ -212,18 +235,6 @@ function EditableOperationalField({
       setRetryValue(nextValue)
       setErrorMessage(error instanceof Error ? error.message : `${label} could not be saved.`)
       setStatus('error')
-    }
-  }
-
-  async function bulkApply() {
-    if (!window.confirm(`Apply ${label} from ${itemLabel} to all active items in this Work Order?`)) return
-    setBulkMessage('Applying...')
-    try {
-      const result = await bulkApplyWorkOrderItemOperationalFieldAction(workOrderId, itemId, field)
-      setBulkMessage(`Applied to ${result.changedCount} ${result.changedCount === 1 ? 'item' : 'items'}`)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `${label} could not be bulk applied.`
-      setBulkMessage(`Bulk apply failed: ${message}`)
     }
   }
 
@@ -255,15 +266,6 @@ function EditableOperationalField({
           errorMessage={errorMessage}
           onRetry={retryValue === null ? null : () => void save(retryValue)}
         />
-        <button
-          type="button"
-          aria-label={`Apply ${label} to all active items`}
-          onClick={() => void bulkApply()}
-          className="mt-1 text-[11px] font-medium text-sky-800 underline"
-        >
-          Apply to all active items
-        </button>
-        {bulkMessage && <span className="mt-1 block text-[11px] text-gray-600">{bulkMessage}</span>}
       </dd>
     </div>
   )
