@@ -63,7 +63,7 @@ describe('work orders server page', () => {
 
     expect(source).toContain('getCurrentWorkOrderPermissions')
     expect(source).toContain('permissions.canManage &&')
-    expect(source).toContain('Refresh from ServiceM8')
+    expect(source).toContain('<WorkOrderRefreshButton />')
   })
 
   it('offers filtered CSV export without carrying page-only params', () => {

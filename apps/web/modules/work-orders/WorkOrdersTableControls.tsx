@@ -12,6 +12,7 @@ import { WorkOrderItemsSummary } from './WorkOrderItemsSummary'
 type FilterOption = { id: string; label: string }
 
 type WorkOrderFilterOptions = {
+  installers: FilterOption[]
   stages: FilterOption[]
   hardwareStatuses: FilterOption[]
 }
@@ -104,6 +105,7 @@ export function WorkOrdersTableControls({
         rows={rows}
         filters={filters}
         fields={fields}
+        options={options}
         isAdmin={isAdmin}
         canManage={canManage}
         selectedSet={selectedSet}
@@ -218,6 +220,7 @@ function WorkOrdersTable({
   rows,
   filters,
   fields,
+  options,
   isAdmin,
   canManage,
   selectedSet,
@@ -228,6 +231,7 @@ function WorkOrdersTable({
   rows: WorkOrderRow[]
   filters: WorkOrderListFilters
   fields: WorkOrderSummaryFieldConfig[]
+  options: WorkOrderFilterOptions
   isAdmin: boolean
   canManage: boolean
   selectedSet: Set<string>
@@ -311,7 +315,14 @@ function WorkOrdersTable({
                 <ParentSummaryFields row={row} fields={fields} />
               </div>
 
-              {isExpanded && <WorkOrderItemsSummary items={row.items} showCount={false} canManage={canManage} />}
+              {isExpanded && (
+                <WorkOrderItemsSummary
+                  items={row.items}
+                  options={options}
+                  showCount={false}
+                  canManage={canManage}
+                />
+              )}
             </section>
           )
         })}
@@ -325,7 +336,21 @@ function WorkOrdersTable({
 
 function ParentSummaryFields({ row, fields }: { row: WorkOrderRow; fields: WorkOrderSummaryFieldConfig[] }) {
   const parentContextFields = new Set(['client', 'jobNumber', 'jobAddress', 'leadScore'])
-  const supplementaryFields = fields.filter((field) => field.visible && !parentContextFields.has(field.id))
+  const itemOperationalFields = new Set([
+    'importance',
+    'risk',
+    'installer',
+    'stage',
+    'hardware',
+    'maintenanceProgram',
+    'installDate',
+    'dateCompleted',
+  ])
+  const supplementaryFields = fields.filter((field) => (
+    field.visible
+    && !parentContextFields.has(field.id)
+    && !itemOperationalFields.has(field.id)
+  ))
   if (supplementaryFields.length === 0) return null
 
   return (

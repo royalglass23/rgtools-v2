@@ -5,6 +5,7 @@ import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permission
 import { getWorkOrderFilterOptions, getWorkOrderRefreshStatus, listWorkOrders } from '@/modules/work-orders/queries'
 import { WorkOrdersTableControls } from '@/modules/work-orders/WorkOrdersTableControls'
 import { WorkOrderRefreshStatus } from '@/modules/work-orders/WorkOrderRefreshStatus'
+import { WorkOrderRefreshButton } from '@/modules/work-orders/WorkOrderRefreshButton'
 import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
 
@@ -44,12 +45,7 @@ export default async function WorkOrdersPage({
           </a>
           {permissions.canManage && (
             <form action={refreshWorkOrdersAction}>
-              <button
-                type="submit"
-                className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
-              >
-                Refresh from ServiceM8
-              </button>
+              <WorkOrderRefreshButton />
             </form>
           )}
         </div>

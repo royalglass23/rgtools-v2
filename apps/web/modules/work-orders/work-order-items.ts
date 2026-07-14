@@ -1,5 +1,6 @@
 export type WorkOrderItemSummaryRow = {
   id: string
+  workOrderId: string
   itemCode: string | null
   quantity: string
   originalDescription: string
@@ -9,11 +10,20 @@ export type WorkOrderItemSummaryRow = {
   labelStatus?: 'pending' | 'generated' | 'manual' | 'failed' | 'source_changed'
   sourceDescriptionFingerprint?: string | null
   isActive: boolean
+  installerId: string | null
+  installerName: string | null
+  stageOptionId: string | null
+  stageName: string | null
+  hardwareStatusOptionId: string | null
+  hardwareStatusName: string | null
+  maintenanceProgram: boolean
+  installDate: string | null
+  dateCompleted: string | null
+  riskLevel: 'low' | 'medium' | 'high' | null
+  importance: 'low' | 'medium' | 'high' | null
 }
 
-export type PersistedWorkOrderItemSummaryRow = WorkOrderItemSummaryRow & {
-  workOrderId: string
-}
+export type PersistedWorkOrderItemSummaryRow = WorkOrderItemSummaryRow
 
 export function attachActiveItemsToWorkOrders<T extends { id: string }>(
   workOrders: T[],
@@ -25,6 +35,7 @@ export function attachActiveItemsToWorkOrders<T extends { id: string }>(
     const groupedItems = itemsByWorkOrderId.get(item.workOrderId) ?? []
     const summaryItem: WorkOrderItemSummaryRow = {
       id: item.id,
+      workOrderId: item.workOrderId,
       itemCode: item.itemCode,
       quantity: item.quantity,
       originalDescription: item.originalDescription,
@@ -34,6 +45,17 @@ export function attachActiveItemsToWorkOrders<T extends { id: string }>(
       labelStatus: item.labelStatus,
       sourceDescriptionFingerprint: item.sourceDescriptionFingerprint,
       isActive: item.isActive,
+      installerId: item.installerId,
+      installerName: item.installerName,
+      stageOptionId: item.stageOptionId,
+      stageName: item.stageName,
+      hardwareStatusOptionId: item.hardwareStatusOptionId,
+      hardwareStatusName: item.hardwareStatusName,
+      maintenanceProgram: item.maintenanceProgram,
+      installDate: item.installDate,
+      dateCompleted: item.dateCompleted,
+      riskLevel: item.riskLevel,
+      importance: item.importance,
     }
     groupedItems.push(summaryItem)
     itemsByWorkOrderId.set(item.workOrderId, groupedItems)

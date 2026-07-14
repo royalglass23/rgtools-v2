@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { users } from '@rgtools/db/schema'
 import { clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import {
   workOrderHardwareStatusOptions,
@@ -64,6 +65,10 @@ export type WorkOrderDetail = WorkOrderBaseRow & {
   }>
   timeline: Array<{
     id: string
+    workOrderItemId: string | null
+    itemCode: string | null
+    itemLabel: string | null
+    actorUsername: string | null
     fieldName: string
     previousValue: unknown
     newValue: unknown
@@ -138,8 +143,22 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
         labelStatus: workOrderItems.labelStatus,
         sourceDescriptionFingerprint: workOrderItems.sourceDescriptionFingerprint,
         isActive: workOrderItems.isActive,
+        installerId: workOrderItems.installerId,
+        installerName: workOrderInstallers.displayName,
+        stageOptionId: workOrderItems.stageOptionId,
+        stageName: workOrderStageOptions.displayName,
+        hardwareStatusOptionId: workOrderItems.hardwareStatusOptionId,
+        hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+        maintenanceProgram: workOrderItems.maintenanceProgram,
+        installDate: workOrderItems.installDate,
+        dateCompleted: workOrderItems.dateCompleted,
+        riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrderItems.riskLevelOverride}, ${workOrderItems.aiRiskLevel})`,
+        importance: sql<WorkOrderLevel | null>`coalesce(${workOrderItems.importanceOverride}, ${workOrderItems.aiImportance})`,
       })
       .from(workOrderItems)
+      .leftJoin(workOrderInstallers, eq(workOrderItems.installerId, workOrderInstallers.id))
+      .leftJoin(workOrderStageOptions, eq(workOrderItems.stageOptionId, workOrderStageOptions.id))
+      .leftJoin(workOrderHardwareStatusOptions, eq(workOrderItems.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
       .where(filters.showRemovedItems
         ? inArray(workOrderItems.workOrderId, rows.map((row) => row.id))
         : and(
@@ -310,6 +329,10 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
     db
       .select({
         id: workOrderEvents.id,
+        workOrderItemId: workOrderEvents.workOrderItemId,
+        itemCode: workOrderItems.itemCode,
+        itemLabel: sql<string | null>`coalesce(${workOrderItems.manualLabelOverride}, ${workOrderItems.generatedLabel}, ${workOrderItems.originalDescription})`,
+        actorUsername: users.username,
         fieldName: workOrderEvents.fieldName,
         previousValue: workOrderEvents.previousValue,
         newValue: workOrderEvents.newValue,
@@ -320,6 +343,8 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
         createdAt: workOrderEvents.createdAt,
       })
       .from(workOrderEvents)
+      .leftJoin(workOrderItems, eq(workOrderEvents.workOrderItemId, workOrderItems.id))
+      .leftJoin(users, eq(workOrderEvents.actorId, users.id))
       .where(eq(workOrderEvents.workOrderId, workOrderId))
       .orderBy(desc(workOrderEvents.createdAt)),
   ])

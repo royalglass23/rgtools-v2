@@ -44,6 +44,14 @@ import {
   type WorkOrderItemLabelStore,
 } from './item-label-lifecycle'
 import { generateWorkOrderItemLabel, type WorkOrderItemLabelGenerator } from './item-labels'
+import {
+  assertWorkOrderItemOperationalField,
+  parseWorkOrderItemOperationalValue,
+  readWorkOrderItemOperationalValue,
+  workOrderItemOperationalEventName,
+  workOrderItemOperationalUpdate,
+  type WorkOrderItemOperationalField,
+} from './item-operational-fields'
 
 type ServiceM8Company = {
   uuid?: string | null
@@ -364,6 +372,129 @@ export async function updateWorkOrderItemLabelAction(itemId: string, formData: F
   revalidateWorkOrderItemPaths(item.workOrderId)
 }
 
+export async function updateWorkOrderItemOperationalFieldAction(
+  itemId: string,
+  field: WorkOrderItemOperationalField,
+  value: string | null,
+) {
+  await assertCurrentUserCanManageWorkOrders()
+  const normalizedValue = parseWorkOrderItemOperationalValue(field, value)
+  const session = await auth()
+
+  const result = await db.transaction(async (tx) => {
+    const [item] = await tx
+      .select({
+        id: workOrderItems.id,
+        workOrderId: workOrderItems.workOrderId,
+        isActive: workOrderItems.isActive,
+        installerId: workOrderItems.installerId,
+        stageOptionId: workOrderItems.stageOptionId,
+        hardwareStatusOptionId: workOrderItems.hardwareStatusOptionId,
+        maintenanceProgram: workOrderItems.maintenanceProgram,
+        installDate: workOrderItems.installDate,
+        dateCompleted: workOrderItems.dateCompleted,
+        riskLevelOverride: workOrderItems.riskLevelOverride,
+        importanceOverride: workOrderItems.importanceOverride,
+      })
+      .from(workOrderItems)
+      .where(eq(workOrderItems.id, itemId))
+      .limit(1)
+
+    if (!item) throw new Error(`Work Order Item ${itemId} was not found.`)
+    if (!item.isActive) throw new Error(`Work Order Item ${itemId} is removed and cannot be edited.`)
+    const previousValue = readWorkOrderItemOperationalValue(item, field)
+
+    if (previousValue === normalizedValue) {
+      return { workOrderId: item.workOrderId, value: normalizedValue }
+    }
+
+    await tx
+      .update(workOrderItems)
+      .set({ ...workOrderItemOperationalUpdate(field, normalizedValue), updatedAt: new Date() })
+      .where(eq(workOrderItems.id, itemId))
+
+    await tx.insert(workOrderEvents).values({
+      workOrderId: item.workOrderId,
+      workOrderItemId: item.id,
+      actorId: session?.user?.id ?? null,
+      fieldName: workOrderItemOperationalEventName(field),
+      previousValue,
+      newValue: normalizedValue,
+      isClientVisibleCandidate: false,
+    })
+
+    return { workOrderId: item.workOrderId, value: normalizedValue }
+  })
+
+  revalidateWorkOrderItemPaths(result.workOrderId)
+  return { value: result.value }
+}
+
+export async function bulkApplyWorkOrderItemOperationalFieldAction(
+  workOrderId: string,
+  sourceItemId: string,
+  field: WorkOrderItemOperationalField,
+) {
+  await assertCurrentUserCanManageWorkOrders()
+  assertWorkOrderItemOperationalField(field)
+  const session = await auth()
+
+  const result = await db.transaction(async (tx) => {
+    const items = await tx
+      .select({
+        id: workOrderItems.id,
+        workOrderId: workOrderItems.workOrderId,
+        isActive: workOrderItems.isActive,
+        installerId: workOrderItems.installerId,
+        stageOptionId: workOrderItems.stageOptionId,
+        hardwareStatusOptionId: workOrderItems.hardwareStatusOptionId,
+        maintenanceProgram: workOrderItems.maintenanceProgram,
+        installDate: workOrderItems.installDate,
+        dateCompleted: workOrderItems.dateCompleted,
+        riskLevelOverride: workOrderItems.riskLevelOverride,
+        importanceOverride: workOrderItems.importanceOverride,
+      })
+      .from(workOrderItems)
+      .where(eq(workOrderItems.workOrderId, workOrderId))
+
+    const sourceItem = items.find((item) => item.id === sourceItemId)
+    if (!sourceItem) throw new Error(`Work Order Item ${sourceItemId} was not found in this Work Order.`)
+    if (!sourceItem.isActive) throw new Error(`Work Order Item ${sourceItemId} is removed and cannot be bulk applied.`)
+
+    const sourceValue = readWorkOrderItemOperationalValue(sourceItem, field)
+    const changedItems = items.filter((item) => (
+      item.id !== sourceItemId
+      && item.isActive
+      && readWorkOrderItemOperationalValue(item, field) !== sourceValue
+    ))
+    const now = new Date()
+
+    for (const item of changedItems) {
+      await tx
+        .update(workOrderItems)
+        .set({ ...workOrderItemOperationalUpdate(field, sourceValue), updatedAt: now })
+        .where(eq(workOrderItems.id, item.id))
+    }
+
+    if (changedItems.length > 0) {
+      await tx.insert(workOrderEvents).values(changedItems.map((item) => ({
+        workOrderId,
+        workOrderItemId: item.id,
+        actorId: session?.user?.id ?? null,
+        fieldName: workOrderItemOperationalEventName(field),
+        previousValue: readWorkOrderItemOperationalValue(item, field),
+        newValue: sourceValue,
+        isClientVisibleCandidate: false,
+      })))
+    }
+
+    return { changedCount: changedItems.length }
+  })
+
+  revalidateWorkOrderItemPaths(workOrderId)
+  return result
+}
+
 export async function regenerateWorkOrderItemLabelAction(itemId: string) {
   await assertCurrentUserCanManageWorkOrders()
   const session = await auth()
@@ -571,61 +702,6 @@ export async function saveWorkOrderBillingExclusionsAction(formData: FormData) {
   revalidatePath('/admin/work-orders')
 }
 
-export async function updateWorkOrderOperationalFieldsAction(workOrderId: string, formData: FormData) {
-  await assertCurrentUserCanManageWorkOrders()
-  const session = await auth()
-
-  const [current] = await db
-    .select({
-      installerId: workOrders.installerId,
-      stageOptionId: workOrders.stageOptionId,
-      hardwareStatusOptionId: workOrders.hardwareStatusOptionId,
-      maintenanceProgram: workOrders.maintenanceProgram,
-      installDate: workOrders.installDate,
-      dateCompleted: workOrders.dateCompleted,
-      riskLevelOverride: workOrders.riskLevelOverride,
-      importanceOverride: workOrders.importanceOverride,
-    })
-    .from(workOrders)
-    .where(eq(workOrders.id, workOrderId))
-    .limit(1)
-
-  if (!current) throw new Error('Work Order not found.')
-
-  const now = new Date()
-  const next = {
-    installerId: nullableString(formData.get('installerId')),
-    stageOptionId: nullableString(formData.get('stageOptionId')),
-    hardwareStatusOptionId: nullableString(formData.get('hardwareStatusOptionId')),
-    maintenanceProgram: maintenanceProgramValue(formData.get('maintenanceProgram')),
-    installDate: nullableString(formData.get('installDate')),
-    dateCompleted: nullableString(formData.get('dateCompleted')),
-    riskLevelOverride: workOrderLevelValue(formData.get('riskLevel')),
-    importanceOverride: workOrderLevelValue(formData.get('importance')),
-  }
-
-  await db
-    .update(workOrders)
-    .set({
-      ...next,
-      updatedAt: now,
-    })
-    .where(eq(workOrders.id, workOrderId))
-
-  const events = operationalEvents({
-    workOrderId,
-    actorId: session?.user?.id ?? null,
-    previous: current,
-    next,
-  })
-  if (events.length > 0) {
-    await db.insert(workOrderEvents).values(events)
-  }
-
-  revalidatePath('/work-orders')
-  revalidatePath(`/work-orders/${workOrderId}`)
-}
-
 export async function markWorkOrderEventClientVisibleCandidateAction(eventId: string, formData: FormData) {
   await assertCurrentUserCanManageWorkOrders()
 
@@ -765,73 +841,9 @@ async function deactivateConfigOption(
   revalidatePath('/work-orders')
 }
 
-function operationalEvents({
-  workOrderId,
-  actorId,
-  previous,
-  next,
-}: {
-  workOrderId: string
-  actorId: string | null
-  previous: {
-    installerId: string | null
-    stageOptionId: string | null
-    hardwareStatusOptionId: string | null
-    maintenanceProgram: boolean
-    installDate: string | null
-    dateCompleted: string | null
-    riskLevelOverride: string | null
-    importanceOverride: string | null
-  }
-  next: {
-    installerId: string | null
-    stageOptionId: string | null
-    hardwareStatusOptionId: string | null
-    maintenanceProgram: boolean
-    installDate: string | null
-    dateCompleted: string | null
-    riskLevelOverride: string | null
-    importanceOverride: string | null
-  }
-}) {
-  return [
-    eventFor('installer_changed', previous.installerId, next.installerId),
-    eventFor('stage_changed', previous.stageOptionId, next.stageOptionId),
-    eventFor('hardware_status_changed', previous.hardwareStatusOptionId, next.hardwareStatusOptionId),
-    eventFor('maintenance_program_changed', previous.maintenanceProgram, next.maintenanceProgram),
-    eventFor('install_date_changed', previous.installDate, next.installDate),
-    eventFor('date_completed_changed', previous.dateCompleted, next.dateCompleted),
-    eventFor('risk_changed', previous.riskLevelOverride, next.riskLevelOverride),
-    eventFor('importance_changed', previous.importanceOverride, next.importanceOverride),
-  ].filter((event): event is NonNullable<typeof event> => Boolean(event))
-
-  function eventFor(fieldName: string, previousValue: string | boolean | null, newValue: string | boolean | null) {
-    if (previousValue === newValue) return null
-    return {
-      workOrderId,
-      actorId,
-      fieldName,
-      previousValue,
-      newValue,
-      isClientVisibleCandidate: false,
-    }
-  }
-}
-
 function nullableString(value: FormDataEntryValue | null) {
   const normalized = String(value ?? '').trim()
   return normalized || null
-}
-
-function workOrderLevelValue(value: FormDataEntryValue | null): WorkOrderLevel | null {
-  const normalized = nullableString(value)
-  return normalized === 'low' || normalized === 'medium' || normalized === 'high'
-    ? normalized
-    : null
-}
-
-function maintenanceProgramValue(value: FormDataEntryValue | null): boolean {
-  return nullableString(value) === 'yes'
 }
 
 function buildWorkOrderAiSuggestion(input: {

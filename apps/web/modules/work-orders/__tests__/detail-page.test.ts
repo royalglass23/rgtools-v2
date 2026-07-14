@@ -20,8 +20,6 @@ describe('work order detail page', () => {
       'Status',
       'Lead score',
       'Description',
-      'Operational State',
-      'Maintenance Program',
       'Client Context',
       'Client notes',
       'Client Context Summary',
@@ -37,15 +35,15 @@ describe('work order detail page', () => {
     expect(source).not.toContain('Client Approach Note')
   })
 
-  it('keeps edit controls permission-sensitive for manage users', () => {
+  it('retires the parent operational write path and identifies item audit events', () => {
     const source = pageSource()
 
     expect(source).toContain('permissions.canManage &&')
-    expect(source).toContain('Manage Work Order')
-    expect(source).toContain('name="maintenanceProgram"')
-    expect(source).toContain('Yes')
-    expect(source).toContain('No')
-    expect(source).toContain('Save changes')
     expect(source).toContain('Add note')
+    expect(source).toContain('event.itemLabel')
+    expect(source).toContain('event.actorUsername')
+    expect(source).not.toContain('Manage Work Order')
+    expect(source).not.toContain('updateWorkOrderOperationalFieldsAction')
+    expect(source).not.toContain('Save changes')
   })
 })
