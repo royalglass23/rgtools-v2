@@ -21,6 +21,10 @@ import {
 import { PsConfigurationGlobalTemplatesEditor } from './PsConfigurationGlobalTemplatesEditor'
 import { PsConfigurationOptionsEditor } from './PsConfigurationOptionsEditor'
 import { PsConfigurationSystemsEditor, type PsConfigurationSystemRow } from './PsConfigurationSystemsEditor'
+import {
+  PS_CONFIGURATION_OPTIONS_FORM_ID,
+  PsConfigurationVersionActions,
+} from './PsConfigurationVersionActions'
 
 const visibleOptionCategorySlugs = new Set([
   'system',
@@ -169,20 +173,11 @@ export default async function PsConfigurationPage() {
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              {!isDraft ? (
-                <form action={createPsConfigurationDraftAction}>
-                  <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">
-                    Create draft
-                  </button>
-                </form>
-              ) : (
-                <form action={publishPsConfigurationDraftAction}>
-                  <input type="hidden" name="configVersionId" value={version.id} />
-                  <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">
-                    Publish draft
-                  </button>
-                </form>
-              )}
+              <PsConfigurationVersionActions
+                isDraft={isDraft}
+                createDraftAction={createPsConfigurationDraftAction}
+                saveDraftAction={publishPsConfigurationDraftAction}
+              />
             </div>
           </div>
 
@@ -203,7 +198,11 @@ export default async function PsConfigurationPage() {
             />
           ) : null}
 
-          <form action={updatePsConfigurationOptionsAction} className="space-y-4">
+          <form
+            id={PS_CONFIGURATION_OPTIONS_FORM_ID}
+            action={updatePsConfigurationOptionsAction}
+            className="space-y-4"
+          >
             <input type="hidden" name="configVersionId" value={version.id} />
             <PsConfigurationOptionsEditor
               categories={optionCategories.map((category) => ({
@@ -212,15 +211,6 @@ export default async function PsConfigurationPage() {
               }))}
               isDraft={isDraft}
             />
-            <div className="sticky bottom-0 flex justify-end border-t border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
-              <button
-                type="submit"
-                disabled={!isDraft}
-                className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-              >
-                Save draft
-              </button>
-            </div>
           </form>
         </>
       )}
