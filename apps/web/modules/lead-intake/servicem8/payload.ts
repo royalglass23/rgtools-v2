@@ -47,6 +47,13 @@ export type ServiceM8LeadJobCardFields = {
   note: string | null
 }
 
+type ReadableProjectDetails = {
+  project: string | null
+  estimatedPrice: string | null
+  subtotal: string | null
+  installationLines: string[]
+}
+
 const LEGACY_OPTION_LABELS: Record<string, string> = {
   within_30km: 'Within 30 km',
   '30km_to_80km': '30-80 km',
@@ -104,31 +111,9 @@ export function buildServiceM8InboxEmail(
   const score = record.seedScore ?? 0
   const completeness = record.completeness ?? 0
   const jobCard = buildServiceM8LeadJobCardFields(record)
-  const subject = [
-    'RGTools Lead',
-    `Leads Quality ${tier}`,
-    record.clientName,
-    humanizeValue(record.projectType),
-  ].filter(Boolean).join(' - ')
-  const bodyLines = [
-    `Name: ${record.clientName}`,
-    record.companyName ? `Company: ${record.companyName}` : null,
-    record.phone ? `Mobile: ${record.phone}` : null,
-    record.email ? `Email: ${record.email}` : null,
-    record.location ? `Address: ${record.location}` : null,
-    '',
-    '--- RGTools Lead Score ---',
-    `Leads Quality: ${tier}`,
-    `Score: ${score}`,
-    `Completeness: ${completeness}%`,
-    record.strikeFlag ? `Flag: ${record.strikeFlag}` : null,
-    record.scoreReason ? `Reason: ${humanizeStoredText(record.scoreReason)}` : null,
-    '',
-    '--- Lead Intake ---',
-    readableLine('Driving distance', optionLabel('distanceBand', record.distanceBand)),
-    readableLine('Project type', humanizeValue(record.projectType)),
+  const projectDetails = buildReadableProjectDetails(record.freeText)
+  const leadDetails = [
     readableLine('Client type', jobCard.clientType),
-    readableLine('Budget band', optionLabel('budgetBand', record.budgetBand)),
     readableLine('Consent status', humanizeValue(record.consentStatus)),
     readableLine('Complexity', optionLabel('projectType', record.complexity)),
     readableLine('Price-sensitivity read', optionLabel('priceSensitivity', record.priceSensitivityRead)),
@@ -138,13 +123,44 @@ export function buildServiceM8InboxEmail(
     readableLine('Site access', optionLabel('siteAccess', record.siteAccess)),
     readableLine('Installation height', optionLabel('installationHeight', record.installationHeight)),
     readableLine('Channel', humanizeValue(record.channel)),
-    record.suburb ? `Suburb: ${record.suburb}` : null,
-    jobCard.jobDescription ? `Job description: ${jobCard.jobDescription}` : null,
-    readableLine('Details', humanizeStoredText(record.freeText)),
-    jobCard.note ? `Note: ${humanizeStoredText(jobCard.note)}` : null,
+    readableLine('Suburb', record.suburb),
+  ].filter((line): line is string => Boolean(line))
+  const subject = [
+    'RGTools Lead',
+    `Leads Quality ${tier}`,
+    record.clientName,
+    humanizeValue(record.projectType),
+  ].filter(Boolean).join(' - ')
+  const bodyLines = [
+    '--- Contact ---',
+    `Name: ${record.clientName}`,
+    record.companyName ? `Company: ${record.companyName}` : null,
+    record.phone ? `Mobile: ${record.phone}` : null,
+    record.email ? `Email: ${record.email}` : null,
+    record.location ? `Address: ${record.location}` : null,
+    '',
+    '--- Lead Score ---',
+    `Quality: ${tier}`,
+    `Score: ${score}`,
+    `Completeness: ${completeness}%`,
+    record.strikeFlag ? `Flag: ${record.strikeFlag}` : null,
+    record.scoreReason ? `Reason: ${formatScoreReason(record.scoreReason)}` : null,
+    '',
+    '--- Project Summary ---',
+    readableLine('Product', humanizeValue(record.projectType)),
+    readableLine('Project', projectDetails.project),
+    readableLine('Budget', optionLabel('budgetBand', record.budgetBand)),
+    readableLine('Estimated price', projectDetails.estimatedPrice),
+    readableLine('Subtotal', projectDetails.subtotal),
+    readableLine('Driving distance', optionLabel('distanceBand', record.distanceBand)),
+    readableLine('Last updated', formatLeadCardDate(record.updatedAt)),
+    ...(leadDetails.length > 0 ? ['', '--- Lead Details ---', ...leadDetails] : []),
+    ...(projectDetails.installationLines.length > 0
+      ? ['', '--- Installation Details ---', ...projectDetails.installationLines]
+      : []),
     '',
     '--- Reference ---',
-    `RGTools Lead ${record.leadId}`,
+    `RGTools Lead: ${record.leadId}`,
   ].filter((line): line is string => line !== null)
 
   return {
@@ -227,6 +243,78 @@ function formatLeadCardDate(value: Date): string | null {
     year: 'numeric',
     timeZone: 'Pacific/Auckland',
   }).format(value)
+}
+
+function buildReadableProjectDetails(value: string | null | undefined): ReadableProjectDetails {
+  const details: ReadableProjectDetails = {
+    project: null,
+    estimatedPrice: null,
+    subtotal: null,
+    installationLines: [],
+  }
+
+  for (const rawLine of value?.split(/\r?\n/) ?? []) {
+    const line = rawLine.trim()
+    if (!line || /^\[Calculator\]\s+submitted\s+/i.test(line)) continue
+
+    const estimate = line.match(/^Estimate:\s*\$?([\d,.]+)\s*-\s*\$?([\d,.]+)(?:\s+\(subtotal\s+\$?([\d,.]+)\))?$/i)
+    if (estimate) {
+      details.estimatedPrice = `${formatMoney(estimate[1])}-${formatMoney(estimate[2])}`
+      details.subtotal = estimate[3] ? formatMoney(estimate[3]) : null
+      continue
+    }
+
+    const project = line.match(
+      /^Project:\s*(.+?),\s*([\d.]+)m,\s*(\d+)\s+corner\(s\),\s*(\d+)\s+gate\(s\)(?:,\s*landing\s*([\d.]+)m)?$/i,
+    )
+    if (project) {
+      details.project = humanizeStoredText(project[1])
+      details.installationLines.push(`Length: ${project[2]} m`, `Corners: ${project[3]}`, `Gates: ${project[4]}`)
+      if (project[5]) details.installationLines.push(`Landing: ${project[5]} m`)
+      continue
+    }
+
+    if (/^(?:Fixing|Customer type):/i.test(line)) {
+      details.installationLines.push(
+        ...line
+          .split(/\s+\|\s+/)
+          .map((part) => humanizeStoredText(part))
+          .filter((part): part is string => Boolean(part)),
+      )
+      continue
+    }
+
+    if (/^(?:Consultation needed|Contact consent):/i.test(line)) {
+      details.installationLines.push(formatYesNoLine(line))
+      continue
+    }
+
+    const readable = humanizeStoredText(line)
+    if (readable) details.installationLines.push(readable.includes(':') ? readable : `Details: ${readable}`)
+  }
+
+  return details
+}
+
+function formatMoney(value: string): string {
+  const amount = Number(value.replaceAll(',', ''))
+  if (!Number.isFinite(amount)) return `$${value}`
+  return `$${new Intl.NumberFormat('en-NZ', { maximumFractionDigits: 2 }).format(amount)}`
+}
+
+function formatYesNoLine(value: string): string {
+  return value.replace(
+    /:\s*(yes|no)\b/i,
+    (_match, answer: string) => `: ${answer.charAt(0).toUpperCase()}${answer.slice(1).toLowerCase()}`,
+  )
+}
+
+function formatScoreReason(value: string): string | null {
+  return (
+    humanizeStoredText(value)
+      ?.replace(/^Tier [A-E] \(\d+\):\s*/i, '')
+      .replace(/(\d+)\/(\d+) matrix fields answered/i, '$1 of $2 scoring fields answered') ?? null
+  )
 }
 
 function cleanOneLine(value: string | null | undefined): string | null {

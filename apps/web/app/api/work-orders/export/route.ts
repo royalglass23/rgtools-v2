@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { rowsToCsv } from '@/lib/audit-export'
 import { requireModule } from '@/lib/guard'
 import { parseWorkOrderListFilters } from '@/modules/work-orders/list-filters'
-import { listWorkOrdersForExport, type WorkOrderRow } from '@/modules/work-orders/queries'
+import { listWorkOrdersForExport, type WorkOrderBaseRow } from '@/modules/work-orders/queries'
 import { getWorkOrderSummaryConfig, type WorkOrderSummaryFieldConfig } from '@/modules/work-orders/summary-config'
 
 export async function GET(request: Request) {
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   })
 }
 
-function valueForField(row: WorkOrderRow, field: WorkOrderSummaryFieldConfig) {
+function valueForField(row: WorkOrderBaseRow, field: WorkOrderSummaryFieldConfig) {
   const values: Record<WorkOrderSummaryFieldConfig['id'], string | number | null> = {
     client: row.companyName ? `${row.clientName} (${row.companyName})` : row.clientName,
     jobNumber: row.jobNumber,

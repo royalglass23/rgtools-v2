@@ -1,17 +1,19 @@
-import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import {
   workOrderHardwareStatusOptions,
   workOrderEvents,
   workOrderInstallers,
+  workOrderItems,
   workOrders,
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection } from './list-filters'
+import { attachActiveItemsToWorkOrders, type WorkOrderItemSummaryRow } from './work-order-items'
 
-export type WorkOrderRow = {
+export type WorkOrderBaseRow = {
   id: string
   servicem8Status: string
   isCurrent: boolean
@@ -36,7 +38,12 @@ export type WorkOrderRow = {
   updatedAt: Date
 }
 
-export type WorkOrderDetail = WorkOrderRow & {
+export type WorkOrderRow = WorkOrderBaseRow & {
+  activeItemCount: number
+  items: WorkOrderItemSummaryRow[]
+}
+
+export type WorkOrderDetail = WorkOrderBaseRow & {
   servicem8JobUuid: string | null
   servicem8Active: boolean
   clientId: string | null
@@ -114,9 +121,29 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
     .limit(filters.size)
     .offset(offset)
 
+  const activeItems = rows.length === 0
+    ? []
+    : await db
+      .select({
+        id: workOrderItems.id,
+        workOrderId: workOrderItems.workOrderId,
+        itemCode: workOrderItems.itemCode,
+        quantity: workOrderItems.quantity,
+        originalDescription: workOrderItems.originalDescription,
+        lineTotalExcludingGst: workOrderItems.lineTotalExcludingGst,
+        generatedLabel: workOrderItems.generatedLabel,
+        manualLabelOverride: workOrderItems.manualLabelOverride,
+      })
+      .from(workOrderItems)
+      .where(and(
+        inArray(workOrderItems.workOrderId, rows.map((row) => row.id)),
+        eq(workOrderItems.isActive, true),
+      ))
+      .orderBy(asc(workOrderItems.workOrderId), asc(workOrderItems.sortOrder), asc(workOrderItems.id))
+
   const total = totalRow?.total ?? 0
   return {
-    rows,
+    rows: attachActiveItemsToWorkOrders(rows, activeItems),
     total,
     pageCount: Math.max(1, Math.ceil(total / filters.size)),
   }

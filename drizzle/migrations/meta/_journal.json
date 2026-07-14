@@ -351,6 +351,13 @@
       "when": 1783915200000,
       "tag": "0049_ps_generator_height_rule_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1783987200000,
+      "tag": "0050_work_order_items",
+      "breakpoints": true
     }
   ]
 }

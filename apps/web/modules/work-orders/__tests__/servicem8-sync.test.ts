@@ -1,6 +1,59 @@
 import { describe, expect, it } from 'vitest'
 
-import { mapServiceM8JobsToWorkOrderInputs } from '../servicem8-sync'
+import {
+  mapServiceM8JobMaterialsToWorkOrderItemInputs,
+  mapServiceM8JobsToWorkOrderInputs,
+} from '../servicem8-sync'
+
+describe('mapServiceM8JobMaterialsToWorkOrderItemInputs', () => {
+  it('maps one active ServiceM8 line to its stable parent and item identities', () => {
+    const rows = mapServiceM8JobMaterialsToWorkOrderItemInputs(
+      [{
+        uuid: 'item-1',
+        active: 1,
+        job_uuid: 'job-1',
+        material_uuid: 'material-1',
+        name: 'Frameless shower enclosure, 1200 x 2100, matte black',
+        quantity: '2',
+        price: '1250.50',
+        sort_order: '3',
+      }],
+      [{ uuid: 'material-1', item_number: 'SHOWER-001' }],
+    )
+
+    expect(rows).toEqual([{
+      servicem8ItemUuid: 'item-1',
+      servicem8JobUuid: 'job-1',
+      itemCode: 'SHOWER-001',
+      quantity: '2',
+      originalDescription: 'Frameless shower enclosure, 1200 x 2100, matte black',
+      lineTotalExcludingGst: '2501.00',
+      sortOrder: 3,
+    }])
+  })
+
+  it('emits one child when ServiceM8 repeats the same item UUID', () => {
+    const repeatedLine = {
+      uuid: 'item-1',
+      active: 1,
+      job_uuid: 'job-1',
+      name: 'Shower glass',
+      quantity: '1',
+      price: '900',
+    }
+
+    const rows = mapServiceM8JobMaterialsToWorkOrderItemInputs(
+      [repeatedLine, { ...repeatedLine }],
+      [],
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual(expect.objectContaining({
+      servicem8ItemUuid: 'item-1',
+      servicem8JobUuid: 'job-1',
+    }))
+  })
+})
 
 describe('mapServiceM8JobsToWorkOrderInputs', () => {
   it('keeps active ServiceM8 Work Order jobs after normalized status matching', () => {

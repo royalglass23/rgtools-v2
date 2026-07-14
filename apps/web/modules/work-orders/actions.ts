@@ -11,6 +11,7 @@ import { quotes, settings } from '@rgtools/db/schema'
 import {
   workOrderHardwareStatusOptions,
   workOrderInstallers,
+  workOrderItems,
   workOrderEvents,
   workOrderRefreshRuns,
   workOrders,
@@ -22,7 +23,13 @@ import {
   assertCurrentUserCanManageWorkOrders,
 } from './permissions'
 import { findLinkedLeadAndClient } from './queries'
-import { mapServiceM8JobsToWorkOrderInputs, type ServiceM8WorkOrderJob } from './servicem8-sync'
+import {
+  mapServiceM8JobMaterialsToWorkOrderItemInputs,
+  mapServiceM8JobsToWorkOrderInputs,
+  type ServiceM8JobMaterial,
+  type ServiceM8Material,
+  type ServiceM8WorkOrderJob,
+} from './servicem8-sync'
 import { serializeSummaryConfig, WORK_ORDER_SUMMARY_FIELD_CATALOG, WORK_ORDER_SUMMARY_CONFIG_KEY } from './summary-config'
 
 type ServiceM8Company = {
@@ -32,6 +39,7 @@ type ServiceM8Company = {
 }
 
 const WORK_ORDER_FILTER = "active eq 1 and status eq 'Work Order'"
+const ACTIVE_FILTER = 'active eq 1'
 
 export async function refreshWorkOrdersAction() {
   await assertCurrentUserCanManageWorkOrders()
@@ -81,11 +89,15 @@ export async function refreshWorkOrdersFromServiceM8(
 ) {
   let jobRows: ServiceM8WorkOrderJob[]
   let companyRows: ServiceM8Company[]
+  let jobMaterialRows: ServiceM8JobMaterial[]
+  let materialRows: ServiceM8Material[]
 
   try {
-    [jobRows, companyRows] = await Promise.all([
+    [jobRows, companyRows, jobMaterialRows, materialRows] = await Promise.all([
       readServiceM8Array<ServiceM8WorkOrderJob>(request, `/job.json${odataFilter(WORK_ORDER_FILTER)}`),
       readServiceM8Array<ServiceM8Company>(request, '/company.json'),
+      readServiceM8Array<ServiceM8JobMaterial>(request, `/jobmaterial.json${odataFilter(ACTIVE_FILTER)}`),
+      readServiceM8Array<ServiceM8Material>(request, '/material.json'),
     ])
   } catch (error) {
     await recordRefreshFailure(error)
@@ -99,8 +111,16 @@ export async function refreshWorkOrdersFromServiceM8(
   )
 
   const inputs = mapServiceM8JobsToWorkOrderInputs(jobRows)
+  const itemInputs = mapServiceM8JobMaterialsToWorkOrderItemInputs(jobMaterialRows, materialRows)
+  const itemInputsByJobUuid = new Map<string, typeof itemInputs>()
+  for (const itemInput of itemInputs) {
+    const groupedInputs = itemInputsByJobUuid.get(itemInput.servicem8JobUuid) ?? []
+    groupedInputs.push(itemInput)
+    itemInputsByJobUuid.set(itemInput.servicem8JobUuid, groupedInputs)
+  }
   const now = new Date()
   const seenIdentityKeys = inputs.map((input) => `${input.identityKind}:${input.identityValue}`)
+  let itemsSynced = 0
 
   await db.transaction(async (tx) => {
     for (const input of inputs) {
@@ -118,7 +138,7 @@ export async function refreshWorkOrdersFromServiceM8(
       const company = input.servicem8CompanyUuid ? companiesByUuid.get(input.servicem8CompanyUuid) : null
       const clientName = linked?.clientName ?? quote?.clientName ?? company?.name?.trim() ?? input.jobNumber ?? 'Unknown client'
 
-      await tx
+      const [persistedWorkOrder] = await tx
         .insert(workOrders)
         .values({
           identityKind: input.identityKind,
@@ -181,6 +201,47 @@ export async function refreshWorkOrdersFromServiceM8(
             updatedAt: now,
           },
         })
+        .returning({ id: workOrders.id })
+
+      if (!persistedWorkOrder) {
+        throw new Error(`Work Order refresh could not persist ${input.identityKind}:${input.identityValue}.`)
+      }
+
+      const workOrderItemInputs = input.servicem8JobUuid
+        ? itemInputsByJobUuid.get(input.servicem8JobUuid) ?? []
+        : []
+
+      for (const itemInput of workOrderItemInputs) {
+        await tx
+          .insert(workOrderItems)
+          .values({
+            workOrderId: persistedWorkOrder.id,
+            servicem8ItemUuid: itemInput.servicem8ItemUuid,
+            servicem8JobUuid: itemInput.servicem8JobUuid,
+            itemCode: itemInput.itemCode,
+            quantity: itemInput.quantity,
+            originalDescription: itemInput.originalDescription,
+            lineTotalExcludingGst: itemInput.lineTotalExcludingGst,
+            sortOrder: itemInput.sortOrder,
+            isActive: true,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: workOrderItems.servicem8ItemUuid,
+            set: {
+              workOrderId: persistedWorkOrder.id,
+              servicem8JobUuid: itemInput.servicem8JobUuid,
+              itemCode: itemInput.itemCode,
+              quantity: itemInput.quantity,
+              originalDescription: itemInput.originalDescription,
+              lineTotalExcludingGst: itemInput.lineTotalExcludingGst,
+              sortOrder: itemInput.sortOrder,
+              isActive: true,
+              updatedAt: now,
+            },
+          })
+        itemsSynced += 1
+      }
     }
 
     await tx
@@ -202,7 +263,7 @@ export async function refreshWorkOrdersFromServiceM8(
     })
   })
 
-  return { synced: inputs.length }
+  return { synced: inputs.length, itemsSynced }
 }
 
 export async function createWorkOrderInstallerAction(formData: FormData) {

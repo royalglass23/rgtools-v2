@@ -1,0 +1,42 @@
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+
+import { WorkOrderItemsSummary } from '../WorkOrderItemsSummary'
+
+describe('WorkOrderItemsSummary', () => {
+  it('shows every active ServiceM8 item beneath one parent count', () => {
+    render(<WorkOrderItemsSummary items={[
+      {
+        id: 'item-1',
+        itemCode: 'GLASS-001',
+        quantity: '1.000',
+        originalDescription: 'Shower glass',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: null,
+        manualLabelOverride: null,
+      },
+      {
+        id: 'item-2',
+        itemCode: 'HARDWARE-001',
+        quantity: '2.000',
+        originalDescription: 'Shower hardware',
+        lineTotalExcludingGst: '150.00',
+        generatedLabel: null,
+        manualLabelOverride: null,
+      },
+    ]} />)
+
+    expect(screen.getByText('2 active items')).toBeInTheDocument()
+    expect(screen.getByText('GLASS-001')).toBeInTheDocument()
+    expect(screen.getByText('Shower glass')).toBeInTheDocument()
+    expect(screen.getByText('HARDWARE-001')).toBeInTheDocument()
+    expect(screen.getByText('Shower hardware')).toBeInTheDocument()
+  })
+
+  it('keeps an empty Work Order visible without inventing a child item', () => {
+    render(<WorkOrderItemsSummary items={[]} />)
+
+    expect(screen.getByText('0 active items')).toBeInTheDocument()
+    expect(screen.getByText('No items synced from ServiceM8 yet')).toBeInTheDocument()
+  })
+})

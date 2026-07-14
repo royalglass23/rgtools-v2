@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { batchDeleteWorkOrdersAction } from './actions'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection, WorkOrderSortKey } from './list-filters'
 import type { WorkOrderRow } from './queries'
 import type { WorkOrderSummaryFieldConfig } from './summary-config'
+import { WorkOrderItemsSummary } from './WorkOrderItemsSummary'
 
 type FilterOption = { id: string; label: string }
 
@@ -261,20 +262,27 @@ function WorkOrdersTable({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50">
-                {isAdmin && (
-                  <td className="px-4 py-3 align-top">
-                    <input
-                      type="checkbox"
-                      checked={selectedSet.has(row.id)}
-                      onChange={() => onToggleWorkOrder(row.id)}
-                      aria-label={`Select Work Order for ${row.clientName}`}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
+              <Fragment key={row.id}>
+                <tr className="hover:bg-gray-50">
+                  {isAdmin && (
+                    <td className="px-4 py-3 align-top">
+                      <input
+                        type="checkbox"
+                        checked={selectedSet.has(row.id)}
+                        onChange={() => onToggleWorkOrder(row.id)}
+                        aria-label={`Select Work Order for ${row.clientName}`}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </td>
+                  )}
+                  {visibleFields.map((field) => <SummaryCell key={field.id} field={field} row={row} />)}
+                </tr>
+                <tr className="bg-white">
+                  <td colSpan={visibleFields.length + (isAdmin ? 1 : 0)}>
+                    <WorkOrderItemsSummary items={row.items} />
                   </td>
-                )}
-                {visibleFields.map((field) => <SummaryCell key={field.id} field={field} row={row} />)}
-              </tr>
+                </tr>
+              </Fragment>
             ))}
             {rows.length === 0 && (
               <tr>
@@ -337,6 +345,16 @@ function SummaryCell({ field, row }: { field: WorkOrderSummaryFieldConfig; row: 
           {row.companyName && <span className="block text-xs text-gray-500">{row.companyName}</span>}
         </Link>
       </td>
+    )
+  }
+  if (field.id === 'jobNumber') {
+    return (
+      <LinkedCell href={href}>
+        <span>{row.jobNumber ?? '-'}</span>
+        <span className="mt-1 block text-xs text-gray-500">
+          {row.activeItemCount} active {row.activeItemCount === 1 ? 'item' : 'items'}
+        </span>
+      </LinkedCell>
     )
   }
   if (field.id === 'importance') return <LinkedCell href={href}><LevelBadge level={row.importance} /></LinkedCell>
