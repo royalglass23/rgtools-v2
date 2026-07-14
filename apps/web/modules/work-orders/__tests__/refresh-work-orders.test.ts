@@ -4,9 +4,13 @@ import { getTableName } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const transactionValues = vi.hoisted(() => [] as Array<{ table: string; values: Record<string, unknown> }>)
+const transactionUpdates = vi.hoisted(() => [] as Array<{ table: string; values: Record<string, unknown> }>)
+const transactionConflictSets = vi.hoisted(() => [] as Array<{ table: string; values: Record<string, unknown> }>)
 const mockTransaction = vi.hoisted(() => vi.fn())
 const mockSelect = vi.hoisted(() => vi.fn())
 const mockRecordRefreshInsert = vi.hoisted(() => vi.fn())
+const refreshRunValues = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+const mockGetWorkOrderBillingExclusions = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -24,6 +28,9 @@ vi.mock('../permissions', () => ({
   assertCurrentUserCanConfigureWorkOrders: vi.fn(),
   assertCurrentUserCanManageWorkOrders: vi.fn(),
 }))
+vi.mock('../billing-exclusions', () => ({
+  getWorkOrderBillingExclusions: mockGetWorkOrderBillingExclusions,
+}))
 vi.mock('../queries', () => ({
   findLinkedLeadAndClient: vi.fn(async () => null),
 }))
@@ -33,6 +40,17 @@ import { refreshWorkOrdersFromServiceM8 } from '../actions'
 beforeEach(() => {
   vi.clearAllMocks()
   transactionValues.length = 0
+  transactionUpdates.length = 0
+  transactionConflictSets.length = 0
+  refreshRunValues.length = 0
+
+  mockRecordRefreshInsert.mockReturnValue({
+    values: vi.fn(async (values: Record<string, unknown>) => {
+      refreshRunValues.push(values)
+      return []
+    }),
+  })
+  mockGetWorkOrderBillingExclusions.mockResolvedValue(['invoice', 'partial invoice', 'deposit'])
 
   mockSelect.mockReturnValue({
     from: vi.fn(() => ({
@@ -51,21 +69,32 @@ beforeEach(() => {
 
           if (tableName === 'work_orders') {
             return {
-              onConflictDoUpdate: vi.fn(() => ({
-                returning: vi.fn(async () => [{ id: 'work-order-1', servicem8JobUuid: 'job-1' }]),
-              })),
+              onConflictDoUpdate: vi.fn((config: { set: Record<string, unknown> }) => {
+                transactionConflictSets.push({ table: tableName, values: config.set })
+                return {
+                  returning: vi.fn(async () => [{ id: 'work-order-1', servicem8JobUuid: 'job-1' }]),
+                }
+              }),
             }
           }
 
           if (tableName === 'work_order_items') {
-            return { onConflictDoUpdate: vi.fn(async () => []) }
+            return {
+              onConflictDoUpdate: vi.fn(async (config: { set: Record<string, unknown> }) => {
+                transactionConflictSets.push({ table: tableName, values: config.set })
+                return []
+              }),
+            }
           }
 
           return Promise.resolve([])
         }),
       })),
-      update: vi.fn(() => ({
-        set: vi.fn(() => ({ where: vi.fn(async () => []) })),
+      update: vi.fn((table: Parameters<typeof getTableName>[0]) => ({
+        set: vi.fn((values: Record<string, unknown>) => {
+          transactionUpdates.push({ table: getTableName(table), values })
+          return { where: vi.fn(async () => []) }
+        }),
       })),
     }
 
@@ -74,6 +103,43 @@ beforeEach(() => {
 })
 
 describe('refreshWorkOrdersFromServiceM8', () => {
+  it('does not start reconciliation when a required ServiceM8 dataset is invalid', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/jobmaterial.json')) return Response.json({ rows: [] })
+      return Response.json([])
+    })
+
+    await expect(refreshWorkOrdersFromServiceM8(request)).rejects.toThrow(
+      'ServiceM8 jobmaterial response was invalid: expected an array.',
+    )
+    expect(mockTransaction).not.toHaveBeenCalled()
+    expect(refreshRunValues).toEqual([expect.objectContaining({ status: 'failed' })])
+  })
+
+  it('records row-level source validation failures before reconciliation begins', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/jobmaterial.json')) {
+        return Response.json([{ uuid: 'item-1', active: 1, job_uuid: null, quantity: '1' }])
+      }
+      return Response.json([])
+    })
+
+    await expect(refreshWorkOrdersFromServiceM8(request)).rejects.toThrow(
+      'ServiceM8 item item-1 is invalid: job UUID is required.',
+    )
+    expect(mockTransaction).not.toHaveBeenCalled()
+    expect(refreshRunValues).toEqual([expect.objectContaining({ status: 'failed' })])
+  })
+
+  it('records a failed run when atomic reconciliation rolls back', async () => {
+    mockTransaction.mockRejectedValueOnce(new Error('database transaction rolled back'))
+    const request = vi.fn(async () => Response.json([]))
+
+    await expect(refreshWorkOrdersFromServiceM8(request)).rejects.toThrow('database transaction rolled back')
+    expect(transactionValues.some((write) => write.table === 'work_order_refresh_runs' && write.values.status === 'success')).toBe(false)
+    expect(refreshRunValues).toEqual([expect.objectContaining({ status: 'failed' })])
+  })
+
   it('persists every active item beneath one Work Order without copying job tracking values', async () => {
     const requestedPaths: string[] = []
     const request = vi.fn(async (path: string) => {
@@ -128,6 +194,7 @@ describe('refreshWorkOrdersFromServiceM8', () => {
     await expect(refreshWorkOrdersFromServiceM8(request)).resolves.toEqual({
       synced: 1,
       itemsSynced: 2,
+      excludedLineCount: 0,
     })
 
     expect(requestedPaths.some((path) => path.startsWith('/jobmaterial.json'))).toBe(true)
@@ -162,6 +229,35 @@ describe('refreshWorkOrdersFromServiceM8', () => {
     }
   })
 
+  it('applies configured billing exclusions and reports job, item, and exclusion counts', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/job.json')) {
+        return Response.json([{ uuid: 'job-1', active: 1, status: 'Work Order', generated_job_id: 'R260210' }])
+      }
+      if (path.startsWith('/jobmaterial.json')) {
+        return Response.json([
+          { uuid: 'item-1', active: 1, job_uuid: 'job-1', name: 'Shower glass', quantity: '1' },
+          { uuid: 'invoice-1', active: 1, job_uuid: 'job-1', name: 'Partial INVOICE claim', quantity: '1' },
+          { uuid: 'invoice-other', active: 1, job_uuid: 'job-other', name: 'Invoice for another job', quantity: '1' },
+        ])
+      }
+      return Response.json([])
+    })
+
+    await expect(refreshWorkOrdersFromServiceM8(request)).resolves.toEqual({
+      synced: 1,
+      itemsSynced: 1,
+      excludedLineCount: 1,
+    })
+    expect(transactionValues.filter((write) => write.table === 'work_order_items')).toHaveLength(1)
+    expect(transactionValues).toEqual(expect.arrayContaining([
+      {
+        table: 'work_order_refresh_runs',
+        values: expect.objectContaining({ syncedCount: 1, itemSyncedCount: 1, excludedLineCount: 1 }),
+      },
+    ]))
+  })
+
   it('persists an empty parent without creating a placeholder item', async () => {
     const request = vi.fn(async (path: string) => {
       if (path.startsWith('/job.json')) {
@@ -178,9 +274,56 @@ describe('refreshWorkOrdersFromServiceM8', () => {
     await expect(refreshWorkOrdersFromServiceM8(request)).resolves.toEqual({
       synced: 1,
       itemsSynced: 0,
+      excludedLineCount: 0,
     })
 
     expect(transactionValues.filter((write) => write.table === 'work_orders')).toHaveLength(1)
     expect(transactionValues.filter((write) => write.table === 'work_order_items')).toHaveLength(0)
+  })
+
+  it('marks previously synced items removed after a complete refresh returns no active lines', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/job.json')) {
+        return Response.json([{ uuid: 'job-1', active: 1, status: 'Work Order', generated_job_id: 'R260210' }])
+      }
+      return Response.json([])
+    })
+
+    await refreshWorkOrdersFromServiceM8(request)
+
+    expect(transactionUpdates).toEqual(expect.arrayContaining([
+      { table: 'work_order_items', values: expect.objectContaining({ isActive: false }) },
+    ]))
+  })
+
+  it('restores returning job and item identities without overwriting RG-owned item values', async () => {
+    await refreshWorkOrdersFromServiceM8(vi.fn(async () => Response.json([])))
+
+    const returningRequest = vi.fn(async (path: string) => {
+      if (path.startsWith('/job.json')) {
+        return Response.json([{ uuid: 'job-1', active: 1, status: 'Work Order', generated_job_id: 'R260210' }])
+      }
+      if (path.startsWith('/jobmaterial.json')) {
+        return Response.json([{ uuid: 'item-1', active: 1, job_uuid: 'job-1', name: 'Returning glass', quantity: '1' }])
+      }
+      return Response.json([])
+    })
+
+    await refreshWorkOrdersFromServiceM8(returningRequest)
+
+    expect(transactionUpdates).toEqual(expect.arrayContaining([
+      { table: 'work_orders', values: expect.objectContaining({ isCurrent: false }) },
+      { table: 'work_order_items', values: expect.objectContaining({ isActive: false }) },
+    ]))
+    expect(transactionConflictSets).toEqual(expect.arrayContaining([
+      { table: 'work_orders', values: expect.objectContaining({ isCurrent: true }) },
+      { table: 'work_order_items', values: expect.objectContaining({ isActive: true }) },
+    ]))
+
+    const restoredItemSet = transactionConflictSets.find((write) => write.table === 'work_order_items')?.values
+    expect(restoredItemSet).not.toHaveProperty('installerId')
+    expect(restoredItemSet).not.toHaveProperty('stageOptionId')
+    expect(restoredItemSet).not.toHaveProperty('hardwareStatusOptionId')
+    expect(restoredItemSet).not.toHaveProperty('maintenanceProgram')
   })
 })

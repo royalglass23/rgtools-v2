@@ -162,6 +162,8 @@ export const workOrderRefreshRuns = pgTable('work_order_refresh_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
   status: text('status').notNull(),
   syncedCount: integer('synced_count').default(0).notNull(),
+  itemSyncedCount: integer('item_synced_count').default(0).notNull(),
+  excludedLineCount: integer('excluded_line_count').default(0).notNull(),
   errorMessage: text('error_message'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

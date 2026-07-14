@@ -140,7 +140,7 @@ function WorkOrderFilters({
   paramPrefix: string
 }) {
   const searchParams = useSearchParams()
-  const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
+  const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'showRemovedItems', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
   const carryOver = Array.from(searchParams.entries()).filter(([key]) => !owned.has(key))
   const resetParams = new URLSearchParams(carryOver)
   resetParams.set(`${paramPrefix}size`, String(filters.size))
@@ -168,6 +168,17 @@ function WorkOrderFilters({
             Search
           </button>
         </div>
+      </label>
+      <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          name={`${paramPrefix}showRemovedItems`}
+          value="1"
+          defaultChecked={filters.showRemovedItems}
+          onChange={(event) => event.currentTarget.form?.requestSubmit()}
+          className="h-4 w-4 rounded border-gray-300"
+        />
+        Show removed items
       </label>
       {filterable.has('importance') && <Select name={`${paramPrefix}importance`} label="Importance" value={filters.importance} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />}
       {filterable.has('risk') && <Select name={`${paramPrefix}risk`} label="Risk" value={filters.risk} options={[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]} />}
@@ -392,6 +403,7 @@ function hasActiveListFilters(filters: WorkOrderListFilters) {
     || filters.stage !== 'all'
     || filters.hardware !== 'all'
     || filters.maintenanceProgram !== 'all'
+    || filters.showRemovedItems
 }
 
 function Select({ name, label, value, options }: { name: string; label: string; value: string; options: Array<[string, string]> }) {
@@ -468,7 +480,7 @@ function PageSizeSelect({ filters, basePath, paramPrefix }: { filters: WorkOrder
 function paramsFor(filters: WorkOrderListFilters, paramPrefix: string, searchParams?: ReturnType<typeof useSearchParams>) {
   const params = new URLSearchParams()
   if (searchParams) {
-    const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
+    const owned = new Set(['q', 'current', 'risk', 'importance', 'stage', 'hardware', 'maintenanceProgram', 'showRemovedItems', 'sort', 'size', 'page'].map((name) => `${paramPrefix}${name}`))
     for (const [key, value] of searchParams.entries()) {
       if (!owned.has(key)) params.append(key, value)
     }
@@ -480,6 +492,7 @@ function paramsFor(filters: WorkOrderListFilters, paramPrefix: string, searchPar
   params.set(`${paramPrefix}stage`, filters.stage)
   params.set(`${paramPrefix}hardware`, filters.hardware)
   params.set(`${paramPrefix}maintenanceProgram`, filters.maintenanceProgram)
+  if (filters.showRemovedItems) params.set(`${paramPrefix}showRemovedItems`, '1')
   params.set(`${paramPrefix}sort`, filters.sort)
   params.set(`${paramPrefix}size`, String(filters.size))
   params.set(`${paramPrefix}page`, String(filters.page))

@@ -2,8 +2,9 @@ import { requireModule } from '@/lib/guard'
 import { refreshWorkOrdersAction } from '@/modules/work-orders/actions'
 import { parseWorkOrderListFilters } from '@/modules/work-orders/list-filters'
 import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permissions'
-import { getWorkOrderFilterOptions, listWorkOrders } from '@/modules/work-orders/queries'
+import { getWorkOrderFilterOptions, getWorkOrderRefreshStatus, listWorkOrders } from '@/modules/work-orders/queries'
 import { WorkOrdersTableControls } from '@/modules/work-orders/WorkOrdersTableControls'
+import { WorkOrderRefreshStatus } from '@/modules/work-orders/WorkOrderRefreshStatus'
 import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
 
 export default async function WorkOrdersPage({
@@ -16,11 +17,12 @@ export default async function WorkOrdersPage({
   const filters = parseWorkOrderListFilters(resolvedSearchParams)
   const refreshError = typeof resolvedSearchParams.refreshError === 'string' ? resolvedSearchParams.refreshError : null
   const exportHref = `/api/work-orders/export?${exportParams(resolvedSearchParams)}`
-  const [{ rows, total, pageCount }, options, permissions, summaryFields] = await Promise.all([
+  const [{ rows, total, pageCount }, options, permissions, summaryFields, refreshStatus] = await Promise.all([
     listWorkOrders(filters),
     getWorkOrderFilterOptions(),
     getCurrentWorkOrderPermissions(),
     getWorkOrderSummaryConfig(),
+    getWorkOrderRefreshStatus(),
   ])
 
   return (
@@ -52,7 +54,9 @@ export default async function WorkOrdersPage({
         </div>
       </div>
 
-      {refreshError && (
+      <WorkOrderRefreshStatus status={refreshStatus} />
+
+      {refreshError && !refreshStatus.latestFailure && (
         <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           Work Orders could not refresh from ServiceM8: {refreshError}
         </div>

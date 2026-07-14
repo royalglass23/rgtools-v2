@@ -47,6 +47,11 @@ export type WorkOrderItemSyncInput = {
   sortOrder: number
 }
 
+export type WorkOrderItemNormalizationResult = {
+  inputs: WorkOrderItemSyncInput[]
+  excludedLineCount: number
+}
+
 export type WorkOrderSyncInput = {
   servicem8JobUuid: string | null
   servicem8CompanyUuid: string | null
@@ -70,17 +75,31 @@ export type WorkOrderSyncInput = {
 }
 
 export function mapServiceM8JobsToWorkOrderInputs(jobs: ServiceM8WorkOrderJob[]): WorkOrderSyncInput[] {
-  return jobs
-    .filter((job) => isActive(job.active))
-    .filter((job) => normalizeStatus(job.status) === 'work order')
-    .map(toWorkOrderSyncInput)
-    .filter((input): input is WorkOrderSyncInput => input !== null)
+  return jobs.flatMap((job, index) => {
+    if (!isActive(job.active) || normalizeStatus(job.status) !== 'work order') return []
+
+    const input = toWorkOrderSyncInput(job)
+    if (!input) {
+      throw new Error(`ServiceM8 Work Order at row ${index + 1} is invalid: job UUID or job number is required.`)
+    }
+    return [input]
+  })
 }
 
 export function mapServiceM8JobMaterialsToWorkOrderItemInputs(
   jobMaterials: ServiceM8JobMaterial[],
   materials: ServiceM8Material[],
 ): WorkOrderItemSyncInput[] {
+  return normalizeServiceM8JobMaterials(jobMaterials, materials, []).inputs
+}
+
+export function normalizeServiceM8JobMaterials(
+  jobMaterials: ServiceM8JobMaterial[],
+  materials: ServiceM8Material[],
+  billingExclusionTerms: string[],
+): WorkOrderItemNormalizationResult {
+  validateServiceM8JobMaterials(jobMaterials)
+
   const itemCodesByMaterialUuid = new Map(
     materials.flatMap((material) => {
       const materialUuid = clean(material.uuid)
@@ -89,23 +108,44 @@ export function mapServiceM8JobMaterialsToWorkOrderItemInputs(
     }),
   )
 
-  const inputs = jobMaterials.flatMap((jobMaterial) => {
+  let excludedLineCount = 0
+  const normalizedExclusions = billingExclusionTerms
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean)
+
+  const inputs = jobMaterials.flatMap((jobMaterial, index) => {
     if (!isActive(jobMaterial.active)) return []
 
     const servicem8ItemUuid = clean(jobMaterial.uuid)
     const servicem8JobUuid = clean(jobMaterial.job_uuid)
     const quantity = decimalValue(jobMaterial.quantity)
-    if (!servicem8ItemUuid || !servicem8JobUuid || quantity === null) return []
+    if (!servicem8ItemUuid) {
+      throw new Error(`ServiceM8 item at row ${index + 1} is invalid: item UUID is required.`)
+    }
+    if (!servicem8JobUuid) {
+      throw new Error(`ServiceM8 item ${servicem8ItemUuid} is invalid: job UUID is required.`)
+    }
+    if (quantity === null) {
+      throw new Error(`ServiceM8 item ${servicem8ItemUuid} is invalid: quantity must be a non-negative number.`)
+    }
 
     const materialUuid = clean(jobMaterial.material_uuid)
+    const itemCode = materialUuid ? itemCodesByMaterialUuid.get(materialUuid) ?? null : null
+    const originalDescription = clean(jobMaterial.name) ?? ''
+    const searchableLine = `${itemCode ?? ''} ${originalDescription}`.toLowerCase()
+    if (normalizedExclusions.some((term) => searchableLine.includes(term))) {
+      excludedLineCount += 1
+      return []
+    }
+
     const unitPrice = decimalValue(jobMaterial.price)
 
     return [{
       servicem8ItemUuid,
       servicem8JobUuid,
-      itemCode: materialUuid ? itemCodesByMaterialUuid.get(materialUuid) ?? null : null,
+      itemCode,
       quantity,
-      originalDescription: clean(jobMaterial.name) ?? '',
+      originalDescription,
       lineTotalExcludingGst: unitPrice === null
         ? null
         : (Number(unitPrice) * Number(quantity)).toFixed(2),
@@ -113,7 +153,27 @@ export function mapServiceM8JobMaterialsToWorkOrderItemInputs(
     }]
   })
 
-  return Array.from(new Map(inputs.map((input) => [input.servicem8ItemUuid, input])).values())
+  return {
+    inputs: Array.from(new Map(inputs.map((input) => [input.servicem8ItemUuid, input])).values()),
+    excludedLineCount,
+  }
+}
+
+export function validateServiceM8JobMaterials(jobMaterials: ServiceM8JobMaterial[]): void {
+  jobMaterials.forEach((jobMaterial, index) => {
+    if (!isActive(jobMaterial.active)) return
+
+    const servicem8ItemUuid = clean(jobMaterial.uuid)
+    if (!servicem8ItemUuid) {
+      throw new Error(`ServiceM8 item at row ${index + 1} is invalid: item UUID is required.`)
+    }
+    if (!clean(jobMaterial.job_uuid)) {
+      throw new Error(`ServiceM8 item ${servicem8ItemUuid} is invalid: job UUID is required.`)
+    }
+    if (decimalValue(jobMaterial.quantity) === null) {
+      throw new Error(`ServiceM8 item ${servicem8ItemUuid} is invalid: quantity must be a non-negative number.`)
+    }
+  })
 }
 
 function isActive(value: ServiceM8WorkOrderJob['active'] | ServiceM8JobMaterial['active']): boolean {
