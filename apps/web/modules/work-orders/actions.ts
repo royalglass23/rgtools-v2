@@ -38,6 +38,7 @@ import {
   type ServiceM8WorkOrderJob,
 } from './servicem8-sync'
 import { serializeSummaryConfig, WORK_ORDER_SUMMARY_FIELD_CATALOG, WORK_ORDER_SUMMARY_CONFIG_KEY } from './summary-config'
+import { canConfigureSummaryFieldAsEditable } from './summary-field-policy'
 import {
   fingerprintSourceDescription,
   refreshWorkOrderItemLabels,
@@ -45,7 +46,6 @@ import {
 } from './item-label-lifecycle'
 import { generateWorkOrderItemLabel, type WorkOrderItemLabelGenerator } from './item-labels'
 import {
-  assertWorkOrderItemOperationalField,
   parseWorkOrderItemOperationalValue,
   readWorkOrderItemOperationalValue,
   workOrderItemOperationalEventName,
@@ -430,71 +430,6 @@ export async function updateWorkOrderItemOperationalFieldAction(
   return { value: result.value }
 }
 
-export async function bulkApplyWorkOrderItemOperationalFieldAction(
-  workOrderId: string,
-  sourceItemId: string,
-  field: WorkOrderItemOperationalField,
-) {
-  await assertCurrentUserCanManageWorkOrders()
-  assertWorkOrderItemOperationalField(field)
-  const session = await auth()
-
-  const result = await db.transaction(async (tx) => {
-    const items = await tx
-      .select({
-        id: workOrderItems.id,
-        workOrderId: workOrderItems.workOrderId,
-        isActive: workOrderItems.isActive,
-        installerId: workOrderItems.installerId,
-        stageOptionId: workOrderItems.stageOptionId,
-        hardwareStatusOptionId: workOrderItems.hardwareStatusOptionId,
-        maintenanceProgram: workOrderItems.maintenanceProgram,
-        installDate: workOrderItems.installDate,
-        dateCompleted: workOrderItems.dateCompleted,
-        riskLevelOverride: workOrderItems.riskLevelOverride,
-        importanceOverride: workOrderItems.importanceOverride,
-      })
-      .from(workOrderItems)
-      .where(eq(workOrderItems.workOrderId, workOrderId))
-
-    const sourceItem = items.find((item) => item.id === sourceItemId)
-    if (!sourceItem) throw new Error(`Work Order Item ${sourceItemId} was not found in this Work Order.`)
-    if (!sourceItem.isActive) throw new Error(`Work Order Item ${sourceItemId} is removed and cannot be bulk applied.`)
-
-    const sourceValue = readWorkOrderItemOperationalValue(sourceItem, field)
-    const changedItems = items.filter((item) => (
-      item.id !== sourceItemId
-      && item.isActive
-      && readWorkOrderItemOperationalValue(item, field) !== sourceValue
-    ))
-    const now = new Date()
-
-    for (const item of changedItems) {
-      await tx
-        .update(workOrderItems)
-        .set({ ...workOrderItemOperationalUpdate(field, sourceValue), updatedAt: now })
-        .where(eq(workOrderItems.id, item.id))
-    }
-
-    if (changedItems.length > 0) {
-      await tx.insert(workOrderEvents).values(changedItems.map((item) => ({
-        workOrderId,
-        workOrderItemId: item.id,
-        actorId: session?.user?.id ?? null,
-        fieldName: workOrderItemOperationalEventName(field),
-        previousValue: readWorkOrderItemOperationalValue(item, field),
-        newValue: sourceValue,
-        isClientVisibleCandidate: false,
-      })))
-    }
-
-    return { changedCount: changedItems.length }
-  })
-
-  revalidateWorkOrderItemPaths(workOrderId)
-  return result
-}
-
 export async function regenerateWorkOrderItemLabelAction(itemId: string) {
   await assertCurrentUserCanManageWorkOrders()
   const session = await auth()
@@ -649,6 +584,8 @@ export async function saveWorkOrderSummaryConfigAction(formData: FormData) {
     ...field,
     visible: formData.get(`visible:${field.id}`) === 'on',
     filterable: formData.get(`filterable:${field.id}`) === 'on',
+    editable: canConfigureSummaryFieldAsEditable(field.id)
+      && formData.get(`editable:${field.id}`) === 'on',
     order: Number(formData.get(`order:${field.id}`) ?? field.order) || field.order,
   })).sort((a, b) => a.order - b.order)
 
