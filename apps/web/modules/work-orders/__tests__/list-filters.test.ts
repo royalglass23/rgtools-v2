@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseWorkOrderListFilters } from '../list-filters'
 
 describe('parseWorkOrderListFilters', () => {
+  it('pages the grouped dashboard by five parent Work Orders by default', () => {
+    expect(parseWorkOrderListFilters({}).size).toBe(5)
+    expect(parseWorkOrderListFilters({ size: '5' }).size).toBe(5)
+    expect(parseWorkOrderListFilters({ size: '50' }).size).toBe(50)
+    expect(parseWorkOrderListFilters({ size: '100' }).size).toBe(5)
+  })
+
   it('supports prefixed dashboard params and admin defaults', () => {
     expect(parseWorkOrderListFilters(
       {

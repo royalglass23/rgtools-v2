@@ -134,7 +134,7 @@ const filters: WorkOrderListFilters = {
   showRemovedItems: false,
   sort: 'lead_score_desc',
   page: 1,
-  size: 10,
+  size: 5,
 }
 
 beforeEach(() => {
@@ -175,10 +175,12 @@ describe('listWorkOrders', () => {
     }))
   })
 
-  it('uses the default priority sort before falling back to oldest untouched records', async () => {
+  it('pages parent Work Orders and uses a deterministic default score order', async () => {
     await listWorkOrders(filters)
 
-    expect(orderByCalls[0]).toHaveLength(5)
+    expect(limitCalls).toEqual([5])
+    expect(offsetCalls).toEqual([0])
+    expect(orderByCalls[0]).toHaveLength(6)
     expect(orderByCalls[0][0]).toEqual(expect.objectContaining({
       type: 'sql',
       text: '? desc nulls last',
@@ -188,6 +190,7 @@ describe('listWorkOrders', () => {
       text: '? asc nulls last',
     }))
     expect(orderByCalls[0][4]).toEqual({ direction: 'asc', column: 'work_orders.updated_at' })
+    expect(orderByCalls[0][5]).toEqual({ direction: 'asc', column: 'work_orders.id' })
   })
 
   it('sorts text columns in either direction', async () => {

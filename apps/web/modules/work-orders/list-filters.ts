@@ -18,7 +18,7 @@ export type WorkOrderSortKey =
   | 'servicem8_status'
   | 'job_description'
 export type WorkOrderSort = `${WorkOrderSortKey}_${WorkOrderSortDirection}`
-export type WorkOrderPageSize = 10 | 20 | 50 | 100
+export type WorkOrderPageSize = 5 | 10 | 20 | 50
 export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
 export type WorkOrderMaintenanceProgramFilter = 'yes' | 'no' | 'all'
 
@@ -54,7 +54,7 @@ const DEFAULT_FILTERS: WorkOrderListFilters = {
   showRemovedItems: false,
   sort: 'lead_score_desc',
   page: 1,
-  size: 10,
+  size: 5,
 }
 
 const LEVELS = new Set(['low', 'medium', 'high'])
@@ -82,7 +82,7 @@ const LEGACY_SORTS: Record<string, WorkOrderSort> = {
   install_date: 'install_date_asc',
   job_number: 'job_number_asc',
 }
-const SIZES = new Set<WorkOrderPageSize>([10, 20, 50, 100])
+const SIZES = new Set<WorkOrderPageSize>([5, 10, 20, 50])
 
 export function parseWorkOrderListFilters(
   searchParams: Record<string, string | string[] | undefined>,

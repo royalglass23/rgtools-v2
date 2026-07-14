@@ -24,11 +24,12 @@ describe('work orders server page', () => {
     expect(source).not.toContain('requestSubmit()')
   })
 
-  it('uses the v1 default summary columns without internal AI or ServiceM8 fields', () => {
+  it('keeps summary configuration ownership for supplementary parent fields', () => {
     const source = `${pageSource()}\n${controlsSource()}`
 
     expect(source).toContain('getWorkOrderSummaryConfig')
-    expect(source).toContain('visibleFields.map')
+    expect(source).toContain('<ParentSummaryFields row={row} fields={fields} />')
+    expect(source).toContain('field.visible')
 
     expect(source).not.toContain('>Created<')
     expect(source).not.toContain('>AI suggestion<')
@@ -73,21 +74,22 @@ describe('work orders server page', () => {
     expect(source).toContain("if (key === 'page' || key === 'refreshError') continue")
   })
 
-  it('links each summary cell to the Work Order detail page without showing a separate open column', () => {
+  it('links the grouped job header to Work Order detail without a separate open column', () => {
     const source = controlsSource()
 
-    expect(source).toContain('const href = `/work-orders/${row.id}`')
-    expect(source).toContain('<LinkedCell href={href}>')
+    expect(source).toContain('href={`/work-orders/${row.id}`}')
+    expect(source).toContain('aria-label={`Work Order ${workOrderLabel}`}')
     expect(source).not.toContain('<th className="px-4 py-3">Open</th>')
     expect(source).not.toContain('>AI suggestion<')
   })
 
-  it('uses auto-applying filters with reset aligned inline and a full-width table', () => {
+  it('uses auto-applying filters with reset aligned inline and grouped Work Orders', () => {
     const source = controlsSource()
 
     expect(source).toContain('event.currentTarget.form?.requestSubmit()')
     expect(source).toContain('xl:grid-cols-[minmax(320px,1.6fr)_repeat(5,minmax(150px,1fr))_minmax(180px,1fr)_auto]')
-    expect(source).toContain('w-full min-w-[1280px] table-auto')
+    expect(source).toContain('role="group"')
+    expect(source).not.toContain('min-w-[1280px]')
     expect(source).not.toContain('Apply')
   })
 })

@@ -52,4 +52,24 @@ describe('WorkOrderItemsSummary', () => {
     expect(screen.getByText('Removed glass')).toBeInTheDocument()
     expect(screen.getByText('Removed')).toBeInTheDocument()
   })
+
+  it('keeps immutable source detail in the hover text when ServiceM8 has no line total', () => {
+    render(<WorkOrderItemsSummary items={[
+      {
+        id: 'item-no-total',
+        itemCode: 'GLASS-001',
+        quantity: '1.000',
+        originalDescription: 'Original ServiceM8 glass description',
+        lineTotalExcludingGst: null,
+        generatedLabel: 'Generated glass label',
+        manualLabelOverride: 'Manual production label',
+        isActive: true,
+      },
+    ]} />)
+
+    expect(screen.getByText('Manual production label').parentElement).toHaveAttribute(
+      'title',
+      'Original ServiceM8 glass description\nLine total excluding GST: Not available',
+    )
+  })
 })

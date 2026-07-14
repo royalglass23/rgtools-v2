@@ -1,10 +1,16 @@
 import type { WorkOrderItemSummaryRow } from './work-order-items'
 
-export function WorkOrderItemsSummary({ items }: { items: WorkOrderItemSummaryRow[] }) {
+export function WorkOrderItemsSummary({
+  items,
+  showCount = true,
+}: {
+  items: WorkOrderItemSummaryRow[]
+  showCount?: boolean
+}) {
   if (items.length === 0) {
     return (
       <section aria-label="Work Order items" className="space-y-2 px-4 py-3">
-        <ItemCount count={0} />
+        {showCount && <ItemCount count={0} />}
         <p className="rounded border border-dashed border-gray-300 bg-gray-50 px-3 py-4 text-sm text-gray-600">
           No items synced from ServiceM8 yet
         </p>
@@ -16,13 +22,14 @@ export function WorkOrderItemsSummary({ items }: { items: WorkOrderItemSummaryRo
 
   return (
     <section aria-label="Work Order items" className="space-y-2 px-4 py-3">
-      <ItemCount count={activeItemCount} />
+      {showCount && <ItemCount count={activeItemCount} />}
       <div className="grid gap-2">
         {items.map((item) => {
           const effectiveLabel = item.manualLabelOverride ?? item.generatedLabel ?? item.originalDescription
-          const hoverDetail = item.lineTotalExcludingGst
-            ? `${item.originalDescription}\nLine total excluding GST: $${item.lineTotalExcludingGst}`
-            : item.originalDescription
+          const lineTotal = item.lineTotalExcludingGst
+            ? `$${item.lineTotalExcludingGst}`
+            : 'Not available'
+          const hoverDetail = `${item.originalDescription}\nLine total excluding GST: ${lineTotal}`
 
           return (
             <div
