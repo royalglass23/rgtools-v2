@@ -131,6 +131,7 @@ const filters: WorkOrderListFilters = {
   stage: 'all',
   hardware: 'all',
   maintenanceProgram: 'all',
+  showRemovedItems: false,
   sort: 'lead_score_desc',
   page: 1,
   size: 10,

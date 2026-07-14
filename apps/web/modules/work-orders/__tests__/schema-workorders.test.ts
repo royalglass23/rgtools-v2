@@ -1,7 +1,7 @@
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
-import { workOrderItems } from '@rgtools/db/schema-workorders'
+import { workOrderItems, workOrderRefreshRuns } from '@rgtools/db/schema-workorders'
 
 describe('Work Order Item persistence', () => {
   it('separates stable ServiceM8 source values from RG-owned item tracking', () => {
@@ -37,5 +37,18 @@ describe('Work Order Item persistence', () => {
     )
     expect(identityIndex?.config.unique).toBe(true)
     expect(config.foreignKeys).toHaveLength(4)
+  })
+})
+
+describe('Work Order refresh run persistence', () => {
+  it('stores job, item, and excluded-line counts for freshness reporting', () => {
+    const columnNames = getTableConfig(workOrderRefreshRuns).columns.map((column) => column.name)
+
+    expect(columnNames).toEqual(expect.arrayContaining([
+      'synced_count',
+      'item_synced_count',
+      'excluded_line_count',
+      'error_message',
+    ]))
   })
 })

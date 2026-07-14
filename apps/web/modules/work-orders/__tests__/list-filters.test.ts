@@ -36,4 +36,10 @@ describe('parseWorkOrderListFilters', () => {
     expect(parseWorkOrderListFilters({ sort: 'install_date' }).sort).toBe('install_date_asc')
     expect(parseWorkOrderListFilters({ sort: 'job_number' }).sort).toBe('job_number_asc')
   })
+
+  it('shows removed items only when the dashboard option is explicitly enabled', () => {
+    expect(parseWorkOrderListFilters({}).showRemovedItems).toBe(false)
+    expect(parseWorkOrderListFilters({ showRemovedItems: '1' }).showRemovedItems).toBe(true)
+    expect(parseWorkOrderListFilters({ showRemovedItems: 'false' }).showRemovedItems).toBe(false)
+  })
 })

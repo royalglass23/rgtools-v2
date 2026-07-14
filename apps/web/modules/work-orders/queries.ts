@@ -6,12 +6,14 @@ import {
   workOrderEvents,
   workOrderInstallers,
   workOrderItems,
+  workOrderRefreshRuns,
   workOrders,
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection } from './list-filters'
 import { attachActiveItemsToWorkOrders, type WorkOrderItemSummaryRow } from './work-order-items'
+import type { WorkOrderRefreshStatusValue } from './WorkOrderRefreshStatus'
 
 export type WorkOrderBaseRow = {
   id: string
@@ -133,12 +135,15 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
         lineTotalExcludingGst: workOrderItems.lineTotalExcludingGst,
         generatedLabel: workOrderItems.generatedLabel,
         manualLabelOverride: workOrderItems.manualLabelOverride,
+        isActive: workOrderItems.isActive,
       })
       .from(workOrderItems)
-      .where(and(
-        inArray(workOrderItems.workOrderId, rows.map((row) => row.id)),
-        eq(workOrderItems.isActive, true),
-      ))
+      .where(filters.showRemovedItems
+        ? inArray(workOrderItems.workOrderId, rows.map((row) => row.id))
+        : and(
+          inArray(workOrderItems.workOrderId, rows.map((row) => row.id)),
+          eq(workOrderItems.isActive, true),
+        ))
       .orderBy(asc(workOrderItems.workOrderId), asc(workOrderItems.sortOrder), asc(workOrderItems.id))
 
   const total = totalRow?.total ?? 0
@@ -200,6 +205,44 @@ export async function getWorkOrderConfigLists() {
   ])
 
   return { installers, stages, hardwareStatuses }
+}
+
+export async function getWorkOrderRefreshStatus(): Promise<WorkOrderRefreshStatusValue> {
+  const [successfulRows, failedRows] = await Promise.all([
+    db
+      .select({
+        createdAt: workOrderRefreshRuns.createdAt,
+        jobCount: workOrderRefreshRuns.syncedCount,
+        itemCount: workOrderRefreshRuns.itemSyncedCount,
+        excludedLineCount: workOrderRefreshRuns.excludedLineCount,
+      })
+      .from(workOrderRefreshRuns)
+      .where(eq(workOrderRefreshRuns.status, 'success'))
+      .orderBy(desc(workOrderRefreshRuns.createdAt))
+      .limit(1),
+    db
+      .select({ createdAt: workOrderRefreshRuns.createdAt, errorMessage: workOrderRefreshRuns.errorMessage })
+      .from(workOrderRefreshRuns)
+      .where(eq(workOrderRefreshRuns.status, 'failed'))
+      .orderBy(desc(workOrderRefreshRuns.createdAt))
+      .limit(1),
+  ])
+
+  const latestSuccess = successfulRows[0] ?? null
+  const latestFailure = failedRows[0] ?? null
+  const hasNewerFailure = latestFailure && (
+    !latestSuccess || latestFailure.createdAt.getTime() > latestSuccess.createdAt.getTime()
+  )
+
+  return {
+    lastSuccessfulAt: latestSuccess?.createdAt ?? null,
+    lastSuccessfulJobCount: latestSuccess?.jobCount ?? 0,
+    lastSuccessfulItemCount: latestSuccess?.itemCount ?? 0,
+    lastSuccessfulExcludedLineCount: latestSuccess?.excludedLineCount ?? 0,
+    latestFailure: hasNewerFailure
+      ? { at: latestFailure.createdAt, message: latestFailure.errorMessage ?? 'ServiceM8 refresh failed.' }
+      : null,
+  }
 }
 
 export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrderDetail | null> {

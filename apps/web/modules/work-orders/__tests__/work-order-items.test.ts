@@ -16,6 +16,7 @@ describe('attachActiveItemsToWorkOrders', () => {
           lineTotalExcludingGst: '900.00',
           generatedLabel: null,
           manualLabelOverride: null,
+          isActive: true,
         },
         {
           id: 'item-2',
@@ -26,6 +27,7 @@ describe('attachActiveItemsToWorkOrders', () => {
           lineTotalExcludingGst: '150.00',
           generatedLabel: null,
           manualLabelOverride: null,
+          isActive: true,
         },
       ],
     )
@@ -35,5 +37,18 @@ describe('attachActiveItemsToWorkOrders', () => {
       expect.objectContaining({ id: 'work-order-2', activeItemCount: 0, items: [] }),
     ])
     expect(rows[0].items).toHaveLength(2)
+  })
+
+  it('keeps removed rows visible without adding them to the active item count', () => {
+    const [workOrder] = attachActiveItemsToWorkOrders(
+      [{ id: 'work-order-1' }],
+      [
+        { id: 'item-active', workOrderId: 'work-order-1', itemCode: 'GLASS-001', quantity: '1.000', originalDescription: 'Current glass', lineTotalExcludingGst: '900.00', generatedLabel: null, manualLabelOverride: null, isActive: true },
+        { id: 'item-removed', workOrderId: 'work-order-1', itemCode: 'OLD-001', quantity: '1.000', originalDescription: 'Removed glass', lineTotalExcludingGst: '800.00', generatedLabel: null, manualLabelOverride: null, isActive: false },
+      ],
+    )
+
+    expect(workOrder.activeItemCount).toBe(1)
+    expect(workOrder.items).toHaveLength(2)
   })
 })

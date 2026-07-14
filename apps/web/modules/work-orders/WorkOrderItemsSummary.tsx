@@ -12,9 +12,11 @@ export function WorkOrderItemsSummary({ items }: { items: WorkOrderItemSummaryRo
     )
   }
 
+  const activeItemCount = items.filter((item) => item.isActive).length
+
   return (
     <section aria-label="Work Order items" className="space-y-2 px-4 py-3">
-      <ItemCount count={items.length} />
+      <ItemCount count={activeItemCount} />
       <div className="grid gap-2">
         {items.map((item) => {
           const effectiveLabel = item.manualLabelOverride ?? item.generatedLabel ?? item.originalDescription
@@ -26,11 +28,16 @@ export function WorkOrderItemsSummary({ items }: { items: WorkOrderItemSummaryRo
             <div
               key={item.id}
               title={hoverDetail}
-              className="grid gap-1 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm md:grid-cols-[90px_160px_1fr]"
+              className={`grid gap-1 rounded border px-3 py-2 text-sm md:grid-cols-[90px_160px_1fr] ${item.isActive ? 'border-gray-200 bg-gray-50' : 'border-amber-200 bg-amber-50'}`}
             >
               <span className="font-medium text-gray-700">Qty {formatQuantity(item.quantity)}</span>
               <span className="font-mono text-xs text-gray-600">{item.itemCode ?? 'No item code'}</span>
-              <span className="text-gray-950">{effectiveLabel}</span>
+              <span className="flex items-center gap-2 text-gray-950">
+                {effectiveLabel}
+                {!item.isActive && (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Removed</span>
+                )}
+              </span>
             </div>
           )
         })}

@@ -6,6 +6,7 @@ export type WorkOrderItemSummaryRow = {
   lineTotalExcludingGst: string | null
   generatedLabel: string | null
   manualLabelOverride: string | null
+  isActive: boolean
 }
 
 export type PersistedWorkOrderItemSummaryRow = WorkOrderItemSummaryRow & {
@@ -28,6 +29,7 @@ export function attachActiveItemsToWorkOrders<T extends { id: string }>(
       lineTotalExcludingGst: item.lineTotalExcludingGst,
       generatedLabel: item.generatedLabel,
       manualLabelOverride: item.manualLabelOverride,
+      isActive: item.isActive,
     }
     groupedItems.push(summaryItem)
     itemsByWorkOrderId.set(item.workOrderId, groupedItems)
@@ -37,7 +39,7 @@ export function attachActiveItemsToWorkOrders<T extends { id: string }>(
     const workOrderItems = itemsByWorkOrderId.get(workOrder.id) ?? []
     return {
       ...workOrder,
-      activeItemCount: workOrderItems.length,
+      activeItemCount: workOrderItems.filter((item) => item.isActive).length,
       items: workOrderItems,
     }
   })

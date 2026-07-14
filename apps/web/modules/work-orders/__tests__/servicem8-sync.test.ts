@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   mapServiceM8JobMaterialsToWorkOrderItemInputs,
   mapServiceM8JobsToWorkOrderInputs,
+  normalizeServiceM8JobMaterials,
 } from '../servicem8-sync'
 
 describe('mapServiceM8JobMaterialsToWorkOrderItemInputs', () => {
@@ -52,6 +53,33 @@ describe('mapServiceM8JobMaterialsToWorkOrderItemInputs', () => {
       servicem8ItemUuid: 'item-1',
       servicem8JobUuid: 'job-1',
     }))
+  })
+})
+
+describe('normalizeServiceM8JobMaterials', () => {
+  it('excludes configured billing lines case-insensitively and reports the excluded count', () => {
+    const result = normalizeServiceM8JobMaterials(
+      [
+        { uuid: 'invoice-1', active: 1, job_uuid: 'job-1', name: 'Partial INVOICE claim', quantity: '1' },
+        { uuid: 'deposit-1', active: 1, job_uuid: 'job-1', material_uuid: 'deposit-material', name: 'Progress payment', quantity: '1' },
+        { uuid: 'glass-1', active: 1, job_uuid: 'job-1', name: 'Frameless shower glass', quantity: '1' },
+      ],
+      [{ uuid: 'deposit-material', item_number: 'DEPOSIT' }],
+      ['invoice', 'deposit'],
+    )
+
+    expect(result).toEqual({
+      inputs: [expect.objectContaining({ servicem8ItemUuid: 'glass-1' })],
+      excludedLineCount: 2,
+    })
+  })
+
+  it('rejects an incomplete active item line instead of silently dropping it', () => {
+    expect(() => normalizeServiceM8JobMaterials(
+      [{ uuid: 'item-1', active: 1, job_uuid: null, name: 'Shower glass', quantity: '1' }],
+      [],
+      [],
+    )).toThrow('ServiceM8 item item-1 is invalid: job UUID is required.')
   })
 })
 
@@ -141,5 +169,13 @@ describe('mapServiceM8JobsToWorkOrderInputs', () => {
         jobNumber: 'R260210',
       }),
     ])
+  })
+
+  it('rejects an active Work Order without a stable identity', () => {
+    expect(() => mapServiceM8JobsToWorkOrderInputs([{
+      active: 1,
+      status: 'Work Order',
+      generated_job_id: null,
+    }])).toThrow('ServiceM8 Work Order at row 1 is invalid: job UUID or job number is required.')
   })
 })

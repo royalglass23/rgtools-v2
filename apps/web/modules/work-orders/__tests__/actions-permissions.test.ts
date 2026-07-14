@@ -42,6 +42,7 @@ import {
   generateWorkOrderAiSuggestionAction,
   markWorkOrderEventClientVisibleCandidateAction,
   refreshWorkOrdersAction,
+  saveWorkOrderBillingExclusionsAction,
   updateWorkOrderOperationalFieldsAction,
 } from '../actions'
 
@@ -187,6 +188,18 @@ describe('work order action permissions', () => {
     formData.set('displayName', 'Install team')
 
     await expect(createWorkOrderInstallerAction(formData)).rejects.toThrow(
+      'Forbidden: Work Orders configuration access is required.',
+    )
+    expect(mockInsert).not.toHaveBeenCalled()
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('requires configuration access before changing billing exclusions', async () => {
+    mockAssertCanConfigure.mockRejectedValue(new Error('Forbidden: Work Orders configuration access is required.'))
+    const formData = new FormData()
+    formData.set('billingExclusions', 'invoice\ndeposit')
+
+    await expect(saveWorkOrderBillingExclusionsAction(formData)).rejects.toThrow(
       'Forbidden: Work Orders configuration access is required.',
     )
     expect(mockInsert).not.toHaveBeenCalled()

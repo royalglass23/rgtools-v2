@@ -53,4 +53,12 @@ describe('work order admin page', () => {
     expect(source).toContain('name={`order:${field.id}`}')
     expect(source).not.toContain('type="number"')
   })
+
+  it('lets configure users maintain billing-line exclusions for the next refresh', () => {
+    const source = pageSource()
+
+    expect(source).toContain('Billing line exclusions')
+    expect(source).toContain('saveWorkOrderBillingExclusionsAction')
+    expect(source).toContain('One case-insensitive term per line')
+  })
 })

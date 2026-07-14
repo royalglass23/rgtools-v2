@@ -14,6 +14,7 @@ describe('WorkOrderItemsSummary', () => {
         lineTotalExcludingGst: '900.00',
         generatedLabel: null,
         manualLabelOverride: null,
+        isActive: true,
       },
       {
         id: 'item-2',
@@ -23,6 +24,7 @@ describe('WorkOrderItemsSummary', () => {
         lineTotalExcludingGst: '150.00',
         generatedLabel: null,
         manualLabelOverride: null,
+        isActive: true,
       },
     ]} />)
 
@@ -38,5 +40,16 @@ describe('WorkOrderItemsSummary', () => {
 
     expect(screen.getByText('0 active items')).toBeInTheDocument()
     expect(screen.getByText('No items synced from ServiceM8 yet')).toBeInTheDocument()
+  })
+
+  it('marks removed rows while keeping the active count unchanged', () => {
+    render(<WorkOrderItemsSummary items={[
+      { id: 'item-active', itemCode: 'GLASS-001', quantity: '1.000', originalDescription: 'Current glass', lineTotalExcludingGst: '900.00', generatedLabel: null, manualLabelOverride: null, isActive: true },
+      { id: 'item-removed', itemCode: 'OLD-001', quantity: '1.000', originalDescription: 'Removed glass', lineTotalExcludingGst: '800.00', generatedLabel: null, manualLabelOverride: null, isActive: false },
+    ]} />)
+
+    expect(screen.getByText('1 active item')).toBeInTheDocument()
+    expect(screen.getByText('Removed glass')).toBeInTheDocument()
+    expect(screen.getByText('Removed')).toBeInTheDocument()
   })
 })
