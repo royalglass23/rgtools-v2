@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ThemeControl } from '@/components/theme/ThemeControl'
 import styles from './DashboardShell.module.css'
 
 export interface DashboardNavigationItem {
@@ -203,9 +204,12 @@ export function DashboardShell({
         <div className={styles.avatar} aria-hidden="true">
           {initialsFor(user.name)}
         </div>
-        <div className={styles.accountCopy}>
-          <strong>{user.name || 'RG Tools user'}</strong>
-          <span>{user.role === 'admin' ? 'Administrator' : 'Team member'}</span>
+        <div className={styles.accountBody}>
+          <div className={styles.accountCopy}>
+            <strong>{user.name || 'RG Tools user'}</strong>
+            <span>{user.role === 'admin' ? 'Administrator' : 'Team member'}</span>
+          </div>
+          <ThemeControl />
         </div>
         <div className={styles.signOut}>{signOutControl}</div>
         </div>

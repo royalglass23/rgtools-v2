@@ -1,16 +1,16 @@
 .shell {
   --sidebar-width: 17rem;
   min-height: 100vh;
-  background: #f4f7f9;
+  background: var(--canvas);
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(circle at 20% 0%, rgb(18 176 194 / 10%), transparent 26rem),
-    #102b3a;
-  color: #eef8fa;
+    radial-gradient(circle at 20% 0%, var(--shell-accent-soft), transparent 26rem),
+    var(--shell-background);
+  color: var(--shell-text-primary);
 }
 
 .sidebar {
@@ -18,8 +18,8 @@
   inset: 0 auto 0 0;
   z-index: 30;
   width: var(--sidebar-width);
-  border-right: 1px solid rgb(255 255 255 / 8%);
-  transition: width 180ms ease;
+  border-right: 1px solid var(--shell-border);
+  transition: width var(--motion-standard) var(--ease-standard);
 }
 
 .brandRow {
@@ -28,7 +28,7 @@
   align-items: flex-start;
   gap: .75rem;
   padding: 1.15rem 1rem 1rem 1.25rem;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid var(--shell-border);
 }
 
 .brand {
@@ -48,7 +48,7 @@
 
 .logoLink:focus-visible,
 .brandName:focus-visible {
-  outline: 2px solid #43c3d0;
+  outline: 2px solid var(--focus-ring-inverse);
   outline-offset: 3px;
 }
 
@@ -66,7 +66,7 @@
 }
 
 .brandName {
-  color: white;
+  color: var(--shell-text-primary);
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: .01em;
@@ -81,18 +81,18 @@
   height: 2.35rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: .65rem;
-  background: rgb(255 255 255 / 5%);
-  color: #b9d3da;
+  border: 1px solid var(--shell-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--shell-surface);
+  color: var(--shell-text-secondary);
   cursor: pointer;
 }
 
 .desktopCollapse:hover,
 .mobileClose:hover,
 .mobileMenu:hover {
-  border-color: rgb(87 205 217 / 45%);
-  color: white;
+  border-color: var(--shell-border-interactive);
+  color: var(--shell-text-primary);
 }
 
 .desktopCollapse svg,
@@ -116,7 +116,7 @@
 .navigationLabel {
   display: block;
   margin: 0 .75rem .65rem;
-  color: #7795a0;
+  color: var(--shell-text-muted);
   font-size: .65rem;
   font-weight: 800;
   letter-spacing: .14em;
@@ -137,23 +137,23 @@
   gap: .8rem;
   padding: .65rem .75rem;
   border: 0;
-  border-radius: .65rem;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: #b9cbd1;
+  color: var(--shell-text-secondary);
   font: inherit;
   font-size: .84rem;
   font-weight: 650;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background 130ms ease, color 130ms ease;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
 
 .navigationLink:hover,
 .navigationLink[data-active],
 .navigationGroup[data-active] > .navigationLink {
-  background: rgb(29 174 190 / 12%);
-  color: white;
+  background: var(--shell-active);
+  color: var(--shell-text-primary);
 }
 
 .navigationLink[data-active]::before,
@@ -162,7 +162,7 @@
   inset: .55rem auto .55rem -.9rem;
   width: .2rem;
   border-radius: 0 .2rem .2rem 0;
-  background: #25b8c8;
+  background: var(--brand-accent);
   content: '';
 }
 
@@ -172,13 +172,13 @@
   height: 1.35rem;
   flex: 0 0 auto;
   place-items: center;
-  color: #75a5af;
+  color: var(--shell-icon);
 }
 
 .navigationLink:hover .navigationIcon,
 .navigationLink[data-active] .navigationIcon,
 .navigationGroup[data-active] .navigationIcon {
-  color: #43c3d0;
+  color: var(--shell-icon-active);
 }
 
 .navigationIcon svg,
@@ -196,8 +196,8 @@
 .chevron {
   width: .9rem;
   height: .9rem;
-  color: #6f8d96;
-  transition: transform 130ms ease;
+  color: var(--shell-text-muted);
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .chevron[data-expanded] {
@@ -209,7 +209,7 @@
   gap: .12rem;
   margin: .15rem 0 .35rem 2.85rem;
   padding-left: .8rem;
-  border-left: 1px solid rgb(101 177 186 / 20%);
+  border-left: 1px solid var(--shell-border-strong);
 }
 
 .subNavigation[hidden] {
@@ -219,7 +219,7 @@
 .subNavigationLink {
   padding: .48rem .6rem;
   border-radius: .45rem;
-  color: #88a6ae;
+  color: var(--shell-text-muted);
   font-size: .76rem;
   font-weight: 600;
   text-decoration: none;
@@ -227,8 +227,8 @@
 
 .subNavigationLink:hover,
 .subNavigationLink[data-active] {
-  background: rgb(255 255 255 / 5%);
-  color: #eafcff;
+  background: var(--shell-surface);
+  color: var(--shell-text-primary);
 }
 
 .account {
@@ -237,7 +237,7 @@
   gap: .7rem;
   min-height: 5rem;
   padding: .9rem 1rem;
-  border-top: 1px solid rgb(255 255 255 / 8%);
+  border-top: 1px solid var(--shell-border);
 }
 
 .avatar,
@@ -247,12 +247,19 @@
   height: 2.25rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgb(90 211 222 / 32%);
-  border-radius: .7rem;
-  background: rgb(36 185 200 / 12%);
-  color: #83e0e9;
+  border: 1px solid var(--shell-border-interactive);
+  border-radius: var(--radius-control);
+  background: var(--shell-active);
+  color: var(--shell-icon-active);
   font-size: .7rem;
   font-weight: 800;
+}
+
+.accountBody {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: .45rem;
 }
 
 .accountCopy {
@@ -262,7 +269,7 @@
 
 .accountCopy strong {
   overflow: hidden;
-  color: #f1f8fa;
+  color: var(--shell-text-primary);
   font-size: .78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -270,7 +277,7 @@
 
 .accountCopy span {
   margin-top: .14rem;
-  color: #7795a0;
+  color: var(--shell-text-muted);
   font-size: .68rem;
 }
 
@@ -278,20 +285,20 @@
   padding: .35rem;
   border: 0;
   background: transparent;
-  color: #829da5;
+  color: var(--shell-text-muted);
   font-size: .68rem;
   cursor: pointer;
 }
 
 .signOut :global(button):hover {
-  color: white;
+  color: var(--shell-text-primary);
 }
 
 .pageColumn {
   min-width: 0;
   min-height: 100vh;
   margin-left: var(--sidebar-width);
-  transition: margin-left 180ms ease;
+  transition: margin-left var(--motion-standard) var(--ease-standard);
 }
 
 .main {
@@ -326,7 +333,7 @@
 .shell[data-collapsed] .navigationLabel,
 .shell[data-collapsed] .navigationText,
 .shell[data-collapsed] .chevron,
-.shell[data-collapsed] .accountCopy,
+  .shell[data-collapsed] .accountBody,
 .shell[data-collapsed] .signOut,
 .shell[data-collapsed] .subNavigation {
   display: none;
@@ -352,8 +359,8 @@
     z-index: 40;
     width: min(20rem, calc(100vw - 3rem));
     transform: translateX(-102%);
-    box-shadow: 1rem 0 3rem rgb(4 22 30 / 25%);
-    transition: transform 180ms ease;
+    box-shadow: var(--shadow-overlay);
+    transition: transform var(--motion-standard) var(--ease-standard);
   }
 
   .sidebar[data-mobile-open] {
@@ -373,22 +380,22 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 1.25rem;
-    border-bottom: 1px solid #dce5e9;
-    background: rgb(255 255 255 / 94%);
+    border-bottom: 1px solid var(--border-default);
+    background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
     backdrop-filter: blur(12px);
   }
 
   .mobileMenu {
-    border-color: #d5e0e4;
-    background: #f5f8f9;
-    color: #173746;
+    border-color: var(--border-default);
+    background: var(--surface-subtle);
+    color: var(--text-primary);
   }
 
   .mobileBrand {
     display: flex;
     align-items: center;
     gap: .6rem;
-    color: #173746;
+    color: var(--text-primary);
     font-size: .88rem;
     font-weight: 800;
     text-decoration: none;
@@ -400,17 +407,17 @@
     height: 2rem;
     place-items: center;
     border-radius: .55rem;
-    background: #143342;
-    color: #61d0dc;
+    background: var(--brand-strong);
+    color: var(--brand-highlight);
     font-size: .65rem;
   }
 
   .mobileAvatar {
     width: 2rem;
     height: 2rem;
-    border-color: #cae6e9;
-    background: #eaf7f8;
-    color: #147e8a;
+    border-color: var(--border-interactive);
+    background: var(--accent-soft);
+    color: var(--brand-primary);
   }
 
   .scrim {
@@ -418,10 +425,10 @@
     inset: 0;
     z-index: 39;
     display: block;
-    background: rgb(5 20 28 / 55%);
+    background: var(--overlay-scrim);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 180ms ease;
+    transition: opacity var(--motion-standard) var(--ease-standard);
   }
 
   .scrim[data-open] {

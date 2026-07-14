@@ -62,6 +62,9 @@ docs/superpowers/
 docs/codex/
 docs/adr/
 docs/dev/
+!docs/dev/
+docs/dev/*
+!docs/dev/royal-glass-precision-ui.md
 CONTEXT.md
 workers/tracker/.dev.vars
 

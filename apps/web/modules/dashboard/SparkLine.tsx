@@ -1,17 +1,19 @@
 'use client'
 
 import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
+import type { TooltipContentProps } from 'recharts'
 import type { SparkPoint } from './kpis'
+import styles from './SparkLine.module.css'
 
-export function SparkLine({ data, color = '#3b82f6' }: { data: SparkPoint[]; color?: string }) {
+export function SparkLine({ data, color = 'var(--brand-primary)' }: { data: SparkPoint[]; color?: string }) {
   return (
     <ResponsiveContainer width="100%" height={40}>
       <LineChart data={data}>
         <Tooltip
-          content={({ active, payload }) => {
+          content={({ active, payload }: TooltipContentProps<number, string>) => {
             if (!active || !payload?.length) return null
             return (
-              <div className="rounded bg-gray-900 px-2 py-1 text-xs text-white">
+              <div className={styles.tooltip}>
                 {payload[0]?.value}
               </div>
             )

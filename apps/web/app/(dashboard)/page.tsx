@@ -8,6 +8,14 @@ import { SERVER_TABLES } from '@/modules/dashboard/registry'
 import { SparkLine } from '@/modules/dashboard/SparkLine'
 import { getTableMeta } from '@/modules/dashboard/tables'
 import { auth } from '@/lib/auth'
+import {
+  DataPanel,
+  FeedbackState,
+  KpiCard,
+  PageHeader,
+  PriorityItem,
+  SectionHeading,
+} from '@/components/precision-ui/PrecisionUI'
 import styles from './dashboard.module.css'
 
 export default async function DashboardPage({
@@ -43,25 +51,25 @@ export default async function DashboardPage({
 
   return (
     <div className={styles.dashboard}>
-      <header className={styles.pageHeader}>
-        <div>
-          <div className={styles.eyebrow}>Royal Glass operations</div>
-          <h1>Operations dashboard</h1>
+      <PageHeader
+        eyebrow="Royal Glass operations"
+        title="Operations dashboard"
+        description={
           <p>
             {firstName ? `Welcome back, ${firstName}. ` : ''}
             Here&apos;s what needs attention across the business.
           </p>
-        </div>
-        <div className={styles.liveStatus}>
-          <span aria-hidden="true" />
-          Live overview
-        </div>
-      </header>
+        }
+        actions={
+          <div className={styles.liveStatus}>
+            <span aria-hidden="true" />
+            Live overview
+          </div>
+        }
+      />
 
       {denied !== undefined && (
-        <div className={styles.deniedNotice}>
-          You don&apos;t have access to that tool.
-        </div>
+        <FeedbackState tone="error">You don&apos;t have access to that tool.</FeedbackState>
       )}
 
       <ActionsNeededSection counts={actionCounts} />
@@ -75,15 +83,14 @@ export default async function DashboardPage({
       )}
 
       {visibleSections.length === 0 ? (
-        <div className={styles.emptyState}>
+        <FeedbackState tone="empty">
           No dashboard tables selected. An admin can choose them in Dashboard Settings.
-        </div>
+        </FeedbackState>
       ) : (
         visibleSections.map((section) => (
-          <section key={section.key} className={styles.dataSection}>
-            <SectionHeading title={section.label} eyebrow="Live data" />
+          <DataPanel key={section.key} title={section.label} eyebrow="Live data">
             {section.content}
-          </section>
+          </DataPanel>
         ))
       )}
     </div>
@@ -121,7 +128,7 @@ function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
           value={formattedPipeline}
           sub="Active hot/warm quotes"
           sparkline={kpis.pipelineSparkline}
-          color="#1d9dad"
+          color="var(--brand-primary)"
           marker="$"
         />
         <OverviewCard
@@ -129,7 +136,7 @@ function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
           value={`${kpis.conversionRate}%`}
           sub="Won quotes out of all closed quotes"
           sparkline={kpis.conversionSparkline}
-          color="#24a174"
+          color="var(--state-positive)"
           marker="%"
         />
         <OverviewCard
@@ -137,7 +144,7 @@ function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
           value={trendValue}
           sub={trendSub}
           sparkline={kpis.volumeSparkline}
-          color={trendPositive ? '#24a174' : trendNeutral ? '#71878f' : '#d5554e'}
+          color={trendPositive ? 'var(--state-positive)' : trendNeutral ? 'var(--text-muted)' : 'var(--state-critical)'}
           marker="↗"
         />
       </div>
@@ -161,19 +168,13 @@ function OverviewCard({
   marker: string
 }) {
   return (
-    <article className={styles.overviewCard}>
-      <div className={styles.cardTopline}>
-        <span>{label}</span>
-        <span className={styles.metricMarker} aria-hidden="true">{marker}</span>
-      </div>
-      <div className={styles.metricValue}>{value}</div>
-      <div className={styles.metricSub}>{sub}</div>
+    <KpiCard label={label} value={value} detail={sub} marker={marker}>
       <div className={styles.sparkline}>
         {sparkline.length > 0
           ? <SparkLine data={sparkline} color={color} />
           : <span>No trend data yet</span>}
       </div>
-    </article>
+    </KpiCard>
   )
 }
 
@@ -224,25 +225,15 @@ function ActionCard({
   const hasAction = count > 0
 
   return (
-    <Link href={href} className={styles.actionCard} data-tone={hasAction ? tone : 'clear'}>
-      <div className={styles.actionCardTopline}>
-        <span className={styles.actionDot} aria-hidden="true" />
-        <span>{hasAction ? 'Needs review' : 'Up to date'}</span>
-      </div>
-      <div className={styles.actionCount}>{count}</div>
-      <div className={styles.actionLabel}>{label}</div>
-      <div className={styles.actionLink}>Review queue <span aria-hidden="true">→</span></div>
+    <Link href={href} className={styles.actionCard}>
+      <PriorityItem
+        tone={hasAction ? tone : 'clear'}
+        status={hasAction ? 'Needs review' : 'Up to date'}
+        value={count}
+        label={label}
+      >
+        Review queue <span aria-hidden="true">→</span>
+      </PriorityItem>
     </Link>
-  )
-}
-
-function SectionHeading({ title, eyebrow }: { title: string; eyebrow: string }) {
-  return (
-    <div className={styles.sectionHeading}>
-      <div>
-        <span>{eyebrow}</span>
-        <h2>{title}</h2>
-      </div>
-    </div>
   )
 }

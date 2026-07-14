@@ -41,6 +41,7 @@ describe('DashboardShell', () => {
     )
     expect(screen.getAllByText('RG Tools').length).toBeGreaterThan(0)
     expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Appearance' })).toBeInTheDocument()
   })
 
   it('lets a desktop user collapse and expand the permission-filtered navigation', async () => {

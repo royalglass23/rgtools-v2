@@ -18,6 +18,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 - Updated architecture and quote-tracking docs to describe AI guidance, privacy surfaces, gate proof enforcement, current worker routes, client merge tooling, and security boundaries.
 
 ### Changed
+- **Royal Glass Precision UI Phase 1 (MT-200)** - added persistent Light, Dark, and System themes; semantic design tokens; an updated authenticated shell; shared presentation components; and token-driven Dashboard, Leads list, and Work Order detail reference screens.
 - Repo is now a pnpm monorepo: the internal Next.js app moved to `apps/web`, the shared Drizzle schema/client moved to `packages/db`, and root scripts now delegate to workspace packages.
 - Vercel deployment is scoped to the internal app at `apps/web`; `apps/web/vercel.json` only enables automatic deployments for `main` and `dev`.
 - Production migrations can now run through `pnpm db:migrate:prod` using `DB_URL_PROD`, without changing `.env.local`.
