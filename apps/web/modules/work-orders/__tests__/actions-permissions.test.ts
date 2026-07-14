@@ -11,6 +11,7 @@ const mockDelete = vi.hoisted(() => vi.fn())
 const mockTransaction = vi.hoisted(() => vi.fn())
 const mockAuth = vi.hoisted(() => vi.fn())
 const mockLogAudit = vi.hoisted(() => vi.fn())
+const mockGenerateWorkOrderItemLabel = vi.hoisted(() => vi.fn())
 
 vi.mock('../permissions', () => ({
   assertCurrentUserCanConfigureWorkOrders: mockAssertCanConfigure,
@@ -33,6 +34,13 @@ vi.mock('@/lib/audit-db', () => ({ logAudit: mockLogAudit }))
 vi.mock('@/lib/servicem8/client', () => ({
   createServiceM8RequestFromEnv: vi.fn(),
 }))
+vi.mock('../item-labels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../item-labels')>()
+  return {
+    ...actual,
+    generateWorkOrderItemLabel: mockGenerateWorkOrderItemLabel,
+  }
+})
 
 import {
   addWorkOrderTimelineNoteAction,
@@ -42,7 +50,9 @@ import {
   generateWorkOrderAiSuggestionAction,
   markWorkOrderEventClientVisibleCandidateAction,
   refreshWorkOrdersAction,
+  regenerateWorkOrderItemLabelAction,
   saveWorkOrderBillingExclusionsAction,
+  updateWorkOrderItemLabelAction,
   updateWorkOrderOperationalFieldsAction,
 } from '../actions'
 
@@ -72,6 +82,7 @@ beforeEach(() => {
     })),
   })
   mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+  mockGenerateWorkOrderItemLabel.mockResolvedValue('Regenerated production label')
   mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => callback({
     delete: mockDelete,
   }))
@@ -97,6 +108,117 @@ describe('work order action permissions', () => {
     )
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('lets an authorised user replace only the Work Order Item short label', async () => {
+    const set = vi.fn(() => ({ where: vi.fn(async () => []) }))
+    mockUpdate.mockReturnValue({ set })
+    mockSelect.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => [{
+            id: 'item-1',
+            workOrderId: 'work-order-1',
+            originalDescription: 'Immutable ServiceM8 source description',
+            generatedLabel: 'Generated label',
+            manualLabelOverride: null,
+          }]),
+        })),
+      })),
+    })
+    const formData = new FormData()
+    formData.set('label', 'Staff corrected label')
+
+    await updateWorkOrderItemLabelAction('item-1', formData)
+
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      manualLabelOverride: 'Staff corrected label',
+      labelStatus: 'manual',
+      sourceDescriptionFingerprint: expect.any(String),
+    }))
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({
+      originalDescription: expect.anything(),
+      itemCode: expect.anything(),
+      quantity: expect.anything(),
+    }))
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'user-1',
+      entityType: 'work_order_item',
+      action: 'work_order_item.label_manually_updated',
+      targetId: 'item-1',
+    }))
+  })
+
+  it('requires manage access before manually changing a Work Order Item label', async () => {
+    mockAssertCanManage.mockRejectedValue(new Error('Forbidden: Work Orders manage access is required.'))
+    const formData = new FormData()
+    formData.set('label', 'Unauthorised label')
+
+    await expect(updateWorkOrderItemLabelAction('item-1', formData)).rejects.toThrow(
+      'Forbidden: Work Orders manage access is required.',
+    )
+
+    expect(mockSelect).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty manual label before reading or changing the item', async () => {
+    const formData = new FormData()
+    formData.set('label', '   ')
+
+    await expect(updateWorkOrderItemLabelAction('item-1', formData)).rejects.toThrow(
+      'Work Order Item label is required.',
+    )
+
+    expect(mockSelect).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('deliberately replaces a manual label when an authorised user regenerates with AI', async () => {
+    const set = vi.fn(() => ({ where: vi.fn(async () => []) }))
+    mockUpdate.mockReturnValue({ set })
+    mockSelect.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => [{
+            id: 'item-1',
+            workOrderId: 'work-order-1',
+            originalDescription: 'Current immutable ServiceM8 description',
+            generatedLabel: 'Old generated label',
+            manualLabelOverride: 'Staff-approved label',
+          }]),
+        })),
+      })),
+    })
+
+    await regenerateWorkOrderItemLabelAction('item-1')
+
+    expect(mockGenerateWorkOrderItemLabel).toHaveBeenCalledWith('Current immutable ServiceM8 description')
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      generatedLabel: 'Regenerated production label',
+      manualLabelOverride: null,
+      labelStatus: 'generated',
+      sourceDescriptionFingerprint: expect.any(String),
+    }))
+    expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'work_order_item.label_regenerated',
+      detail: expect.objectContaining({
+        previousLabel: 'Staff-approved label',
+        newLabel: 'Regenerated production label',
+      }),
+    }))
+  })
+
+  it('requires manage access before regenerating a Work Order Item label', async () => {
+    mockAssertCanManage.mockRejectedValue(new Error('Forbidden: Work Orders manage access is required.'))
+
+    await expect(regenerateWorkOrderItemLabelAction('item-1')).rejects.toThrow(
+      'Forbidden: Work Orders manage access is required.',
+    )
+
+    expect(mockSelect).not.toHaveBeenCalled()
+    expect(mockGenerateWorkOrderItemLabel).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
   })
 
   it('requires manage access before bulk deleting Work Orders', async () => {

@@ -57,6 +57,22 @@ describe('mapServiceM8JobMaterialsToWorkOrderItemInputs', () => {
 })
 
 describe('normalizeServiceM8JobMaterials', () => {
+  it('excludes ServiceM8 lines whose quantity is -1', () => {
+    const result = normalizeServiceM8JobMaterials(
+      [
+        { uuid: 'removed-1', active: 1, job_uuid: 'job-1', name: 'Removed glass', quantity: '-1' },
+        { uuid: 'glass-1', active: 1, job_uuid: 'job-1', name: 'Current glass', quantity: '1' },
+      ],
+      [],
+      [],
+    )
+
+    expect(result).toEqual({
+      inputs: [expect.objectContaining({ servicem8ItemUuid: 'glass-1' })],
+      excludedLineCount: 1,
+    })
+  })
+
   it('excludes configured billing lines case-insensitively and reports the excluded count', () => {
     const result = normalizeServiceM8JobMaterials(
       [
@@ -80,6 +96,14 @@ describe('normalizeServiceM8JobMaterials', () => {
       [],
       [],
     )).toThrow('ServiceM8 item item-1 is invalid: job UUID is required.')
+  })
+
+  it('still rejects negative quantities other than the -1 exclusion sentinel', () => {
+    expect(() => normalizeServiceM8JobMaterials(
+      [{ uuid: 'item-1', active: 1, job_uuid: 'job-1', name: 'Shower glass', quantity: '-2' }],
+      [],
+      [],
+    )).toThrow('ServiceM8 item item-1 is invalid: quantity must be a non-negative number.')
   })
 })
 

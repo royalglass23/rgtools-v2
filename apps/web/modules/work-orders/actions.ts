@@ -38,6 +38,12 @@ import {
   type ServiceM8WorkOrderJob,
 } from './servicem8-sync'
 import { serializeSummaryConfig, WORK_ORDER_SUMMARY_FIELD_CATALOG, WORK_ORDER_SUMMARY_CONFIG_KEY } from './summary-config'
+import {
+  fingerprintSourceDescription,
+  refreshWorkOrderItemLabels,
+  type WorkOrderItemLabelStore,
+} from './item-label-lifecycle'
+import { generateWorkOrderItemLabel, type WorkOrderItemLabelGenerator } from './item-labels'
 
 type ServiceM8Company = {
   uuid?: string | null
@@ -93,6 +99,7 @@ export async function batchDeleteWorkOrdersAction(formData: FormData): Promise<v
 
 export async function refreshWorkOrdersFromServiceM8(
   request: ServiceM8FetchRequest = createServiceM8RequestFromEnv(),
+  generateLabel: WorkOrderItemLabelGenerator = generateWorkOrderItemLabel,
 ) {
   let jobRows: ServiceM8WorkOrderJob[]
   let companyRows: ServiceM8Company[]
@@ -317,7 +324,154 @@ export async function refreshWorkOrdersFromServiceM8(
     throw error
   }
 
+  try {
+    await refreshPersistedWorkOrderItemLabels(generateLabel)
+  } catch {
+    // ServiceM8 reconciliation is already committed. Label processing remains retryable.
+  }
+
   return { synced: inputs.length, itemsSynced, excludedLineCount }
+}
+
+export async function updateWorkOrderItemLabelAction(itemId: string, formData: FormData) {
+  await assertCurrentUserCanManageWorkOrders()
+  const session = await auth()
+  const label = parseManualWorkOrderItemLabel(formData.get('label'))
+  const item = await getWorkOrderItemLabelRecord(itemId)
+
+  await db
+    .update(workOrderItems)
+    .set({
+      manualLabelOverride: label,
+      labelStatus: 'manual',
+      sourceDescriptionFingerprint: fingerprintSourceDescription(item.originalDescription),
+      updatedAt: new Date(),
+    })
+    .where(eq(workOrderItems.id, itemId))
+
+  await logAudit({
+    actorId: session?.user?.id ?? null,
+    entityType: 'work_order_item',
+    action: 'work_order_item.label_manually_updated',
+    targetId: itemId,
+    detail: {
+      workOrderId: item.workOrderId,
+      previousLabel: item.manualLabelOverride ?? item.generatedLabel,
+      newLabel: label,
+    },
+  })
+
+  revalidateWorkOrderItemPaths(item.workOrderId)
+}
+
+export async function regenerateWorkOrderItemLabelAction(itemId: string) {
+  await assertCurrentUserCanManageWorkOrders()
+  const session = await auth()
+  const item = await getWorkOrderItemLabelRecord(itemId)
+  const label = await generateWorkOrderItemLabel(item.originalDescription)
+
+  await db
+    .update(workOrderItems)
+    .set({
+      generatedLabel: label,
+      manualLabelOverride: null,
+      labelStatus: 'generated',
+      sourceDescriptionFingerprint: fingerprintSourceDescription(item.originalDescription),
+      updatedAt: new Date(),
+    })
+    .where(eq(workOrderItems.id, itemId))
+
+  await logAudit({
+    actorId: session?.user?.id ?? null,
+    entityType: 'work_order_item',
+    action: 'work_order_item.label_regenerated',
+    targetId: itemId,
+    detail: {
+      workOrderId: item.workOrderId,
+      previousLabel: item.manualLabelOverride ?? item.generatedLabel,
+      newLabel: label,
+    },
+  })
+
+  revalidateWorkOrderItemPaths(item.workOrderId)
+}
+
+async function getWorkOrderItemLabelRecord(itemId: string) {
+  const [item] = await db
+    .select({
+      id: workOrderItems.id,
+      workOrderId: workOrderItems.workOrderId,
+      originalDescription: workOrderItems.originalDescription,
+      generatedLabel: workOrderItems.generatedLabel,
+      manualLabelOverride: workOrderItems.manualLabelOverride,
+    })
+    .from(workOrderItems)
+    .where(eq(workOrderItems.id, itemId))
+    .limit(1)
+
+  if (!item) throw new Error(`Work Order Item ${itemId} was not found.`)
+  return item
+}
+
+function parseManualWorkOrderItemLabel(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') throw new Error('Work Order Item label is required.')
+  const label = value.trim()
+  if (!label) throw new Error('Work Order Item label is required.')
+  if (/\r|\n/.test(label)) throw new Error('Work Order Item label must be one line.')
+  if (label.length > 160) throw new Error('Work Order Item label must be 160 characters or fewer.')
+  return label
+}
+
+function revalidateWorkOrderItemPaths(workOrderId: string) {
+  revalidatePath('/')
+  revalidatePath('/work-orders')
+  revalidatePath(`/work-orders/${workOrderId}`)
+}
+
+async function refreshPersistedWorkOrderItemLabels(generateLabel: WorkOrderItemLabelGenerator) {
+  const items = await db
+    .select({
+      id: workOrderItems.id,
+      originalDescription: workOrderItems.originalDescription,
+      generatedLabel: workOrderItems.generatedLabel,
+      manualLabelOverride: workOrderItems.manualLabelOverride,
+      labelStatus: workOrderItems.labelStatus,
+      sourceDescriptionFingerprint: workOrderItems.sourceDescriptionFingerprint,
+    })
+    .from(workOrderItems)
+    .where(eq(workOrderItems.isActive, true))
+
+  const store: WorkOrderItemLabelStore = {
+    markPending: (itemId) => updateWorkOrderItemLabelState(itemId, {
+      generatedLabel: null,
+      labelStatus: 'pending',
+    }),
+    saveGenerated: (itemId, label, sourceDescriptionFingerprint) => updateWorkOrderItemLabelState(itemId, {
+      generatedLabel: label,
+      manualLabelOverride: null,
+      labelStatus: 'generated',
+      sourceDescriptionFingerprint,
+    }),
+    markFailed: (itemId) => updateWorkOrderItemLabelState(itemId, {
+      generatedLabel: null,
+      labelStatus: 'failed',
+    }),
+    markSourceChanged: (itemId) => updateWorkOrderItemLabelState(itemId, {
+      labelStatus: 'source_changed',
+    }),
+  }
+
+  return refreshWorkOrderItemLabels(items, store, generateLabel)
+}
+
+async function updateWorkOrderItemLabelState(
+  itemId: string,
+  values: Partial<typeof workOrderItems.$inferInsert>,
+) {
+  await db
+    .update(workOrderItems)
+    .set({ ...values, updatedAt: new Date() })
+    .where(eq(workOrderItems.id, itemId))
 }
 
 export async function createWorkOrderInstallerAction(formData: FormData) {

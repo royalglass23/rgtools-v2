@@ -22,6 +22,8 @@ export default async function WorkOrderGuidePage() {
               'Open Work Order from the menu.',
               'Refresh from ServiceM8 if the list needs updating.',
               'Search or filter for the job.',
+              'Expand the job to review each ServiceM8 item and its short production label.',
+              'If you have Manage access, correct the short label directly or use Regenerate with AI after confirming the replacement.',
               'Open the work order to view job details.',
               'Update internal operational fields such as stage, installer, install date, risk, importance, or notes when needed.',
             ],
@@ -32,7 +34,7 @@ export default async function WorkOrderGuidePage() {
           },
           {
             title: 'Simple rule',
-            body: 'Work Order is not for creating quote links or continuing lead scoring after the job has moved on from Quote status.',
+            body: 'Edit only the short production label in RG Tools. Quantity, item code, and the full ServiceM8 description remain read-only source information. A Label pending badge means the original description is being used until generation succeeds or a manager corrects it.',
           },
         ],
       }}
