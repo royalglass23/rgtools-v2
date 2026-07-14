@@ -115,7 +115,7 @@ export function normalizeServiceM8JobMaterials(
 
   const inputs = jobMaterials.flatMap((jobMaterial, index) => {
     if (!isActive(jobMaterial.active)) return []
-    if (isExcludedQuantity(jobMaterial.quantity)) {
+    if (isNegativeQuantity(jobMaterial.quantity)) {
       excludedLineCount += 1
       return []
     }
@@ -166,7 +166,7 @@ export function normalizeServiceM8JobMaterials(
 export function validateServiceM8JobMaterials(jobMaterials: ServiceM8JobMaterial[]): void {
   jobMaterials.forEach((jobMaterial, index) => {
     if (!isActive(jobMaterial.active)) return
-    if (isExcludedQuantity(jobMaterial.quantity)) return
+    if (isNegativeQuantity(jobMaterial.quantity)) return
 
     const servicem8ItemUuid = clean(jobMaterial.uuid)
     if (!servicem8ItemUuid) {
@@ -196,8 +196,9 @@ function decimalValue(value: string | number | null | undefined): string | null 
   return String(parsed)
 }
 
-function isExcludedQuantity(value: string | number | null | undefined): boolean {
-  return Number(clean(value)) === -1
+function isNegativeQuantity(value: string | number | null | undefined): boolean {
+  const quantity = Number(clean(value))
+  return Number.isFinite(quantity) && quantity < 0
 }
 
 function integerValue(value: string | number | null | undefined): number {
