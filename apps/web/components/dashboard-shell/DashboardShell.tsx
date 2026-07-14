@@ -88,42 +88,49 @@ export function DashboardShell({
         aria-hidden="true"
       />
       <aside className={styles.sidebar} data-mobile-open={mobileOpen || undefined}>
-      <div className={styles.brandRow}>
-        <Link href="/" className={styles.brand} aria-label="Royal Glass tools home">
-          <Image
-            src="/royal-glass-logo-white.png"
-            alt="Royal Glass"
-            width={300}
-            height={144}
-            priority
-            unoptimized
-            className={styles.logo}
-          />
-          <span className={styles.brandCopy}>
-            <strong>RG Tools</strong>
-            <span>Operations</span>
-          </span>
-        </Link>
-        <button
-          type="button"
-          className={styles.desktopCollapse}
-          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((current) => !current)}
-        >
-          <Icon name={collapsed ? 'panel-open' : 'panel-close'} />
-        </button>
-        <button
-          type="button"
-          className={styles.mobileClose}
-          aria-label="Close navigation"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Icon name="close" />
-        </button>
-      </div>
+        <div className={styles.brandRow}>
+          <div className={styles.brand}>
+            <a
+              href="https://royalglass.co.nz"
+              className={styles.logoLink}
+              aria-label="Visit Royal Glass website"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Image
+                src="/royal-glass-logo-white.png"
+                alt="Royal Glass"
+                width={300}
+                height={144}
+                priority
+                unoptimized
+                className={styles.logo}
+              />
+            </a>
+            <Link href="/" className={styles.brandName} aria-label="RG Tools dashboard home">
+              RG Tools
+            </Link>
+          </div>
+          <button
+            type="button"
+            className={styles.desktopCollapse}
+            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed((current) => !current)}
+          >
+            <Icon name={collapsed ? 'panel-open' : 'panel-close'} />
+          </button>
+          <button
+            type="button"
+            className={styles.mobileClose}
+            aria-label="Close navigation"
+            onClick={() => setMobileOpen(false)}
+          >
+            <Icon name="close" />
+          </button>
+        </div>
 
-      <nav className={styles.navigation} aria-label="Main navigation">
+        <nav className={styles.navigation} aria-label="Main navigation">
         <span className={styles.navigationLabel}>Workspace</span>
         <div className={styles.navigationEntries}>
           {navigation.map((entry) => {
@@ -190,9 +197,9 @@ export function DashboardShell({
             )
           })}
         </div>
-      </nav>
+        </nav>
 
-      <div className={styles.account}>
+        <div className={styles.account}>
         <div className={styles.avatar} aria-hidden="true">
           {initialsFor(user.name)}
         </div>
@@ -201,7 +208,7 @@ export function DashboardShell({
           <span>{user.role === 'admin' ? 'Administrator' : 'Team member'}</span>
         </div>
         <div className={styles.signOut}>{signOutControl}</div>
-      </div>
+        </div>
       </aside>
 
       <div className={styles.pageColumn}>

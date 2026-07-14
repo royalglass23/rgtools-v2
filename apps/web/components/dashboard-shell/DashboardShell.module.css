@@ -24,10 +24,10 @@
 
 .brandRow {
   display: flex;
-  min-height: 5.5rem;
-  align-items: center;
+  min-height: 7.75rem;
+  align-items: flex-start;
   gap: .75rem;
-  padding: 1rem 1rem 1rem 1.25rem;
+  padding: 1.15rem 1rem 1rem 1.25rem;
   border-bottom: 1px solid rgb(255 255 255 / 8%);
 }
 
@@ -35,38 +35,42 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  align-items: center;
-  gap: .75rem;
-  color: white;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .45rem;
+}
+
+.logoLink {
+  display: flex;
+  border-radius: .35rem;
   text-decoration: none;
 }
 
+.logoLink:focus-visible,
+.brandName:focus-visible {
+  outline: 2px solid #43c3d0;
+  outline-offset: 3px;
+}
+
 .logo {
-  width: 3rem;
-  height: 2.75rem;
+  width: 7.75rem;
+  height: 3.75rem;
   object-fit: contain;
   object-position: left center;
 }
 
-.brandCopy,
 .accountCopy {
   display: flex;
   min-width: 0;
   flex-direction: column;
 }
 
-.brandCopy strong {
-  font-size: .95rem;
+.brandName {
+  color: white;
+  font-size: 1rem;
+  font-weight: 800;
   letter-spacing: .01em;
-}
-
-.brandCopy span {
-  margin-top: .12rem;
-  color: #7ed5df;
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .13em;
-  text-transform: uppercase;
+  text-decoration: none;
 }
 
 .desktopCollapse,

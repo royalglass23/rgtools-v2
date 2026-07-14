@@ -24,6 +24,25 @@ const navigation: DashboardNavigationEntry[] = [
 ]
 
 describe('DashboardShell', () => {
+  it('links the Royal Glass logo externally and keeps the product name concise', () => {
+    render(
+      <DashboardShell
+        navigation={navigation}
+        user={{ name: 'Roxy Huang', role: 'admin' }}
+        signOutControl={<button type="button">Sign out</button>}
+      >
+        <h1>Dashboard content</h1>
+      </DashboardShell>,
+    )
+
+    expect(screen.getByRole('link', { name: 'Visit Royal Glass website' })).toHaveAttribute(
+      'href',
+      'https://royalglass.co.nz',
+    )
+    expect(screen.getAllByText('RG Tools').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+  })
+
   it('lets a desktop user collapse and expand the permission-filtered navigation', async () => {
     const user = userEvent.setup()
     render(
