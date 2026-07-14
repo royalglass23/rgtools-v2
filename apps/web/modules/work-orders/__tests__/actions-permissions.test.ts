@@ -12,6 +12,7 @@ const mockTransaction = vi.hoisted(() => vi.fn())
 const mockAuth = vi.hoisted(() => vi.fn())
 const mockLogAudit = vi.hoisted(() => vi.fn())
 const mockGenerateWorkOrderItemLabel = vi.hoisted(() => vi.fn())
+const mockGetWorkOrderSummaryConfig = vi.hoisted(() => vi.fn())
 
 vi.mock('../permissions', () => ({
   assertCurrentUserCanConfigureWorkOrders: mockAssertCanConfigure,
@@ -39,6 +40,13 @@ vi.mock('../item-labels', async (importOriginal) => {
   return {
     ...actual,
     generateWorkOrderItemLabel: mockGenerateWorkOrderItemLabel,
+  }
+})
+vi.mock('../summary-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../summary-config')>()
+  return {
+    ...actual,
+    getWorkOrderSummaryConfig: mockGetWorkOrderSummaryConfig,
   }
 })
 
@@ -83,6 +91,17 @@ beforeEach(() => {
   })
   mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
   mockGenerateWorkOrderItemLabel.mockResolvedValue('Regenerated production label')
+  mockGetWorkOrderSummaryConfig.mockResolvedValue([
+    'item',
+    'installer',
+    'stage',
+    'hardware',
+    'maintenanceProgram',
+    'installDate',
+    'dateCompleted',
+    'risk',
+    'importance',
+  ].map((id, index) => ({ id, editable: true, visible: true, filterable: false, order: index + 1 })))
   mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => callback({
     delete: mockDelete,
   }))
@@ -174,6 +193,19 @@ describe('work order action permissions', () => {
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
+  it('rejects an operational edit when summary configuration disables that field', async () => {
+    mockGetWorkOrderSummaryConfig.mockResolvedValueOnce([
+      { id: 'risk', label: 'Risk', editable: false },
+    ])
+
+    await expect(
+      updateWorkOrderItemOperationalFieldAction('item-1', 'risk', 'high'),
+    ).rejects.toThrow('Risk editing is disabled in Work Order Summary Configuration.')
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
   it('lets an authorised user replace only the Work Order Item short label', async () => {
     const set = vi.fn(() => ({ where: vi.fn(async () => []) }))
     mockUpdate.mockReturnValue({ set })
@@ -220,6 +252,21 @@ describe('work order action permissions', () => {
 
     await expect(updateWorkOrderItemLabelAction('item-1', formData)).rejects.toThrow(
       'Forbidden: Work Orders manage access is required.',
+    )
+
+    expect(mockSelect).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a short-label edit when Item is configured read-only', async () => {
+    mockGetWorkOrderSummaryConfig.mockResolvedValueOnce([
+      { id: 'item', label: 'Item', editable: false },
+    ])
+    const formData = new FormData()
+    formData.set('label', 'Blocked configured label')
+
+    await expect(updateWorkOrderItemLabelAction('item-1', formData)).rejects.toThrow(
+      'Item editing is disabled in Work Order Summary Configuration.',
     )
 
     expect(mockSelect).not.toHaveBeenCalled()

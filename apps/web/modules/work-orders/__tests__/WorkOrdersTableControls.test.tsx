@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { WorkOrdersTableControls } from '../WorkOrdersTableControls'
 import type { WorkOrderListFilters } from '../list-filters'
 import type { WorkOrderRow } from '../queries'
-import type { WorkOrderSummaryFieldConfig } from '../summary-config'
+import { WORK_ORDER_SUMMARY_FIELD_CATALOG, type WorkOrderSummaryFieldConfig } from '../summary-config'
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -33,6 +33,33 @@ const filters: WorkOrderListFilters = {
 }
 
 describe('WorkOrdersTableControls', () => {
+  it('keeps Search, Sort and Reset available while showing only configured filters', () => {
+    const fields = WORK_ORDER_SUMMARY_FIELD_CATALOG.map((field) => ({
+      ...field,
+      filterable: field.id === 'stage',
+    }))
+
+    renderDashboard([], fields)
+
+    expect(screen.getByRole('textbox', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Stage' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Risk' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Importance' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Reset' })).toBeInTheDocument()
+  })
+
+  it('reports matching active children against the parent active total', () => {
+    const row = workOrder({ id: 'job-filtered', jobNumber: 'R300', clientName: 'Filtered Client', leadScore: 70, itemLabel: 'Matching item' })
+    row.activeItemCount = 3
+    row.matchingActiveItemCount = 1
+
+    renderDashboard([row])
+
+    const group = screen.getByRole('group', { name: 'Work Order R300' })
+    expect(within(group).getByText('1 of 3 active items')).toBeInTheDocument()
+  })
+
   it('starts every parent expanded and collapses each Work Order independently', () => {
     renderDashboard([
       workOrder({ id: 'job-1', jobNumber: 'R100', clientName: 'Aroha Glass', leadScore: 91, itemLabel: 'Shower glass' }),
@@ -103,6 +130,7 @@ describe('WorkOrdersTableControls', () => {
       source: 'rg',
       visible: true,
       filterable: false,
+      editable: true,
       order: 1,
     }])
 
@@ -111,7 +139,10 @@ describe('WorkOrdersTableControls', () => {
   })
 })
 
-function renderDashboard(rows: WorkOrderRow[], fields: WorkOrderSummaryFieldConfig[] = []) {
+function renderDashboard(
+  rows: WorkOrderRow[],
+  fields: WorkOrderSummaryFieldConfig[] = WORK_ORDER_SUMMARY_FIELD_CATALOG,
+) {
   return render(
     <WorkOrdersTableControls
       rows={rows}

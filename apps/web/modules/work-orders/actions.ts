@@ -37,7 +37,13 @@ import {
   type ServiceM8Material,
   type ServiceM8WorkOrderJob,
 } from './servicem8-sync'
-import { serializeSummaryConfig, WORK_ORDER_SUMMARY_FIELD_CATALOG, WORK_ORDER_SUMMARY_CONFIG_KEY } from './summary-config'
+import {
+  getWorkOrderSummaryConfig,
+  serializeSummaryConfig,
+  WORK_ORDER_SUMMARY_FIELD_CATALOG,
+  WORK_ORDER_SUMMARY_CONFIG_KEY,
+  type WorkOrderSummaryFieldId,
+} from './summary-config'
 import { canConfigureSummaryFieldAsEditable } from './summary-field-policy'
 import {
   fingerprintSourceDescription,
@@ -343,8 +349,9 @@ export async function refreshWorkOrdersFromServiceM8(
 
 export async function updateWorkOrderItemLabelAction(itemId: string, formData: FormData) {
   await assertCurrentUserCanManageWorkOrders()
-  const session = await auth()
   const label = parseManualWorkOrderItemLabel(formData.get('label'))
+  await assertSummaryFieldEditingEnabled('item')
+  const session = await auth()
   const item = await getWorkOrderItemLabelRecord(itemId)
 
   await db
@@ -379,6 +386,7 @@ export async function updateWorkOrderItemOperationalFieldAction(
 ) {
   await assertCurrentUserCanManageWorkOrders()
   const normalizedValue = parseWorkOrderItemOperationalValue(field, value)
+  await assertSummaryFieldEditingEnabled(field)
   const session = await auth()
 
   const result = await db.transaction(async (tx) => {
@@ -432,6 +440,7 @@ export async function updateWorkOrderItemOperationalFieldAction(
 
 export async function regenerateWorkOrderItemLabelAction(itemId: string) {
   await assertCurrentUserCanManageWorkOrders()
+  await assertSummaryFieldEditingEnabled('item')
   const session = await auth()
   const item = await getWorkOrderItemLabelRecord(itemId)
   const label = await generateWorkOrderItemLabel(item.originalDescription)
@@ -460,6 +469,15 @@ export async function regenerateWorkOrderItemLabelAction(itemId: string) {
   })
 
   revalidateWorkOrderItemPaths(item.workOrderId)
+}
+
+async function assertSummaryFieldEditingEnabled(fieldId: WorkOrderSummaryFieldId) {
+  const fields = await getWorkOrderSummaryConfig()
+  const field = fields.find((candidate) => candidate.id === fieldId)
+  if (field?.editable && canConfigureSummaryFieldAsEditable(fieldId)) return
+
+  const label = field?.label ?? fieldId
+  throw new Error(`${label} editing is disabled in Work Order Summary Configuration.`)
 }
 
 async function getWorkOrderItemLabelRecord(itemId: string) {

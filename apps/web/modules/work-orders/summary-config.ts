@@ -25,7 +25,7 @@ export type WorkOrderSummaryFieldId =
 export type WorkOrderSummaryFieldConfig = {
   id: WorkOrderSummaryFieldId
   label: string
-  source: 'rg' | 'servicem8' | 'context'
+  source: 'rg' | 'servicem8' | 'context' | 'composite'
   visible: boolean
   filterable: boolean
   editable: boolean
@@ -37,7 +37,7 @@ export const WORK_ORDER_SUMMARY_FIELD_CATALOG: WorkOrderSummaryFieldConfig[] = [
   { id: 'jobNumber', label: 'Job number', source: 'servicem8', visible: true, filterable: false, editable: false, order: 2 },
   { id: 'jobAddress', label: 'Address', source: 'servicem8', visible: true, filterable: false, editable: false, order: 3 },
   { id: 'leadScore', label: 'Score', source: 'context', visible: true, filterable: false, editable: false, order: 4 },
-  { id: 'item', label: 'Item', source: 'rg', visible: true, filterable: false, editable: true, order: 5 },
+  { id: 'item', label: 'Item', source: 'composite', visible: true, filterable: false, editable: true, order: 5 },
   { id: 'importance', label: 'Importance', source: 'rg', visible: true, filterable: true, editable: true, order: 6 },
   { id: 'risk', label: 'Risk', source: 'rg', visible: true, filterable: true, editable: true, order: 7 },
   { id: 'installer', label: 'Installer', source: 'rg', visible: true, filterable: false, editable: true, order: 8 },
@@ -123,7 +123,10 @@ function insertCatalogField(
     .slice(0, catalogIndex)
     .map((field) => field.id)
     .reverse()
-  const precedingIndex = fields.findIndex((field) => precedingIds.includes(field.id))
+  const precedingId = precedingIds.find((id) => fields.some((field) => field.id === id))
+  const precedingIndex = precedingId
+    ? fields.findIndex((field) => field.id === precedingId)
+    : -1
 
   if (precedingIndex >= 0) {
     fields.splice(precedingIndex + 1, 0, missingField)
@@ -133,6 +136,9 @@ function insertCatalogField(
   const followingIds = WORK_ORDER_SUMMARY_FIELD_CATALOG
     .slice(catalogIndex + 1)
     .map((field) => field.id)
-  const followingIndex = fields.findIndex((field) => followingIds.includes(field.id))
+  const followingId = followingIds.find((id) => fields.some((field) => field.id === id))
+  const followingIndex = followingId
+    ? fields.findIndex((field) => field.id === followingId)
+    : -1
   fields.splice(followingIndex < 0 ? fields.length : followingIndex, 0, missingField)
 }

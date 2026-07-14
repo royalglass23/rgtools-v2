@@ -13,7 +13,11 @@ import {
 } from '@rgtools/db/schema-workorders'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection } from './list-filters'
-import { attachActiveItemsToWorkOrders, type WorkOrderItemSummaryRow } from './work-order-items'
+import {
+  applyWorkOrderItemListFilters,
+  attachActiveItemsToWorkOrders,
+  type WorkOrderItemSummaryRow,
+} from './work-order-items'
 import type { WorkOrderRefreshStatusValue } from './WorkOrderRefreshStatus'
 
 export type WorkOrderBaseRow = {
@@ -43,6 +47,7 @@ export type WorkOrderBaseRow = {
 
 export type WorkOrderRow = WorkOrderBaseRow & {
   activeItemCount: number
+  matchingActiveItemCount?: number | null
   items: WorkOrderItemSummaryRow[]
 }
 
@@ -168,8 +173,9 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
       .orderBy(asc(workOrderItems.workOrderId), asc(workOrderItems.sortOrder), asc(workOrderItems.id))
 
   const total = totalRow?.total ?? 0
+  const groupedRows = attachActiveItemsToWorkOrders(rows, activeItems)
   return {
-    rows: attachActiveItemsToWorkOrders(rows, activeItems),
+    rows: applyWorkOrderItemListFilters(groupedRows, filters),
     total,
     pageCount: Math.max(1, Math.ceil(total / filters.size)),
   }
@@ -357,17 +363,7 @@ function listWhere(filters: WorkOrderListFilters) {
 
   if (filters.current === 'current') conditions.push(eq(workOrders.isCurrent, true))
   if (filters.current === 'non_current') conditions.push(eq(workOrders.isCurrent, false))
-  if (filters.stage !== 'all') conditions.push(eq(workOrders.stageOptionId, filters.stage))
-  if (filters.hardware !== 'all') conditions.push(eq(workOrders.hardwareStatusOptionId, filters.hardware))
-  if (filters.maintenanceProgram !== 'all') {
-    conditions.push(eq(workOrders.maintenanceProgram, filters.maintenanceProgram === 'yes'))
-  }
-  if (filters.risk !== 'all') {
-    conditions.push(eq(sql`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`, filters.risk))
-  }
-  if (filters.importance !== 'all') {
-    conditions.push(eq(sql`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`, filters.importance))
-  }
+  if (hasConfiguredItemFilters(filters)) conditions.push(matchingItemExists(filters))
   if (filters.q) {
     const pattern = `%${escapeLike(filters.q)}%`
     conditions.push(or(
@@ -376,19 +372,57 @@ function listWhere(filters: WorkOrderListFilters) {
       ilike(workOrders.jobNumber, pattern),
       ilike(workOrders.jobAddress, pattern),
       ilike(workOrders.jobDescription, pattern),
+      matchingItemExists(filters, pattern),
     ))
   }
 
   return conditions.length > 0 ? and(...conditions) : undefined
 }
 
+function matchingItemExists(filters: WorkOrderListFilters, searchPattern?: string) {
+  const conditions = [eq(workOrderItems.workOrderId, workOrders.id)]
+  if (!filters.showRemovedItems) conditions.push(eq(workOrderItems.isActive, true))
+  if (filters.stage !== 'all') conditions.push(eq(workOrderItems.stageOptionId, filters.stage))
+  if (filters.hardware !== 'all') conditions.push(eq(workOrderItems.hardwareStatusOptionId, filters.hardware))
+  if (filters.maintenanceProgram !== 'all') {
+    conditions.push(eq(workOrderItems.maintenanceProgram, filters.maintenanceProgram === 'yes'))
+  }
+  if (filters.risk !== 'all') {
+    conditions.push(eq(sql`coalesce(${workOrderItems.riskLevelOverride}, ${workOrderItems.aiRiskLevel})`, filters.risk))
+  }
+  if (filters.importance !== 'all') {
+    conditions.push(eq(sql`coalesce(${workOrderItems.importanceOverride}, ${workOrderItems.aiImportance})`, filters.importance))
+  }
+  if (searchPattern) {
+    const itemSearchCondition = or(
+      ilike(workOrderItems.itemCode, searchPattern),
+      ilike(
+        sql<string>`coalesce(${workOrderItems.manualLabelOverride}, ${workOrderItems.generatedLabel}, ${workOrderItems.originalDescription})`,
+        searchPattern,
+      ),
+      ilike(workOrderItems.originalDescription, searchPattern),
+    )
+    if (itemSearchCondition) conditions.push(itemSearchCondition)
+  }
+
+  return sql`exists (select 1 from ${workOrderItems} where ${and(...conditions)})`
+}
+
+function hasConfiguredItemFilters(filters: WorkOrderListFilters) {
+  return filters.stage !== 'all'
+    || filters.hardware !== 'all'
+    || filters.maintenanceProgram !== 'all'
+    || filters.risk !== 'all'
+    || filters.importance !== 'all'
+}
+
 function listOrderBy(sort: WorkOrderSort) {
   if (sort === 'lead_score_desc') {
     return [
       sql`${workOrders.leadScore} desc nulls last`,
-      desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
-      desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
-      sql`${workOrders.installDate} asc nulls last`,
+      sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), 'desc'),
+      sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), 'desc'),
+      sortNullable(activeItemDateAggregate(workOrderItems.installDate, 'asc'), 'asc'),
       asc(workOrders.updatedAt),
       asc(workOrders.id),
     ]
@@ -398,31 +432,33 @@ function listOrderBy(sort: WorkOrderSort) {
       sql`${workOrders.leadScore} asc nulls last`,
       asc(workOrders.clientName),
       asc(workOrders.updatedAt),
+      asc(workOrders.id),
     ]
   }
 
   const [key, direction] = splitSort(sort)
 
-  if (key === 'importance') return [sortLevel(levelRank(workOrders.importanceOverride, workOrders.aiImportance), direction), desc(workOrders.leadScore)]
-  if (key === 'risk') return [sortLevel(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel), direction), desc(workOrders.leadScore)]
-  if (key === 'install_date') return [sortNullable(workOrders.installDate, direction), desc(workOrders.leadScore)]
-  if (key === 'date_completed') return [sortNullable(workOrders.dateCompleted, direction), desc(workOrders.leadScore)]
-  if (key === 'client') return [sortText(workOrders.clientName, direction), desc(workOrders.leadScore)]
-  if (key === 'job_number') return [sortText(workOrders.jobNumber, direction), desc(workOrders.leadScore)]
-  if (key === 'job_address') return [sortText(workOrders.jobAddress, direction), desc(workOrders.leadScore)]
-  if (key === 'job_description') return [sortText(workOrders.jobDescription, direction), desc(workOrders.leadScore)]
-  if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'maintenance_program') return [sortNullable(workOrders.maintenanceProgram, direction), desc(workOrders.leadScore)]
-  if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore)]
+  if (key === 'importance') return [sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'risk') return [sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'install_date') return [sortNullable(activeItemDateAggregate(workOrderItems.installDate, direction), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'date_completed') return [sortNullable(activeItemDateAggregate(workOrderItems.dateCompleted, direction), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'client') return [sortText(workOrders.clientName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_number') return [sortText(workOrders.jobNumber, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_address') return [sortText(workOrders.jobAddress, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_description') return [sortText(workOrders.jobDescription, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'maintenance_program') return [sortNullable(workOrders.maintenanceProgram, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore), asc(workOrders.id)]
 
   return [
     sql`${workOrders.leadScore} desc nulls last`,
-    desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
-    desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
-    sql`${workOrders.installDate} asc nulls last`,
+    sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), 'desc'),
+    sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), 'desc'),
+    sortNullable(activeItemDateAggregate(workOrderItems.installDate, 'asc'), 'asc'),
     asc(workOrders.updatedAt),
+    asc(workOrders.id),
   ]
 }
 
@@ -440,7 +476,7 @@ function sortText(column: unknown, direction: WorkOrderSortDirection) {
 }
 
 function sortLevel(column: unknown, direction: WorkOrderSortDirection) {
-  return direction === 'asc' ? sql`${column} asc` : sql`${column} desc`
+  return direction === 'asc' ? sql`${column} asc nulls last` : sql`${column} desc nulls last`
 }
 
 function levelRank(overrideColumn: unknown, aiColumn: unknown) {
@@ -450,6 +486,27 @@ function levelRank(overrideColumn: unknown, aiColumn: unknown) {
     when 'low' then 1
     else 0
   end`
+}
+
+function activeItemLevelRank(overrideColumn: unknown, aiColumn: unknown) {
+  return sql<number>`(select max(${levelRank(overrideColumn, aiColumn)})
+    from ${workOrderItems}
+    where ${workOrderItems.workOrderId} = ${workOrders.id}
+      and ${workOrderItems.isActive} = true)`
+}
+
+function activeItemDateAggregate(column: unknown, direction: WorkOrderSortDirection) {
+  if (direction === 'asc') {
+    return sql`(select min(${column})
+      from ${workOrderItems}
+      where ${workOrderItems.workOrderId} = ${workOrders.id}
+        and ${workOrderItems.isActive} = true)`
+  }
+
+  return sql`(select max(${column})
+    from ${workOrderItems}
+    where ${workOrderItems.workOrderId} = ${workOrders.id}
+      and ${workOrderItems.isActive} = true)`
 }
 
 function escapeLike(value: string) {

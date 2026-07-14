@@ -83,6 +83,34 @@ describe('WorkOrderItemsSummary', () => {
     expect(screen.queryByText('Hidden composite label')).not.toBeInTheDocument()
   })
 
+  it('renders edit controls only when Manage permission and Editable configuration both allow them', () => {
+    render(<WorkOrderItemsSummary
+      canManage
+      fields={[
+        summaryField('item', { editable: false, order: 1 }),
+        summaryField('risk', { editable: false, order: 2 }),
+        summaryField('importance', { editable: true, order: 3, label: 'Importance' }),
+      ]}
+      items={[workOrderItem({
+        id: 'item-edit-policy',
+        itemCode: 'GLASS-POLICY',
+        quantity: '1.000',
+        originalDescription: 'Policy test glass',
+        lineTotalExcludingGst: '900.00',
+        generatedLabel: 'Configured label',
+        manualLabelOverride: null,
+        isActive: true,
+        riskLevel: 'high',
+        importance: 'medium',
+      })]}
+    />)
+
+    expect(screen.queryByRole('textbox', { name: 'Short label for GLASS-POLICY' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Risk for GLASS-POLICY' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Importance for GLASS-POLICY' })).toBeInTheDocument()
+  })
+
+
   it('shows every active ServiceM8 item beneath one parent count', () => {
     render(<WorkOrderItemsSummary items={[
       workOrderItem({
