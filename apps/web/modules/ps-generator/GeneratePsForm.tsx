@@ -3,6 +3,7 @@
 import { FormEvent, useRef, useState, useTransition } from 'react'
 
 import { PlacesAutocomplete } from '@/modules/lead-intake/PlacesAutocomplete'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 import type { PublishedPsConfiguration } from './configuration'
 import type { PsGenerationMode } from './generation'
@@ -303,9 +304,9 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
       </section>
 
       {message ? (
-        <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">
+        <DismissibleNotice tone="info" noticeKey={message}>
           {message}
-        </div>
+        </DismissibleNotice>
       ) : null}
 
       <div className="flex justify-end">

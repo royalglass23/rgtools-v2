@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { updateMenuAvailability } from '@/modules/admin/actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import {
   MENU_DEFINITIONS,
   type MenuAvailability,
@@ -40,14 +41,10 @@ export function MenuAvailabilityForm({ menuAvailability }: MenuAvailabilityFormP
   return (
     <>
       {status && (
-        <div
-          className={`mb-4 rounded border px-4 py-3 text-sm ${
-            status.kind === 'success'
-              ? 'border-green-200 bg-green-50 text-green-800'
-              : 'border-red-200 bg-red-50 text-red-800'
-          }`}
-        >
-          {status.message}
+        <div className="mb-4">
+          <DismissibleNotice tone={status.kind} noticeKey={status.message}>
+            {status.message}
+          </DismissibleNotice>
         </div>
       )}
       <form

@@ -9,6 +9,7 @@ import {
 import { WORK_ORDER_AI_SUGGESTION_COOLDOWN_MS } from '@/modules/work-orders/domain'
 import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permissions'
 import { getWorkOrderDetail, getWorkOrderFilterOptions, type WorkOrderDetail } from '@/modules/work-orders/queries'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export default async function WorkOrderDetailPage({
   params,
@@ -109,9 +110,11 @@ export default async function WorkOrderDetailPage({
             )}
           </div>
           {redirectedCooldownUntil && (
-            <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              AI suggestion was refreshed recently. Try again after {redirectedCooldownUntil}.
-            </p>
+            <div className="mt-3">
+              <DismissibleNotice tone="warning" noticeKey={redirectedCooldownUntil}>
+                AI suggestion was refreshed recently. Try again after {redirectedCooldownUntil}.
+              </DismissibleNotice>
+            </div>
           )}
           <dl className="mt-4 space-y-3">
             <Field label="Client notes" value={detail.clientNotes} />

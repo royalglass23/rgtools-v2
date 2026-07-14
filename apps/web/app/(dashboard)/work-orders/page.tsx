@@ -5,6 +5,7 @@ import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permission
 import { getWorkOrderFilterOptions, getWorkOrderRefreshStatus, listWorkOrders } from '@/modules/work-orders/queries'
 import { WorkOrdersTableControls } from '@/modules/work-orders/WorkOrdersTableControls'
 import { WorkOrderRefreshStatus } from '@/modules/work-orders/WorkOrderRefreshStatus'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
 
 export default async function WorkOrdersPage({
@@ -57,9 +58,9 @@ export default async function WorkOrdersPage({
       <WorkOrderRefreshStatus status={refreshStatus} />
 
       {refreshError && !refreshStatus.latestFailure && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={refreshError}>
           Work Orders could not refresh from ServiceM8: {refreshError}
-        </div>
+        </DismissibleNotice>
       )}
 
       <WorkOrdersTableControls

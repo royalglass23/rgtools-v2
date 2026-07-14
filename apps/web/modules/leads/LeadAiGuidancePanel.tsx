@@ -2,6 +2,7 @@ import type { LatestLeadAiGuidance } from './ai-guidance'
 import { AiGuidanceSubmitButton } from '@/modules/quote-tracker/AiGuidanceSubmitButton'
 import { CopyLinkButton } from '@/modules/quote-tracker/CopyLinkButton'
 import { formatDateTime } from '@/modules/quote-tracker/presentation'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 const AI_GUIDANCE_REGENERATION_COOLDOWN_MS = 5 * 60 * 1000
 
@@ -67,7 +68,7 @@ export function LeadAiGuidancePanel({
             </p>
           )}
           {guidance.generationFailure && (
-            <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <DismissibleNotice tone="error" noticeKey={`${guidance.generationFailure.createdAt.toISOString()}:${guidance.generationFailure.errorMessage}`}>
               Last {formatFailureStage(guidance.generationFailure.failureStage)} attempt failed: {guidance.generationFailure.errorMessage}
               {guidance.generationFailure.retryAfter && (
                 <>
@@ -75,12 +76,12 @@ export function LeadAiGuidancePanel({
                   Retry available after {formatDateTime(guidance.generationFailure.retryAfter)}.
                 </>
               )}
-            </p>
+            </DismissibleNotice>
           )}
           {guidance.conversationSnapshot?.sourceStatus === 'partial' && guidance.conversationSnapshot.safeError && (
-            <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <DismissibleNotice tone="warning" noticeKey={guidance.conversationSnapshot.safeError}>
               Partial context: {guidance.conversationSnapshot.safeError}
-            </p>
+            </DismissibleNotice>
           )}
           <div className="grid gap-5 lg:grid-cols-2">
             <section className="space-y-3 border-l-2 border-blue-200 pl-4">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 type SuggestionResult = { text: string } | { error: string }
 
@@ -59,12 +60,15 @@ export function AiSuggestionButton({
           {isPending ? 'Generating...' : suggestion ? 'Refresh' : 'Get suggestion'}
         </button>
         {disabledReason && <span className="text-sm text-gray-600">{disabledReason}</span>}
-        {message && (
-          <span className={`text-sm ${message.includes('not configured') || message.includes('Could not') ? 'text-red-700' : 'text-gray-600'}`}>
-            {message}
-          </span>
-        )}
       </div>
+      {message && (
+        <DismissibleNotice
+          tone={message.includes('not configured') || message.includes('Could not') ? 'error' : 'success'}
+          noticeKey={message}
+        >
+          {message}
+        </DismissibleNotice>
+      )}
     </div>
   )
 }
