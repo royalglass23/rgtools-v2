@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import type { ReviewerNoteActionResult } from '@/app/(dashboard)/leads/[id]/reviewer-notes-actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export type ReviewerNoteView = {
   id: string
@@ -82,7 +83,7 @@ export function ReviewerNotesSection({
           >
             {isPending ? 'Adding...' : 'Add note'}
           </button>
-          {error && <p role="alert" className="text-sm font-medium text-red-700">{error}</p>}
+          {error && <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>}
         </div>
       </form>
     </div>

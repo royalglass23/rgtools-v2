@@ -1,3 +1,5 @@
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
+
 export type WorkOrderRefreshStatusValue = {
   lastSuccessfulAt: Date | null
   lastSuccessfulJobCount: number
@@ -15,17 +17,19 @@ export function WorkOrderRefreshStatus({ status }: { status: WorkOrderRefreshSta
   return (
     <div className="space-y-2">
       {status.lastSuccessfulAt && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <span className="font-medium">Last successful sync: {formatDateTime(status.lastSuccessfulAt)}</span>
-          <span>{status.lastSuccessfulJobCount} jobs</span>
-          <span>{status.lastSuccessfulItemCount} items</span>
-          <span>{status.lastSuccessfulExcludedLineCount} billing lines excluded</span>
-        </div>
+        <DismissibleNotice tone="success" noticeKey={status.lastSuccessfulAt.toISOString()}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-medium">Last successful sync: {formatDateTime(status.lastSuccessfulAt)}</span>
+            <span>{status.lastSuccessfulJobCount} jobs</span>
+            <span>{status.lastSuccessfulItemCount} items</span>
+            <span>{status.lastSuccessfulExcludedLineCount} billing lines excluded</span>
+          </div>
+        </DismissibleNotice>
       )}
       {status.latestFailure && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={`${status.latestFailure.at.toISOString()}:${status.latestFailure.message}`}>
           <span className="font-medium">Latest refresh failed:</span> {status.latestFailure.message}
-        </div>
+        </DismissibleNotice>
       )}
     </div>
   )

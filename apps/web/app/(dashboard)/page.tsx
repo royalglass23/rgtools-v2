@@ -8,6 +8,7 @@ import { getDashboardActionCounts, getDashboardChartData, getDashboardKpis } fro
 import type { SparkPoint } from '@/modules/dashboard/kpis'
 import { SparkLine } from '@/modules/dashboard/SparkLine'
 import { ChartSection } from '@/modules/dashboard/ChartSection'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export default async function DashboardPage({
   searchParams,
@@ -43,9 +44,9 @@ export default async function DashboardPage({
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {denied !== undefined && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded px-4 py-3 text-sm text-yellow-800">
+        <DismissibleNotice tone="warning" noticeKey={denied}>
           You don&apos;t have access to that tool.
-        </div>
+        </DismissibleNotice>
       )}
 
       {/* Business Overview + Charts — admin only */}
