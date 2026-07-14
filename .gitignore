@@ -79,3 +79,4 @@ AGENTS.md
 dev-server*.log
 
 outputs/
+scratch/
