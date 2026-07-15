@@ -32,16 +32,32 @@ export default async function DashboardLayout({
     isAdmin: session.user.role === "admin",
     showWorkOrderNavigation: true,
   });
+  const leadsItem = leadIntakeItems.find((item) => item.href === "/leads");
+  const leadIntakeGroupItems = leadIntakeItems.filter(
+    (item) => item.href !== "/leads",
+  );
 
   const navigation: DashboardNavigationEntry[] = [
     { kind: "link", id: "dashboard", label: "Dashboard", href: "/" },
-    ...navigationGroup("lead-intake", "Lead Intake", leadIntakeItems),
-    ...primaryModules.map((module) => ({
-      kind: "link" as const,
-      id: module.id,
-      label: module.name,
-      href: `/${module.slug}`,
-    })),
+    ...navigationGroup("lead-intake", "Lead Intake", leadIntakeGroupItems),
+    ...(leadsItem
+      ? [
+          {
+            kind: "link" as const,
+            id: "leads",
+            label: "Leads",
+            href: leadsItem.href,
+          },
+        ]
+      : []),
+    ...primaryModules
+      .filter((module) => module.slug !== "leads")
+      .map((module) => ({
+        kind: "link" as const,
+        id: module.id,
+        label: module.name,
+        href: `/${module.slug}`,
+      })),
     ...navigationGroup("quote-tracker", "Quote Tracker", quoteTrackerItems),
     ...navigationGroup("work-order", "Work Orders", workOrderItems),
     ...navigationGroup("clients", "Clients", clientsItems),
