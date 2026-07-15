@@ -7,9 +7,11 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [Unreleased]
 
 ### Removed
+
 - Removed the legacy editable scoring admin UI, obsolete scoring seed scripts, and retired spreadsheet intake surface. Lead intake now uses the hardcoded Decision Matrix as the single scoring source of truth.
 
 ### Documentation
+
 - Added a [Security Policy](SECURITY.md) and a developer [security runbook](dev/security.md) covering reporting, environment separation, secrets, access control, quote data handling, retention, and incident response.
 - Updated the [Leads how-to](how-to/leads.md), ServiceM8 developer notes, and RG Leads manual checklist for the Quote-status lead workflow.
 - Expanded the README docs index so current developer, user, domain, DNS, ServiceM8, security, and admin docs are easier to find.
@@ -18,6 +20,8 @@ All notable changes to rgtools are recorded here, grouped by release.
 - Updated architecture and quote-tracking docs to describe AI guidance, privacy surfaces, gate proof enforcement, current worker routes, client merge tooling, and security boundaries.
 
 ### Changed
+
+- **Royal Glass Precision UI product-wide rollout (MT-201)** - extended the semantic Light, Dark, and System presentation layer across all 27 user-facing pages; refined the sign-in experience and navigation order; labelled Business Performance chart periods and series; and clarified that Quote Tracker tracks ServiceM8 quotes.
 - **Royal Glass Precision UI Phase 1 (MT-200)** - added persistent Light, Dark, and System themes; semantic design tokens; an updated authenticated shell; shared presentation components; and token-driven Dashboard, Leads list, and Work Order detail reference screens.
 - Repo is now a pnpm monorepo: the internal Next.js app moved to `apps/web`, the shared Drizzle schema/client moved to `packages/db`, and root scripts now delegate to workspace packages.
 - Vercel deployment is scoped to the internal app at `apps/web`; `apps/web/vercel.json` only enables automatic deployments for `main` and `dev`.
@@ -26,6 +30,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 - Dashboard KPI cards now focus on active tracked quotes: tracked quote value, active tracked quote count, hot/warm quote count, and viewed quote count.
 
 ### Added
+
 - **Admin-only Clients v1 cleanup release** - ServiceM8 company/client import, canonical/source client identity metadata, aliases, cleanup filters, dashboard editing, duplicate dismissal/merge, grouped client detail sections, recent activity, audit/error logging, and release rollback notes for MT-176.
 - **PS Generator foundation** - `ps-generator` module routes, navigation, generate API, published configuration read model, seed data, PDF filling engine, and tests for PS1/PS3 package generation.
 - **PS Generator configuration schema** - migration 0026 adds systems, option categories/values, system option rules, template variants, field mappings, description templates, generation records, generated PDF object records, audit entries, and migration records.
@@ -57,6 +62,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [0.5.0] - 2026-06-09
 
 ### Added
+
 - Leads dashboard at `/leads` with paginated list, tier/SM8/date filters, client/job/project columns, score, status, and completeness.
 - Lead detail page at `/leads/[id]` with scored fields, score summary, and ServiceM8 section.
 - **Fetch from ServiceM8** button to search for the `RGTools Lead {uuid}` reference, store job UUID/status, and set the Leads Quality custom field on first link.
@@ -66,6 +72,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 - `servicem8_status` column added to `leads` table.
 
 ### Fixed
+
 - SM8 **Pending** filter now correctly returns synced leads that do not yet have a ServiceM8 job UUID.
 - Invalid non-UUID `[id]` paths now return a clean 404.
 - ServiceM8 fetch API route status code now narrows the union type correctly.
@@ -76,6 +83,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [0.4.0] - 2026-06-09
 
 ### Added
+
 - ServiceM8 sync: lead intake pushes new leads directly to the ServiceM8 inbox via SMTP.
 - Amber review note displayed on `ScorePanel`, result banner, and persisted to DB.
 - Strike layer in scoring engine for blocker-low answers.
@@ -86,12 +94,14 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [0.3.0] - 2026-06-08
 
 ### Added
+
 - Driving distance auto-computed via Google Distance Matrix API when a job address is selected.
 - Distance band displayed in the intake form with point preview.
 - Distance category added to scoring engine and scoring config v2.
 - `ScorePanel` reflects computed distance in real time.
 
 ### Fixed
+
 - Distance resets correctly when Job Address is cleared.
 - Dropdown option order preserved via `optionOrder`.
 - Google Maps loader lazy-loaded to prevent SSR `window` errors.
@@ -102,6 +112,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [0.2.0] - 2026-05-30
 
 ### Added
+
 - Lead intake v1 with staff form, real-time score panel, and config-driven scoring.
 - Versioned scoring config stored in `scoring_config_versions`.
 - Google Places autocomplete for NZ job addresses.
@@ -110,6 +121,7 @@ All notable changes to rgtools are recorded here, grouped by release.
 - Scoring config v1 seeded.
 
 ### Changed
+
 - Codebase reorganised into `modules/` feature folders.
 
 ---
@@ -117,4 +129,5 @@ All notable changes to rgtools are recorded here, grouped by release.
 ## [0.1.0] - 2026-05
 
 ### Added
+
 - Next.js app with NextAuth credential login, admin/staff roles, dashboard, quote pipeline, quote engagement tracker, Drizzle schema, module access control, and admin tools.

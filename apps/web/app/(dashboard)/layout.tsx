@@ -1,15 +1,25 @@
-import { DashboardShell, type DashboardNavigationEntry } from '@/components/dashboard-shell/DashboardShell'
-import { getAccessibleModules } from '@/lib/access-db'
-import { buildDashboardNavigation, type DashboardNavItem } from '@/lib/admin-navigation'
-import { auth } from '@/lib/auth'
-import { redirect } from 'next/navigation'
-import { signOutAction } from './actions'
+import {
+  DashboardShell,
+  type DashboardNavigationEntry,
+} from "@/components/dashboard-shell/DashboardShell";
+import { getAccessibleModules } from "@/lib/access-db";
+import {
+  buildDashboardNavigation,
+  type DashboardNavItem,
+} from "@/lib/admin-navigation";
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { signOutAction } from "./actions";
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth()
-  if (!session?.user?.id) redirect('/login')
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
 
-  const accessibleModules = await getAccessibleModules(session.user.id)
+  const accessibleModules = await getAccessibleModules(session.user.id);
   const {
     primaryModules,
     leadIntakeItems,
@@ -19,25 +29,25 @@ export default async function DashboardLayout({ children }: { children: React.Re
     workOrderItems,
     adminItems,
   } = buildDashboardNavigation(accessibleModules, {
-    isAdmin: session.user.role === 'admin',
+    isAdmin: session.user.role === "admin",
     showWorkOrderNavigation: true,
-  })
+  });
 
   const navigation: DashboardNavigationEntry[] = [
-    { kind: 'link', id: 'dashboard', label: 'Dashboard', href: '/' },
-    ...navigationGroup('lead-intake', 'Lead Intake', leadIntakeItems),
-    ...navigationGroup('quote-tracker', 'Quote Tracker', quoteTrackerItems),
-    ...navigationGroup('work-order', 'Work Order', workOrderItems),
-    ...navigationGroup('ps-generator', 'PS Generator', psGeneratorItems),
-    ...navigationGroup('clients', 'Clients', clientsItems),
+    { kind: "link", id: "dashboard", label: "Dashboard", href: "/" },
+    ...navigationGroup("lead-intake", "Lead Intake", leadIntakeItems),
     ...primaryModules.map((module) => ({
-      kind: 'link' as const,
+      kind: "link" as const,
       id: module.id,
       label: module.name,
       href: `/${module.slug}`,
     })),
-    ...navigationGroup('admin', 'Admin', adminItems),
-  ]
+    ...navigationGroup("quote-tracker", "Quote Tracker", quoteTrackerItems),
+    ...navigationGroup("work-order", "Work Orders", workOrderItems),
+    ...navigationGroup("clients", "Clients", clientsItems),
+    ...navigationGroup("ps-generator", "PS Generator", psGeneratorItems),
+    ...navigationGroup("admin", "Admin", adminItems),
+  ];
 
   return (
     <DashboardShell
@@ -51,11 +61,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     >
       {children}
     </DashboardShell>
-  )
+  );
 }
 
 function navigationGroup(id: string, label: string, items: DashboardNavItem[]) {
-  if (items.length === 0) return []
+  if (items.length === 0) return [];
 
-  return [{ kind: 'group' as const, id, label, items }]
+  return [{ kind: "group" as const, id, label, items }];
 }
