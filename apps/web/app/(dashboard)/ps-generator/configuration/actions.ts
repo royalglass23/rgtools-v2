@@ -30,6 +30,7 @@ import {
 const fieldTypes = new Set(['text', 'checkbox'])
 const sourceTypes = new Set(['project_value', 'selected_option', 'system_rule', 'description_template', 'date', 'fixed_value'])
 const generationModes = new Set(['ps1_only', 'ps3_only', 'both'])
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export async function createPsConfigurationDraftAction(): Promise<void> {
   const actorId = await requireConfigEditor()
@@ -211,95 +212,105 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
   if (version?.state !== 'draft') throw new Error('Only draft PS configuration can be edited here.')
 
   await db.transaction(async (tx) => {
-    const now = new Date()
-    for (const optionValueId of optionValueIds) {
-      const label = String(formData.get(`label:${optionValueId}`) ?? '').trim()
-      const isActive = formData.get(`isActive:${optionValueId}`) === 'on'
-
-      if (!label) throw new Error('Option label is required.')
-
-      const [before] = await tx
-        .select()
-        .from(psOptionValues)
-        .where(and(
-          eq(psOptionValues.id, optionValueId),
-          eq(psOptionValues.configVersionId, configVersionId),
-        ))
-        .limit(1)
-      if (!before) throw new Error('Option value was not found.')
-
-      const sortOrder = parseInteger(formData.get(`sortOrder:${optionValueId}`), before.sortOrder)
-      const archivedAt = isActive ? before.archivedAt : now
-
-      if (before.label === label && before.isActive === isActive && before.sortOrder === sortOrder && before.archivedAt === archivedAt) continue
-
-      await tx
-        .update(psOptionValues)
-        .set({
-          label,
-          isActive,
-          sortOrder,
-          archivedAt,
-          updatedAt: now,
-        })
-        .where(eq(psOptionValues.id, optionValueId))
-
-      await tx.insert(psConfigurationAuditEntries).values({
-        actorId,
-        entityType: 'option_value',
-        entityId: optionValueId,
-        action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
-        configVersionId,
-        before,
-        after: {
-          ...before,
-          label,
-          isActive,
-          sortOrder,
-          archivedAt,
-        },
-      })
-    }
-
-    const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
-    const newLabel = String(formData.get(`newOptionLabel:${newCategoryId}`) ?? formData.get('newOptionLabel') ?? '').trim()
-    const newSlug = slugify(newLabel)
-    if (newCategoryId && newSlug && newLabel) {
-      const [category] = await tx
-        .select({ id: psOptionCategories.id })
-        .from(psOptionCategories)
-        .where(and(eq(psOptionCategories.id, newCategoryId), eq(psOptionCategories.isActive, true)))
-        .limit(1)
-      if (!category) throw new Error('Option category is not available in this draft.')
-
-      const [inserted] = await tx.insert(psOptionValues).values({
-        configVersionId,
-        categoryId: newCategoryId,
-        slug: newSlug,
-        label: newLabel,
-        sortOrder: parseInteger(
-          formData.get(`newOptionSortOrder:${newCategoryId}`) ?? formData.get('newOptionSortOrder'),
-          optionValueIds.length + 1,
-        ),
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      }).returning({ id: psOptionValues.id })
-
-      await tx.insert(psConfigurationAuditEntries).values({
-        actorId,
-        entityType: 'option_value',
-        entityId: inserted.id,
-        action: 'draft_saved',
-        configVersionId,
-        before: null,
-        after: { categoryId: newCategoryId, slug: newSlug, label: newLabel },
-        createdAt: now,
-      })
-    }
+    await saveDraftOptions(tx, formData, actorId, configVersionId, optionValueIds)
   })
 
   revalidateConfigurationPaths()
+}
+
+async function saveDraftOptions(
+  tx: DbTransaction,
+  formData: FormData,
+  actorId: string,
+  configVersionId: string,
+  optionValueIds: string[],
+) {
+  const now = new Date()
+  for (const optionValueId of optionValueIds) {
+    const label = String(formData.get(`label:${optionValueId}`) ?? '').trim()
+    const isActive = formData.get(`isActive:${optionValueId}`) === 'on'
+
+    if (!label) throw new Error('Option label is required.')
+
+    const [before] = await tx
+      .select()
+      .from(psOptionValues)
+      .where(and(
+        eq(psOptionValues.id, optionValueId),
+        eq(psOptionValues.configVersionId, configVersionId),
+      ))
+      .limit(1)
+    if (!before) throw new Error('Option value was not found.')
+
+    const sortOrder = parseInteger(formData.get(`sortOrder:${optionValueId}`), before.sortOrder)
+    const archivedAt = isActive ? before.archivedAt : now
+
+    if (before.label === label && before.isActive === isActive && before.sortOrder === sortOrder && before.archivedAt === archivedAt) continue
+
+    await tx
+      .update(psOptionValues)
+      .set({
+        label,
+        isActive,
+        sortOrder,
+        archivedAt,
+        updatedAt: now,
+      })
+      .where(eq(psOptionValues.id, optionValueId))
+
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'option_value',
+      entityId: optionValueId,
+      action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
+      configVersionId,
+      before,
+      after: {
+        ...before,
+        label,
+        isActive,
+        sortOrder,
+        archivedAt,
+      },
+    })
+  }
+
+  const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
+  const newLabel = String(formData.get(`newOptionLabel:${newCategoryId}`) ?? formData.get('newOptionLabel') ?? '').trim()
+  const newSlug = slugify(newLabel)
+  if (newCategoryId && newSlug && newLabel) {
+    const [category] = await tx
+      .select({ id: psOptionCategories.id })
+      .from(psOptionCategories)
+      .where(and(eq(psOptionCategories.id, newCategoryId), eq(psOptionCategories.isActive, true)))
+      .limit(1)
+    if (!category) throw new Error('Option category is not available in this draft.')
+
+    const [inserted] = await tx.insert(psOptionValues).values({
+      configVersionId,
+      categoryId: newCategoryId,
+      slug: newSlug,
+      label: newLabel,
+      sortOrder: parseInteger(
+        formData.get(`newOptionSortOrder:${newCategoryId}`) ?? formData.get('newOptionSortOrder'),
+        optionValueIds.length + 1,
+      ),
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }).returning({ id: psOptionValues.id })
+
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'option_value',
+      entityId: inserted.id,
+      action: 'draft_saved',
+      configVersionId,
+      before: null,
+      after: { categoryId: newCategoryId, slug: newSlug, label: newLabel },
+      createdAt: now,
+    })
+  }
 }
 
 export async function updatePsConfigurationSystemsAction(formData: FormData): Promise<void> {
@@ -1059,6 +1070,7 @@ export async function runPsConfigurationTestGenerationAction(formData: FormData)
 export async function publishPsConfigurationDraftAction(formData: FormData): Promise<void> {
   const actorId = await requireConfigPublisher()
   const configVersionId = String(formData.get('configVersionId') ?? '')
+  const optionValueIds = formData.getAll('optionValueId').map((value) => String(value)).filter(Boolean)
   if (!configVersionId) throw new Error('Missing draft.')
 
   const now = new Date()
@@ -1069,6 +1081,10 @@ export async function publishPsConfigurationDraftAction(formData: FormData): Pro
       .where(and(eq(psConfigVersions.id, configVersionId), eq(psConfigVersions.state, 'draft')))
       .limit(1)
     if (!draft) throw new Error('Draft PS configuration was not found.')
+
+    if (optionValueIds.length > 0) {
+      await saveDraftOptions(tx, formData, actorId, configVersionId, optionValueIds)
+    }
 
     await tx
       .update(psConfigVersions)

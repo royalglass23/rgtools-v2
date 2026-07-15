@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { rowsToCsv } from '@/lib/audit-export'
 import { requireModule } from '@/lib/guard'
 import { parseWorkOrderListFilters } from '@/modules/work-orders/list-filters'
-import { listWorkOrdersForExport, type WorkOrderRow } from '@/modules/work-orders/queries'
-import { getWorkOrderSummaryConfig, type WorkOrderSummaryFieldConfig } from '@/modules/work-orders/summary-config'
+import { listWorkOrdersForExport } from '@/modules/work-orders/queries'
+import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
+import { buildWorkOrderExportTable } from '@/modules/work-orders/work-order-export'
 
 export async function GET(request: Request) {
   await requireModule('work-orders')
@@ -14,11 +15,7 @@ export async function GET(request: Request) {
     listWorkOrdersForExport(filters),
     getWorkOrderSummaryConfig(),
   ])
-  const visibleFields = fields.filter((field) => field.visible)
-  const body = rowsToCsv([
-    visibleFields.map((field) => field.label),
-    ...rows.map((row) => visibleFields.map((field) => valueForField(row, field))),
-  ])
+  const body = rowsToCsv(buildWorkOrderExportTable(rows, fields))
 
   return new NextResponse(body, {
     headers: {
@@ -26,25 +23,4 @@ export async function GET(request: Request) {
       'Content-Disposition': `attachment; filename="work-orders-${new Date().toISOString().slice(0, 10)}.csv"`,
     },
   })
-}
-
-function valueForField(row: WorkOrderRow, field: WorkOrderSummaryFieldConfig) {
-  const values: Record<WorkOrderSummaryFieldConfig['id'], string | number | null> = {
-    client: row.companyName ? `${row.clientName} (${row.companyName})` : row.clientName,
-    jobNumber: row.jobNumber,
-    jobAddress: row.jobAddress,
-    leadScore: row.leadScore,
-    importance: row.importance,
-    risk: row.riskLevel,
-    installer: row.installerName,
-    stage: row.stageName,
-    hardware: row.hardwareStatusName,
-    maintenanceProgram: row.maintenanceProgram ? 'Yes' : 'No',
-    installDate: row.installDate,
-    dateCompleted: row.dateCompleted,
-    servicem8Status: row.servicem8Status,
-    jobDescription: row.jobDescription,
-  }
-
-  return values[field.id] ?? ''
 }

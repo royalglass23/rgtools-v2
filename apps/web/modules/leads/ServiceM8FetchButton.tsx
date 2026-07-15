@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 type FetchResult =
   | {
@@ -137,7 +138,6 @@ export function ServiceM8FetchButton({
           >
             {isPending ? 'Fetching...' : 'Fetch from ServiceM8'}
           </button>
-          {message && <span className="text-sm text-gray-600">{message}</span>}
         </div>
         {showManualLink ? (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
@@ -183,6 +183,11 @@ export function ServiceM8FetchButton({
           </div>
         ) : null}
       </div>
+      {message && (
+        <DismissibleNotice tone="info" noticeKey={message}>
+          {message}
+        </DismissibleNotice>
+      )}
     </div>
   )
 }

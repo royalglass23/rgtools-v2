@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { type FormEvent, useState } from 'react'
 
 export type PsConfigurationSystemRow = {
@@ -188,7 +189,11 @@ function NewSystemRow({
             <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
             <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
-          {error ? <p className="text-sm font-medium text-red-700 md:col-span-7">{error}</p> : null}
+          {error ? (
+            <div className="md:col-span-7">
+              <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>
+            </div>
+          ) : null}
         </form>
       </td>
     </tr>
@@ -252,7 +257,11 @@ function EditableSystemRow({
             <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
             <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
-          {error ? <p className="text-sm font-medium text-red-700 md:col-span-7">{error}</p> : null}
+          {error ? (
+            <div className="md:col-span-7">
+              <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>
+            </div>
+          ) : null}
         </form>
       </td>
     </tr>

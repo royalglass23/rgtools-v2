@@ -1,17 +1,26 @@
-import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { users } from '@rgtools/db/schema'
 import { clientContacts, clients, leads } from '@rgtools/db/schema-leads'
 import {
   workOrderHardwareStatusOptions,
   workOrderEvents,
   workOrderInstallers,
+  workOrderItems,
+  workOrderRefreshRuns,
   workOrders,
   workOrderStageOptions,
 } from '@rgtools/db/schema-workorders'
 import type { WorkOrderLevel } from './domain'
 import type { WorkOrderListFilters, WorkOrderSort, WorkOrderSortDirection } from './list-filters'
+import {
+  applyWorkOrderItemListFilters,
+  attachActiveItemsToWorkOrders,
+  type WorkOrderItemSummaryRow,
+} from './work-order-items'
+import type { WorkOrderRefreshStatusValue } from './WorkOrderRefreshStatus'
 
-export type WorkOrderRow = {
+export type WorkOrderBaseRow = {
   id: string
   servicem8Status: string
   isCurrent: boolean
@@ -36,7 +45,17 @@ export type WorkOrderRow = {
   updatedAt: Date
 }
 
-export type WorkOrderDetail = WorkOrderRow & {
+export type WorkOrderRow = WorkOrderBaseRow & {
+  activeItemCount: number
+  matchingActiveItemCount?: number | null
+  items: WorkOrderItemSummaryRow[]
+}
+
+export type WorkOrderExportRow = WorkOrderBaseRow & {
+  item: WorkOrderItemSummaryRow | null
+}
+
+export type WorkOrderDetail = WorkOrderBaseRow & {
   servicem8JobUuid: string | null
   servicem8Active: boolean
   clientId: string | null
@@ -46,6 +65,7 @@ export type WorkOrderDetail = WorkOrderRow & {
   rawServiceM8Snapshot: unknown
   riskSource: 'manual' | 'ai' | null
   importanceSource: 'manual' | 'ai' | null
+  items: WorkOrderItemSummaryRow[]
   contacts: Array<{
     id: string
     name: string | null
@@ -55,6 +75,10 @@ export type WorkOrderDetail = WorkOrderRow & {
   }>
   timeline: Array<{
     id: string
+    workOrderItemId: string | null
+    itemCode: string | null
+    itemLabel: string | null
+    actorUsername: string | null
     fieldName: string
     previousValue: unknown
     newValue: unknown
@@ -91,6 +115,31 @@ const workOrderRowSelection = {
   updatedAt: workOrders.updatedAt,
 }
 
+const workOrderItemSummarySelection = {
+  id: workOrderItems.id,
+  workOrderId: workOrderItems.workOrderId,
+  itemCode: workOrderItems.itemCode,
+  quantity: workOrderItems.quantity,
+  originalDescription: workOrderItems.originalDescription,
+  lineTotalExcludingGst: workOrderItems.lineTotalExcludingGst,
+  generatedLabel: workOrderItems.generatedLabel,
+  manualLabelOverride: workOrderItems.manualLabelOverride,
+  labelStatus: workOrderItems.labelStatus,
+  sourceDescriptionFingerprint: workOrderItems.sourceDescriptionFingerprint,
+  isActive: workOrderItems.isActive,
+  installerId: workOrderItems.installerId,
+  installerName: workOrderInstallers.displayName,
+  stageOptionId: workOrderItems.stageOptionId,
+  stageName: workOrderStageOptions.displayName,
+  hardwareStatusOptionId: workOrderItems.hardwareStatusOptionId,
+  hardwareStatusName: workOrderHardwareStatusOptions.displayName,
+  maintenanceProgram: workOrderItems.maintenanceProgram,
+  installDate: workOrderItems.installDate,
+  dateCompleted: workOrderItems.dateCompleted,
+  riskLevel: sql<WorkOrderLevel | null>`coalesce(${workOrderItems.riskLevelOverride}, ${workOrderItems.aiRiskLevel})`,
+  importance: sql<WorkOrderLevel | null>`coalesce(${workOrderItems.importanceOverride}, ${workOrderItems.aiImportance})`,
+}
+
 export async function listWorkOrders(filters: WorkOrderListFilters) {
   const where = listWhere(filters)
   const offset = (filters.page - 1) * filters.size
@@ -114,16 +163,24 @@ export async function listWorkOrders(filters: WorkOrderListFilters) {
     .limit(filters.size)
     .offset(offset)
 
+  const activeItems = await listWorkOrderSummaryItems(
+    rows.map((row) => row.id),
+    filters.showRemovedItems,
+  )
+
   const total = totalRow?.total ?? 0
+  const groupedRows = attachActiveItemsToWorkOrders(rows, activeItems)
   return {
-    rows,
+    rows: applyWorkOrderItemListFilters(groupedRows, filters),
     total,
     pageCount: Math.max(1, Math.ceil(total / filters.size)),
   }
 }
 
-export async function listWorkOrdersForExport(filters: WorkOrderListFilters) {
-  return db
+export async function listWorkOrdersForExport(
+  filters: WorkOrderListFilters,
+): Promise<WorkOrderExportRow[]> {
+  const rows = await db
     .select(workOrderRowSelection)
     .from(workOrders)
     .leftJoin(workOrderInstallers, eq(workOrders.installerId, workOrderInstallers.id))
@@ -131,6 +188,40 @@ export async function listWorkOrdersForExport(filters: WorkOrderListFilters) {
     .leftJoin(workOrderHardwareStatusOptions, eq(workOrders.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
     .where(listWhere(filters))
     .orderBy(...listOrderBy(filters.sort))
+
+  if (rows.length === 0) return []
+
+  const items = await listWorkOrderSummaryItems(
+    rows.map((row) => row.id),
+    filters.showRemovedItems,
+  )
+
+  return applyWorkOrderItemListFilters(attachActiveItemsToWorkOrders(rows, items), filters)
+    .flatMap<WorkOrderExportRow>(({ items: matchingItems, activeItemCount, matchingActiveItemCount, ...workOrder }) => {
+      void activeItemCount
+      void matchingActiveItemCount
+      return matchingItems.length > 0
+        ? matchingItems.map((item) => ({ ...workOrder, item }))
+        : [{ ...workOrder, item: null }]
+    })
+}
+
+async function listWorkOrderSummaryItems(workOrderIds: string[], showRemovedItems: boolean) {
+  if (workOrderIds.length === 0) return []
+
+  return db
+    .select(workOrderItemSummarySelection)
+    .from(workOrderItems)
+    .leftJoin(workOrderInstallers, eq(workOrderItems.installerId, workOrderInstallers.id))
+    .leftJoin(workOrderStageOptions, eq(workOrderItems.stageOptionId, workOrderStageOptions.id))
+    .leftJoin(workOrderHardwareStatusOptions, eq(workOrderItems.hardwareStatusOptionId, workOrderHardwareStatusOptions.id))
+    .where(showRemovedItems
+      ? inArray(workOrderItems.workOrderId, workOrderIds)
+      : and(
+        inArray(workOrderItems.workOrderId, workOrderIds),
+        eq(workOrderItems.isActive, true),
+      ))
+    .orderBy(asc(workOrderItems.workOrderId), asc(workOrderItems.sortOrder), asc(workOrderItems.id))
 }
 
 export async function getWorkOrderFilterOptions() {
@@ -173,6 +264,44 @@ export async function getWorkOrderConfigLists() {
   ])
 
   return { installers, stages, hardwareStatuses }
+}
+
+export async function getWorkOrderRefreshStatus(): Promise<WorkOrderRefreshStatusValue> {
+  const [successfulRows, failedRows] = await Promise.all([
+    db
+      .select({
+        createdAt: workOrderRefreshRuns.createdAt,
+        jobCount: workOrderRefreshRuns.syncedCount,
+        itemCount: workOrderRefreshRuns.itemSyncedCount,
+        excludedLineCount: workOrderRefreshRuns.excludedLineCount,
+      })
+      .from(workOrderRefreshRuns)
+      .where(eq(workOrderRefreshRuns.status, 'success'))
+      .orderBy(desc(workOrderRefreshRuns.createdAt))
+      .limit(1),
+    db
+      .select({ createdAt: workOrderRefreshRuns.createdAt, errorMessage: workOrderRefreshRuns.errorMessage })
+      .from(workOrderRefreshRuns)
+      .where(eq(workOrderRefreshRuns.status, 'failed'))
+      .orderBy(desc(workOrderRefreshRuns.createdAt))
+      .limit(1),
+  ])
+
+  const latestSuccess = successfulRows[0] ?? null
+  const latestFailure = failedRows[0] ?? null
+  const hasNewerFailure = latestFailure && (
+    !latestSuccess || latestFailure.createdAt.getTime() > latestSuccess.createdAt.getTime()
+  )
+
+  return {
+    lastSuccessfulAt: latestSuccess?.createdAt ?? null,
+    lastSuccessfulJobCount: latestSuccess?.jobCount ?? 0,
+    lastSuccessfulItemCount: latestSuccess?.itemCount ?? 0,
+    lastSuccessfulExcludedLineCount: latestSuccess?.excludedLineCount ?? 0,
+    latestFailure: hasNewerFailure
+      ? { at: latestFailure.createdAt, message: latestFailure.errorMessage ?? 'ServiceM8 refresh failed.' }
+      : null,
+  }
 }
 
 export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrderDetail | null> {
@@ -220,7 +349,7 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
 
   if (!row) return null
 
-  const [contacts, timeline] = await Promise.all([
+  const [contacts, timeline, items] = await Promise.all([
     row.clientId
       ? db
         .select({
@@ -238,6 +367,10 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
     db
       .select({
         id: workOrderEvents.id,
+        workOrderItemId: workOrderEvents.workOrderItemId,
+        itemCode: workOrderItems.itemCode,
+        itemLabel: sql<string | null>`coalesce(${workOrderItems.manualLabelOverride}, ${workOrderItems.generatedLabel}, ${workOrderItems.originalDescription})`,
+        actorUsername: users.username,
         fieldName: workOrderEvents.fieldName,
         previousValue: workOrderEvents.previousValue,
         newValue: workOrderEvents.newValue,
@@ -248,11 +381,14 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
         createdAt: workOrderEvents.createdAt,
       })
       .from(workOrderEvents)
+      .leftJoin(workOrderItems, eq(workOrderEvents.workOrderItemId, workOrderItems.id))
+      .leftJoin(users, eq(workOrderEvents.actorId, users.id))
       .where(eq(workOrderEvents.workOrderId, workOrderId))
       .orderBy(desc(workOrderEvents.createdAt)),
+    listWorkOrderSummaryItems([workOrderId], true),
   ])
 
-  return { ...row, contacts, timeline }
+  return { ...row, contacts, timeline, items }
 }
 
 function listWhere(filters: WorkOrderListFilters) {
@@ -260,17 +396,7 @@ function listWhere(filters: WorkOrderListFilters) {
 
   if (filters.current === 'current') conditions.push(eq(workOrders.isCurrent, true))
   if (filters.current === 'non_current') conditions.push(eq(workOrders.isCurrent, false))
-  if (filters.stage !== 'all') conditions.push(eq(workOrders.stageOptionId, filters.stage))
-  if (filters.hardware !== 'all') conditions.push(eq(workOrders.hardwareStatusOptionId, filters.hardware))
-  if (filters.maintenanceProgram !== 'all') {
-    conditions.push(eq(workOrders.maintenanceProgram, filters.maintenanceProgram === 'yes'))
-  }
-  if (filters.risk !== 'all') {
-    conditions.push(eq(sql`coalesce(${workOrders.riskLevelOverride}, ${workOrders.aiRiskLevel})`, filters.risk))
-  }
-  if (filters.importance !== 'all') {
-    conditions.push(eq(sql`coalesce(${workOrders.importanceOverride}, ${workOrders.aiImportance})`, filters.importance))
-  }
+  if (hasConfiguredItemFilters(filters)) conditions.push(matchingItemExists(filters))
   if (filters.q) {
     const pattern = `%${escapeLike(filters.q)}%`
     conditions.push(or(
@@ -279,20 +405,59 @@ function listWhere(filters: WorkOrderListFilters) {
       ilike(workOrders.jobNumber, pattern),
       ilike(workOrders.jobAddress, pattern),
       ilike(workOrders.jobDescription, pattern),
+      matchingItemExists(filters, pattern),
     ))
   }
 
   return conditions.length > 0 ? and(...conditions) : undefined
 }
 
+function matchingItemExists(filters: WorkOrderListFilters, searchPattern?: string) {
+  const conditions = [eq(workOrderItems.workOrderId, workOrders.id)]
+  if (!filters.showRemovedItems) conditions.push(eq(workOrderItems.isActive, true))
+  if (filters.stage !== 'all') conditions.push(eq(workOrderItems.stageOptionId, filters.stage))
+  if (filters.hardware !== 'all') conditions.push(eq(workOrderItems.hardwareStatusOptionId, filters.hardware))
+  if (filters.maintenanceProgram !== 'all') {
+    conditions.push(eq(workOrderItems.maintenanceProgram, filters.maintenanceProgram === 'yes'))
+  }
+  if (filters.risk !== 'all') {
+    conditions.push(eq(sql`coalesce(${workOrderItems.riskLevelOverride}, ${workOrderItems.aiRiskLevel})`, filters.risk))
+  }
+  if (filters.importance !== 'all') {
+    conditions.push(eq(sql`coalesce(${workOrderItems.importanceOverride}, ${workOrderItems.aiImportance})`, filters.importance))
+  }
+  if (searchPattern) {
+    const itemSearchCondition = or(
+      ilike(workOrderItems.itemCode, searchPattern),
+      ilike(
+        sql<string>`coalesce(${workOrderItems.manualLabelOverride}, ${workOrderItems.generatedLabel}, ${workOrderItems.originalDescription})`,
+        searchPattern,
+      ),
+      ilike(workOrderItems.originalDescription, searchPattern),
+    )
+    if (itemSearchCondition) conditions.push(itemSearchCondition)
+  }
+
+  return sql`exists (select 1 from ${workOrderItems} where ${and(...conditions)})`
+}
+
+function hasConfiguredItemFilters(filters: WorkOrderListFilters) {
+  return filters.stage !== 'all'
+    || filters.hardware !== 'all'
+    || filters.maintenanceProgram !== 'all'
+    || filters.risk !== 'all'
+    || filters.importance !== 'all'
+}
+
 function listOrderBy(sort: WorkOrderSort) {
   if (sort === 'lead_score_desc') {
     return [
       sql`${workOrders.leadScore} desc nulls last`,
-      desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
-      desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
-      sql`${workOrders.installDate} asc nulls last`,
+      sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), 'desc'),
+      sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), 'desc'),
+      sortNullable(activeItemDateAggregate(workOrderItems.installDate, 'asc'), 'asc'),
       asc(workOrders.updatedAt),
+      asc(workOrders.id),
     ]
   }
   if (sort === 'lead_score_asc') {
@@ -300,31 +465,33 @@ function listOrderBy(sort: WorkOrderSort) {
       sql`${workOrders.leadScore} asc nulls last`,
       asc(workOrders.clientName),
       asc(workOrders.updatedAt),
+      asc(workOrders.id),
     ]
   }
 
   const [key, direction] = splitSort(sort)
 
-  if (key === 'importance') return [sortLevel(levelRank(workOrders.importanceOverride, workOrders.aiImportance), direction), desc(workOrders.leadScore)]
-  if (key === 'risk') return [sortLevel(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel), direction), desc(workOrders.leadScore)]
-  if (key === 'install_date') return [sortNullable(workOrders.installDate, direction), desc(workOrders.leadScore)]
-  if (key === 'date_completed') return [sortNullable(workOrders.dateCompleted, direction), desc(workOrders.leadScore)]
-  if (key === 'client') return [sortText(workOrders.clientName, direction), desc(workOrders.leadScore)]
-  if (key === 'job_number') return [sortText(workOrders.jobNumber, direction), desc(workOrders.leadScore)]
-  if (key === 'job_address') return [sortText(workOrders.jobAddress, direction), desc(workOrders.leadScore)]
-  if (key === 'job_description') return [sortText(workOrders.jobDescription, direction), desc(workOrders.leadScore)]
-  if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore)]
-  if (key === 'maintenance_program') return [sortNullable(workOrders.maintenanceProgram, direction), desc(workOrders.leadScore)]
-  if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore)]
+  if (key === 'importance') return [sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'risk') return [sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'install_date') return [sortNullable(activeItemDateAggregate(workOrderItems.installDate, direction), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'date_completed') return [sortNullable(activeItemDateAggregate(workOrderItems.dateCompleted, direction), direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'client') return [sortText(workOrders.clientName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_number') return [sortText(workOrders.jobNumber, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_address') return [sortText(workOrders.jobAddress, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'job_description') return [sortText(workOrders.jobDescription, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'installer') return [sortText(workOrderInstallers.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'stage') return [sortText(workOrderStageOptions.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'hardware') return [sortText(workOrderHardwareStatusOptions.displayName, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'maintenance_program') return [sortNullable(workOrders.maintenanceProgram, direction), desc(workOrders.leadScore), asc(workOrders.id)]
+  if (key === 'servicem8_status') return [sortText(workOrders.servicem8Status, direction), desc(workOrders.leadScore), asc(workOrders.id)]
 
   return [
     sql`${workOrders.leadScore} desc nulls last`,
-    desc(levelRank(workOrders.importanceOverride, workOrders.aiImportance)),
-    desc(levelRank(workOrders.riskLevelOverride, workOrders.aiRiskLevel)),
-    sql`${workOrders.installDate} asc nulls last`,
+    sortLevel(activeItemLevelRank(workOrderItems.importanceOverride, workOrderItems.aiImportance), 'desc'),
+    sortLevel(activeItemLevelRank(workOrderItems.riskLevelOverride, workOrderItems.aiRiskLevel), 'desc'),
+    sortNullable(activeItemDateAggregate(workOrderItems.installDate, 'asc'), 'asc'),
     asc(workOrders.updatedAt),
+    asc(workOrders.id),
   ]
 }
 
@@ -342,7 +509,7 @@ function sortText(column: unknown, direction: WorkOrderSortDirection) {
 }
 
 function sortLevel(column: unknown, direction: WorkOrderSortDirection) {
-  return direction === 'asc' ? sql`${column} asc` : sql`${column} desc`
+  return direction === 'asc' ? sql`${column} asc nulls last` : sql`${column} desc nulls last`
 }
 
 function levelRank(overrideColumn: unknown, aiColumn: unknown) {
@@ -352,6 +519,27 @@ function levelRank(overrideColumn: unknown, aiColumn: unknown) {
     when 'low' then 1
     else 0
   end`
+}
+
+function activeItemLevelRank(overrideColumn: unknown, aiColumn: unknown) {
+  return sql<number>`(select max(${levelRank(overrideColumn, aiColumn)})
+    from ${workOrderItems}
+    where ${workOrderItems.workOrderId} = ${workOrders.id}
+      and ${workOrderItems.isActive} = true)`
+}
+
+function activeItemDateAggregate(column: unknown, direction: WorkOrderSortDirection) {
+  if (direction === 'asc') {
+    return sql`(select min(${column})
+      from ${workOrderItems}
+      where ${workOrderItems.workOrderId} = ${workOrders.id}
+        and ${workOrderItems.isActive} = true)`
+  }
+
+  return sql`(select max(${column})
+    from ${workOrderItems}
+    where ${workOrderItems.workOrderId} = ${workOrders.id}
+      and ${workOrderItems.isActive} = true)`
 }
 
 function escapeLike(value: string) {

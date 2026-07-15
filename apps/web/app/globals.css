@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./precision-legacy.css";
 
 :root,
 :root[data-theme="light"] {
@@ -22,6 +23,7 @@
   --brand-accent: #25b8c8;
   --brand-highlight: #43c3d0;
   --brand-on-accent: #06232d;
+  --brand-on-strong: #f4fbfc;
   --accent-soft: #e3f6f8;
   --focus-ring: #087b87;
   --focus-ring-inverse: #63d6e0;
@@ -33,7 +35,7 @@
   --state-critical-soft: #ffebec;
   --state-info: #087b87;
   --state-info-soft: #e3f6f8;
-  --shadow-raised: 0 0.5rem 1.5rem rgb(16 43 58 / 8%);
+  --shadow-raised: 0 0.25rem 0.5rem rgb(16 43 58 / 9%);
   --shadow-overlay: 1rem 0 3rem rgb(4 22 30 / 25%);
   --overlay-scrim: rgb(5 20 28 / 55%);
 
@@ -51,7 +53,7 @@
   --shell-icon-active: #63d6e0;
 
   --radius-control: 0.45rem;
-  --radius-panel: 0.25rem;
+  --radius-panel: 0.75rem;
   --radius-pill: 999px;
   --motion-fast: 120ms;
   --motion-standard: 180ms;
@@ -86,6 +88,7 @@
   --brand-accent: #25b8c8;
   --brand-highlight: #63d6e0;
   --brand-on-accent: #06232d;
+  --brand-on-strong: #f4fbfc;
   --accent-soft: #113d49;
   --focus-ring: #63d6e0;
   --focus-ring-inverse: #63d6e0;
@@ -97,7 +100,7 @@
   --state-critical-soft: #49242a;
   --state-info: #63d6e0;
   --state-info-soft: #113d49;
-  --shadow-raised: 0 0.75rem 2rem rgb(0 7 12 / 32%);
+  --shadow-raised: 0 0.25rem 0.5rem rgb(0 7 12 / 32%);
   --shadow-overlay: 1rem 0 3rem rgb(0 7 12 / 50%);
   --overlay-scrim: rgb(0 7 12 / 72%);
 }
@@ -113,8 +116,9 @@
   --color-text-muted: var(--text-muted);
   --color-border: var(--border-default);
   --color-brand: var(--brand-primary);
-  --font-sans: var(--font-ui-family), Arial, Helvetica, sans-serif;
-  --font-display: var(--font-display-family), var(--font-ui-family), Arial, Helvetica, sans-serif;
+  --font-sans: var(--font-ui-family), system-ui, sans-serif;
+  --font-display:
+    var(--font-display-family), var(--font-ui-family), system-ui, sans-serif;
   --font-mono: "Courier New", Courier, monospace;
 }
 
@@ -130,15 +134,18 @@ html {
 body {
   background: var(--canvas);
   color: var(--text-primary);
-  font-family: var(--font-ui-family), Arial, Helvetica, sans-serif;
-  transition: background-color var(--motion-standard) var(--ease-standard), color var(--motion-standard) var(--ease-standard);
+  font-family: var(--font-ui-family), system-ui, sans-serif;
+  transition:
+    background-color var(--motion-standard) var(--ease-standard),
+    color var(--motion-standard) var(--ease-standard);
 }
 
 h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-display-family), var(--font-ui-family), Arial, Helvetica, sans-serif;
+  font-family:
+    var(--font-display-family), var(--font-ui-family), system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 

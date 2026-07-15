@@ -11,6 +11,7 @@ import { getLeadReviewerNotes } from '@/modules/leads/reviewer-notes'
 import { getLatestLeadAiGuidance } from '@/modules/leads/ai-guidance'
 import { isLeadReadOnlyForLeadIntake } from '@/modules/leads/lead-lifecycle'
 import { formatAnswerKey, formatLeadSource, formatProjectType } from '@/modules/lead-intake/display-labels'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { deleteLeadAction, generateLeadGuidanceAction } from './actions'
 import { addReviewerNoteAction } from './reviewer-notes-actions'
 
@@ -79,9 +80,9 @@ export default async function LeadDetailPage({
       </div>
 
       {intakeSaved && (
-        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+        <DismissibleNotice tone="success" noticeKey={intakeSaved}>
           Lead {intakeSaved} and scored successfully.
-        </div>
+        </DismissibleNotice>
       )}
 
       {isReadOnly && (
@@ -158,14 +159,14 @@ export default async function LeadDetailPage({
       </Section>
 
       {typeof notices.aiGuidanceError === 'string' && (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={notices.aiGuidanceError}>
           {notices.aiGuidanceError}
-        </div>
+        </DismissibleNotice>
       )}
       {notices.aiGuidanceSaved === '1' && (
-        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey="ai-guidance-saved">
           AI Suggestion saved.
-        </div>
+        </DismissibleNotice>
       )}
       <LeadAiGuidancePanel
         leadId={lead.id}

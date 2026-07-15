@@ -1,3 +1,5 @@
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
+
 import type { LatestQuoteAiGuidance } from './ai-guidance'
 import { AiGuidanceSubmitButton } from './AiGuidanceSubmitButton'
 import { CopyLinkButton } from './CopyLinkButton'
@@ -62,7 +64,7 @@ export function AiGuidancePanel({
       {(hasSavedGuidance || hasFailure) && (
         <div className="space-y-4 border-t border-gray-200 pt-4">
           {guidance.generationFailure && (
-            <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <DismissibleNotice tone="error" noticeKey={`${guidance.generationFailure.createdAt.toISOString()}:${guidance.generationFailure.errorMessage}`}>
               Last {formatFailureStage(guidance.generationFailure.failureStage)} attempt failed: {guidance.generationFailure.errorMessage}
               {guidance.generationFailure.retryAfter && (
                 <>
@@ -70,20 +72,20 @@ export function AiGuidancePanel({
                   Retry available after {formatDateTime(guidance.generationFailure.retryAfter)}.
                 </>
               )}
-            </p>
+            </DismissibleNotice>
           )}
           {guidance.conversationSnapshot?.sourceStatus === 'partial' && guidance.conversationSnapshot.safeError && (
-            <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <DismissibleNotice tone="warning" noticeKey={guidance.conversationSnapshot.safeError}>
               Partial context: {guidance.conversationSnapshot.safeError}
-            </p>
+            </DismissibleNotice>
           )}
           {(guidance.aiSuggestion?.staleAt || guidance.aiSuggestion?.staleReason) && (
-            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <DismissibleNotice tone="warning" noticeKey={`${guidance.aiSuggestion.staleAt ?? ''}:${guidance.aiSuggestion.staleReason ?? ''}`}>
               <p className="font-medium">This AI Suggestion may be stale.</p>
               {guidance.aiSuggestion.staleReason && (
                 <p className="mt-1">{guidance.aiSuggestion.staleReason}</p>
               )}
-            </div>
+            </DismissibleNotice>
           )}
           <div className="grid gap-5 lg:grid-cols-2">
           <section className="space-y-3 border-l-2 border-blue-200 pl-4">

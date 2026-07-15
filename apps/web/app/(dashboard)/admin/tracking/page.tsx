@@ -8,6 +8,7 @@ import {
   type TrackingSettingKey,
 } from '@/modules/quote-tracker/settings-query'
 import { saveTrackingSettings } from '@/modules/quote-tracker/admin-settings-actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 const labels: Record<TrackingSettingKey, string> = {
   'track.ip': 'Raw IP address',
@@ -88,15 +89,15 @@ export default async function TrackingAdminPage({ searchParams }: TrackingAdminP
       </div>
 
       {params?.saved === '1' ? (
-        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey="tracking-settings-saved">
           Tracking settings saved.
-        </div>
+        </DismissibleNotice>
       ) : null}
 
       {params?.error ? (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={params.error}>
           Tracking settings could not be saved. Ref: {params.error}
-        </div>
+        </DismissibleNotice>
       ) : null}
 
       <form action={saveTrackingSettings} className="space-y-8">

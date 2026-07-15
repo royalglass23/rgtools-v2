@@ -18,7 +18,7 @@ export type WorkOrderSortKey =
   | 'servicem8_status'
   | 'job_description'
 export type WorkOrderSort = `${WorkOrderSortKey}_${WorkOrderSortDirection}`
-export type WorkOrderPageSize = 10 | 20 | 50 | 100
+export type WorkOrderPageSize = 5 | 10 | 20 | 50
 export type WorkOrderCurrentFilter = 'current' | 'non_current' | 'all'
 export type WorkOrderMaintenanceProgramFilter = 'yes' | 'no' | 'all'
 
@@ -30,6 +30,7 @@ export type WorkOrderListFilters = {
   stage: WorkOrderOptionFilter
   hardware: WorkOrderOptionFilter
   maintenanceProgram: WorkOrderMaintenanceProgramFilter
+  showRemovedItems: boolean
   sort: WorkOrderSort
   page: number
   size: WorkOrderPageSize
@@ -50,9 +51,10 @@ const DEFAULT_FILTERS: WorkOrderListFilters = {
   stage: 'all',
   hardware: 'all',
   maintenanceProgram: 'all',
+  showRemovedItems: false,
   sort: 'lead_score_desc',
   page: 1,
-  size: 10,
+  size: 5,
 }
 
 const LEVELS = new Set(['low', 'medium', 'high'])
@@ -80,7 +82,7 @@ const LEGACY_SORTS: Record<string, WorkOrderSort> = {
   install_date: 'install_date_asc',
   job_number: 'job_number_asc',
 }
-const SIZES = new Set<WorkOrderPageSize>([10, 20, 50, 100])
+const SIZES = new Set<WorkOrderPageSize>([5, 10, 20, 50])
 
 export function parseWorkOrderListFilters(
   searchParams: Record<string, string | string[] | undefined>,
@@ -97,6 +99,7 @@ export function parseWorkOrderListFilters(
   const stage = optionValue(searchParams[`${prefix}stage`])
   const hardware = optionValue(searchParams[`${prefix}hardware`])
   const maintenanceProgram = maintenanceProgramValue(searchParams[`${prefix}maintenanceProgram`])
+  const showRemovedItems = stringValue(searchParams[`${prefix}showRemovedItems`]) === '1'
   const sortCandidate = pick('sort')
   const page = Number(stringValue(searchParams[`${prefix}page`]) ?? DEFAULT_FILTERS.page)
   const size = Number(pick('size') ?? DEFAULT_FILTERS.size)
@@ -109,6 +112,7 @@ export function parseWorkOrderListFilters(
     stage,
     hardware,
     maintenanceProgram,
+    showRemovedItems,
     sort: sortValue(sortCandidate),
     page: Number.isInteger(page) && page > 0 ? page : DEFAULT_FILTERS.page,
     size: SIZES.has(size as WorkOrderPageSize) ? size as WorkOrderPageSize : DEFAULT_FILTERS.size,

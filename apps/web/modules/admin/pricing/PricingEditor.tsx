@@ -8,6 +8,7 @@ import {
   type PricingConfig,
 } from './config-admin'
 import { savePricingConfigVersion, type SavePricingConfigResult } from './actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 type Props = {
   initialConfig: PricingConfig
@@ -68,20 +69,22 @@ export function PricingEditor({ initialConfig, readOnly }: Props) {
       <input type="hidden" name="config" value={JSON.stringify(config)} />
 
       {result && 'success' in result && (
-        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey={result.versionLabel}>
           Activated {result.versionLabel}.
-        </div>
+        </DismissibleNotice>
       )}
       {result && 'error' in result && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={result.error}>
           {result.error}
-        </div>
+        </DismissibleNotice>
       )}
 
       {validationErrors.length > 0 && (
-        <div className="space-y-2 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {validationErrors.map((error) => <p key={error}>{error}</p>)}
-        </div>
+        <DismissibleNotice tone="warning" noticeKey={validationErrors.join('|')}>
+          <div className="space-y-2">
+            {validationErrors.map((error) => <p key={error}>{error}</p>)}
+          </div>
+        </DismissibleNotice>
       )}
 
       {!readOnly && (

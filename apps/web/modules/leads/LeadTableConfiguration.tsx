@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { saveTablePrefs } from './table-prefs-actions'
 import type { TablePrefs } from './table-prefs-shared'
 
@@ -105,9 +106,11 @@ export function LeadTableConfiguration({ prefs }: { prefs: TablePrefs }) {
         </div>
       </section>
 
-      <div className="text-sm text-gray-600">
-        {isPending ? 'Saving...' : message}
-      </div>
+      {isPending ? (
+        <div className="text-sm text-gray-600">Saving...</div>
+      ) : message ? (
+        <DismissibleNotice tone="success" noticeKey={message}>{message}</DismissibleNotice>
+      ) : null}
     </div>
   )
 }

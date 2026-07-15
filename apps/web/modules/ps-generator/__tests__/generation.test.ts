@@ -593,6 +593,65 @@ describe('Producer Statement generation', () => {
     expect(form.getTextField('HeightAbove').getText()).toBe('1.05')
   })
 
+  it('fills every repeated AcroForm alias used by the PS1 cover sheet', async () => {
+    const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
+      { fieldName: 'Name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },
+      { fieldName: 'Address', fieldType: 'text', sourceType: 'project_value', sourceKey: 'jobAddress', fixedValue: null, checkboxValue: null },
+      { fieldName: 'Description', fieldType: 'text', sourceType: 'description_template', sourceKey: 'standard-balustrade', fixedValue: null, checkboxValue: null },
+      { fieldName: 'Date0', fieldType: 'text', sourceType: 'date', sourceKey: 'today', fixedValue: null, checkboxValue: null },
+      { fieldName: 'LotDescription', fieldType: 'text', sourceType: 'project_value', sourceKey: 'lotDescription', fixedValue: null, checkboxValue: null },
+      { fieldName: 'Structure', fieldType: 'text', sourceType: 'selected_option', sourceKey: 'structure_type', fixedValue: null, checkboxValue: null },
+    ])
+    const objects: Record<string, Buffer> = {
+      'templates/ps-generator/wordpress/double-disc/ps1-standard.pdf': await createFixturePdf([
+        { name: 'Name', type: 'text' },
+        { name: 'Address', type: 'text' },
+        { name: 'Description', type: 'text' },
+        { name: 'Date0', type: 'text' },
+        { name: 'LotDescription', type: 'text' },
+        { name: 'Structure', type: 'text' },
+        { name: 'Name-2', type: 'text' },
+        { name: 'Address-2', type: 'text' },
+        { name: 'Description02', type: 'text' },
+        { name: 'Date01', type: 'text' },
+        { name: 'LotDescription02', type: 'text' },
+        { name: 'Structure02', type: 'text' },
+      ]),
+    }
+
+    const input = defaultInput('ps1_only')
+    const result = await generateProducerStatementPackage({
+      ...input,
+      projectDetails: {
+        ...input.projectDetails,
+        lotDescription: 'Lot 4 DP 12345',
+      },
+    }, {
+      configuration,
+      storage: new MemoryStorage(objects),
+      now: new Date('2026-06-26T00:00:00.000Z'),
+      flattenGeneratedPdf: false,
+    })
+
+    const form = await readForm(result.outputs[0].bytes)
+    expect(form.getTextField('Name').getText()).toBe('Jane Customer')
+    expect(form.getTextField('Name-2').getText()).toBe('Jane Customer')
+    expect(form.getTextField('Address').getText()).toBe('12 Glass Lane')
+    expect(form.getTextField('Address-2').getText()).toBe('12 Glass Lane')
+    expect(form.getTextField('Description').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
+    )
+    expect(form.getTextField('Description02').getText()).toBe(
+      'Double Disc glass balustrade to Deck, External, fixed to Timber; Toughened glass at 12mm.',
+    )
+    expect(form.getTextField('Date0').getText()).toBe('26/06/2026')
+    expect(form.getTextField('Date01').getText()).toBe('26/06/2026')
+    expect(form.getTextField('LotDescription').getText()).toBe('Lot 4 DP 12345')
+    expect(form.getTextField('LotDescription02').getText()).toBe('Lot 4 DP 12345')
+    expect(form.getTextField('Structure').getText()).toBe('Deck')
+    expect(form.getTextField('Structure02').getText()).toBe('Deck')
+  })
+
   it('does not require optional BC number or lot description fields when those values are blank', async () => {
     const configuration = withStandardPs1Mappings(buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows()), [
       { fieldName: 'client_name', fieldType: 'text', sourceType: 'project_value', sourceKey: 'clientName', fixedValue: null, checkboxValue: null },

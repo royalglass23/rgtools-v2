@@ -18,6 +18,7 @@ import {
 } from '@/modules/quote-tracker/presentation'
 import { ViewerAnalyticsTable } from '@/modules/quote-tracker/ViewerAnalyticsTable'
 import { computeScore, computeStatusTag, type EngagementData, type StatusTag } from '@/modules/quote-tracker/score'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export default async function QuoteDetailPage({
   params,
@@ -94,14 +95,14 @@ export default async function QuoteDetailPage({
 
       <Section title="Quote">
         {typeof notices.gateError === 'string' && (
-          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <DismissibleNotice tone="error" noticeKey={notices.gateError}>
             {notices.gateError}
-          </div>
+          </DismissibleNotice>
         )}
         {notices.gateSaved === '1' && (
-          <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <DismissibleNotice tone="success" noticeKey="email-gate-saved">
             Email gate settings saved.
-          </div>
+          </DismissibleNotice>
         )}
         <dl className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-2">
@@ -192,29 +193,29 @@ export default async function QuoteDetailPage({
       </Section>
 
       {typeof notices.snapshotError === 'string' && (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={notices.snapshotError}>
           {notices.snapshotError}
-        </div>
+        </DismissibleNotice>
       )}
       {notices.snapshotSaved === '1' && (
-        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey="snapshot-saved">
           Conversation Snapshot saved.
-        </div>
+        </DismissibleNotice>
       )}
       {notices.snapshotSaved === 'partial' && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <DismissibleNotice tone="warning" noticeKey="snapshot-saved-partial">
           Conversation Snapshot saved with partial ServiceM8 context.
-        </div>
+        </DismissibleNotice>
       )}
       {typeof notices.suggestionError === 'string' && (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={notices.suggestionError}>
           {notices.suggestionError}
-        </div>
+        </DismissibleNotice>
       )}
       {notices.suggestionSaved === '1' && (
-        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey="suggestion-saved">
           AI Suggestion saved.
-        </div>
+        </DismissibleNotice>
       )}
       <AiGuidancePanel
         guidance={detail.aiGuidance}
