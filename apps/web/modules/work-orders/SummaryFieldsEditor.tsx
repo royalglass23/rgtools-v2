@@ -2,8 +2,17 @@
 
 import { useState } from 'react'
 import type { WorkOrderSummaryFieldConfig } from './summary-config'
+import { canConfigureSummaryFieldAsEditable } from './summary-field-policy'
 
 export function SummaryFieldsEditor({ fields }: { fields: WorkOrderSummaryFieldConfig[] }) {
+  const savedConfigKey = fields
+    .map((field) => `${field.id}:${field.visible}:${field.filterable}:${field.editable}:${field.order}`)
+    .join('|')
+
+  return <SummaryFieldsEditorState key={savedConfigKey} fields={fields} />
+}
+
+function SummaryFieldsEditorState({ fields }: { fields: WorkOrderSummaryFieldConfig[] }) {
   const [orderedFields, setOrderedFields] = useState(fields)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
@@ -31,6 +40,7 @@ export function SummaryFieldsEditor({ fields }: { fields: WorkOrderSummaryFieldC
             <th className="px-4 py-3">Source</th>
             <th className="px-4 py-3">Visible</th>
             <th className="px-4 py-3">Filterable</th>
+            <th className="px-4 py-3">Editable</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -69,6 +79,13 @@ export function SummaryFieldsEditor({ fields }: { fields: WorkOrderSummaryFieldC
               </td>
               <td className="px-4 py-3 text-gray-700">
                 <input type="checkbox" name={`filterable:${field.id}`} defaultChecked={field.filterable} />
+              </td>
+              <td className="px-4 py-3 text-gray-700">
+                {canConfigureSummaryFieldAsEditable(field.id) ? (
+                  <input type="checkbox" name={`editable:${field.id}`} defaultChecked={field.editable} />
+                ) : (
+                  <span className="text-xs text-gray-500">Read only</span>
+                )}
               </td>
             </tr>
           ))}

@@ -4,6 +4,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -15,6 +16,13 @@ import { users, quotes } from './schema'
 import { clients, leads } from './schema-leads'
 
 export const workOrderLevelEnum = pgEnum('work_order_level', ['low', 'medium', 'high'])
+export const workOrderItemLabelStatusEnum = pgEnum('work_order_item_label_status', [
+  'pending',
+  'generated',
+  'manual',
+  'failed',
+  'source_changed',
+])
 
 export const workOrderInstallers = pgTable('work_order_installers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -117,10 +125,45 @@ export const workOrders = pgTable('work_orders', {
   index('work_orders_quote_idx').on(table.quoteId),
 ])
 
+export const workOrderItems = pgTable('work_order_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workOrderId: uuid('work_order_id').notNull().references(() => workOrders.id, { onDelete: 'cascade' }),
+  servicem8ItemUuid: text('servicem8_item_uuid').notNull(),
+  servicem8JobUuid: text('servicem8_job_uuid').notNull(),
+  itemCode: text('item_code'),
+  quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+  originalDescription: text('original_description').notNull(),
+  lineTotalExcludingGst: numeric('line_total_excluding_gst', { precision: 12, scale: 2 }),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  generatedLabel: text('generated_label'),
+  manualLabelOverride: text('manual_label_override'),
+  labelStatus: workOrderItemLabelStatusEnum('label_status').default('pending').notNull(),
+  sourceDescriptionFingerprint: text('source_description_fingerprint'),
+  installerId: uuid('installer_id').references(() => workOrderInstallers.id, { onDelete: 'set null' }),
+  stageOptionId: uuid('stage_option_id').references(() => workOrderStageOptions.id, { onDelete: 'set null' }),
+  hardwareStatusOptionId: uuid('hardware_status_option_id').references(() => workOrderHardwareStatusOptions.id, { onDelete: 'set null' }),
+  maintenanceProgram: boolean('maintenance_program').default(false).notNull(),
+  installDate: date('install_date'),
+  dateCompleted: date('date_completed'),
+  aiRiskLevel: workOrderLevelEnum('ai_risk_level'),
+  riskLevelOverride: workOrderLevelEnum('risk_level_override'),
+  aiImportance: workOrderLevelEnum('ai_importance'),
+  importanceOverride: workOrderLevelEnum('importance_override'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('work_order_items_servicem8_item_uuid_uq').on(table.servicem8ItemUuid),
+  index('work_order_items_work_order_active_idx').on(table.workOrderId, table.isActive),
+  index('work_order_items_servicem8_job_uuid_idx').on(table.servicem8JobUuid),
+])
+
 export const workOrderRefreshRuns = pgTable('work_order_refresh_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
   status: text('status').notNull(),
   syncedCount: integer('synced_count').default(0).notNull(),
+  itemSyncedCount: integer('item_synced_count').default(0).notNull(),
+  excludedLineCount: integer('excluded_line_count').default(0).notNull(),
   errorMessage: text('error_message'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -131,6 +174,7 @@ export const workOrderRefreshRuns = pgTable('work_order_refresh_runs', {
 export const workOrderEvents = pgTable('work_order_events', {
   id: uuid('id').primaryKey().defaultRandom(),
   workOrderId: uuid('work_order_id').notNull().references(() => workOrders.id, { onDelete: 'cascade' }),
+  workOrderItemId: uuid('work_order_item_id').references(() => workOrderItems.id, { onDelete: 'set null' }),
   actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
   fieldName: text('field_name').notNull(),
   previousValue: jsonb('previous_value'),
@@ -144,6 +188,7 @@ export const workOrderEvents = pgTable('work_order_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('work_order_events_work_order_idx').on(table.workOrderId),
+  index('work_order_events_work_order_item_idx').on(table.workOrderItemId),
   index('work_order_events_actor_idx').on(table.actorId),
   index('work_order_events_client_visible_idx').on(table.isClientVisibleCandidate),
   index('work_order_events_created_at_idx').on(table.createdAt),

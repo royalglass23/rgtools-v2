@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createUser } from './actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export function CreateUserForm() {
   const [isPending, startTransition] = useTransition()
@@ -43,14 +44,14 @@ export function CreateUserForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <DismissibleNotice tone="error" noticeKey={error}>
           {error}
-        </div>
+        </DismissibleNotice>
       )}
       {success && (
-        <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+        <DismissibleNotice tone="success" noticeKey="user-created">
           User created successfully.
-        </div>
+        </DismissibleNotice>
       )}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex flex-col gap-1">

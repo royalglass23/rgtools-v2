@@ -1,4 +1,5 @@
 import { requireModule } from "@/lib/guard";
+import { DismissibleNotice } from "@/modules/ui/DismissibleNotice";
 import {
   createWorkOrderHardwareStatusAction,
   createWorkOrderInstallerAction,
@@ -6,19 +7,42 @@ import {
   deactivateWorkOrderHardwareStatusAction,
   deactivateWorkOrderInstallerAction,
   deactivateWorkOrderStageAction,
+  saveWorkOrderBillingExclusionsAction,
   saveWorkOrderSummaryConfigAction,
 } from "@/modules/work-orders/actions";
+import { getWorkOrderBillingExclusions } from "@/modules/work-orders/billing-exclusions";
 import { getWorkOrderConfigLists } from "@/modules/work-orders/queries";
 import { SummaryFieldsEditor } from "@/modules/work-orders/SummaryFieldsEditor";
 import { getWorkOrderSummaryConfig } from "@/modules/work-orders/summary-config";
 
-export default async function WorkOrderConfigurationPage() {
+export default async function WorkOrderConfigurationPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ summarySaved?: string }>;
+}) {
   await requireModule("admin/work-orders");
-  const [{ installers, stages, hardwareStatuses }, summaryFields] =
-    await Promise.all([getWorkOrderConfigLists(), getWorkOrderSummaryConfig()]);
+  const params = searchParams ? await searchParams : undefined;
+  const [
+    { installers, stages, hardwareStatuses },
+    summaryFields,
+    billingExclusions,
+  ] = await Promise.all([
+    getWorkOrderConfigLists(),
+    getWorkOrderSummaryConfig(),
+    getWorkOrderBillingExclusions(),
+  ]);
 
   return (
     <div className="space-y-5">
+      {params?.summarySaved === "1" && (
+        <DismissibleNotice
+          tone="success"
+          noticeKey="work-order-summary-fields-saved"
+        >
+          Work Order summary fields saved.
+        </DismissibleNotice>
+      )}
+
       <div>
         <h1 className="text-2xl font-semibold text-gray-950">
           Work Order Configuration
@@ -49,8 +73,42 @@ export default async function WorkOrderConfigurationPage() {
         />
       </div>
 
+      <BillingExclusionsPanel terms={billingExclusions} />
       <SummaryFieldsPanel fields={summaryFields} />
     </div>
+  );
+}
+
+function BillingExclusionsPanel({ terms }: { terms: string[] }) {
+  return (
+    <section className="rounded border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-100 p-4">
+        <h2 className="text-sm font-semibold text-gray-950">
+          Billing line exclusions
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          One case-insensitive term per line. Matching ServiceM8 item codes or
+          descriptions are excluded on the next complete refresh.
+        </p>
+      </div>
+      <form
+        action={saveWorkOrderBillingExclusionsAction}
+        className="space-y-3 p-4"
+      >
+        <textarea
+          name="billingExclusions"
+          rows={5}
+          defaultValue={terms.join("\n")}
+          className="w-full rounded border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-950"
+        />
+        <button
+          type="submit"
+          className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d3d52]"
+        >
+          Save billing exclusions
+        </button>
+      </form>
+    </section>
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { DismissibleNotice } from "@/modules/ui/DismissibleNotice";
 
 import { CopyLinkButton } from "./CopyLinkButton";
 import { formatRelative } from "./presentation";
@@ -137,17 +138,17 @@ export function TrackQuoteButton({
                   Make sure the quote PDF is generated in ServiceM8 first.
                 </p>
                 {error && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-red-700">
-                      {error.message}
-                    </p>
-                    {error.link && (
-                      <LinkBlock
-                        link={error.link}
-                        expiresAt={error.expiresAt}
-                      />
-                    )}
-                  </div>
+                  <DismissibleNotice tone="error" noticeKey={error.message}>
+                    <div className="space-y-2">
+                      <p className="font-medium">{error.message}</p>
+                      {error.link && (
+                        <LinkBlock
+                          link={error.link}
+                          expiresAt={error.expiresAt}
+                        />
+                      )}
+                    </div>
+                  </DismissibleNotice>
                 )}
                 {loading && (
                   <p className="text-sm text-gray-600">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { type FormEvent, useState } from 'react'
 
 export type PsConfigurationGlobalTemplate = {
@@ -67,7 +68,11 @@ export function PsConfigurationGlobalTemplatesEditor({
         >
           {saving ? 'Saving' : 'Save PS3'}
         </button>
-        {error ? <p className="text-sm font-medium text-red-700 md:col-span-2">{error}</p> : null}
+        {error ? (
+          <div className="md:col-span-2">
+            <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>
+          </div>
+        ) : null}
       </form>
     </details>
   )

@@ -54,6 +54,7 @@ describe('deriveAuditEntityType', () => {
     expect(deriveAuditEntityType('lead.edited')).toBe('lead')
     expect(deriveAuditEntityType('quote.created')).toBe('quote')
     expect(deriveAuditEntityType('work_order.deleted')).toBe('work_order')
+    expect(deriveAuditEntityType('work_order_item.label_regenerated')).toBe('work_order_item')
     expect(deriveAuditEntityType('access.grant')).toBe('access')
   })
 

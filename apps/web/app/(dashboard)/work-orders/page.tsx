@@ -2,8 +2,11 @@ import { requireModule } from '@/lib/guard'
 import { refreshWorkOrdersAction } from '@/modules/work-orders/actions'
 import { parseWorkOrderListFilters } from '@/modules/work-orders/list-filters'
 import { getCurrentWorkOrderPermissions } from '@/modules/work-orders/permissions'
-import { getWorkOrderFilterOptions, listWorkOrders } from '@/modules/work-orders/queries'
+import { getWorkOrderFilterOptions, getWorkOrderRefreshStatus, listWorkOrders } from '@/modules/work-orders/queries'
 import { WorkOrdersTableControls } from '@/modules/work-orders/WorkOrdersTableControls'
+import { WorkOrderRefreshStatus } from '@/modules/work-orders/WorkOrderRefreshStatus'
+import { WorkOrderRefreshButton } from '@/modules/work-orders/WorkOrderRefreshButton'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { getWorkOrderSummaryConfig } from '@/modules/work-orders/summary-config'
 
 export default async function WorkOrdersPage({
@@ -16,11 +19,12 @@ export default async function WorkOrdersPage({
   const filters = parseWorkOrderListFilters(resolvedSearchParams)
   const refreshError = typeof resolvedSearchParams.refreshError === 'string' ? resolvedSearchParams.refreshError : null
   const exportHref = `/api/work-orders/export?${exportParams(resolvedSearchParams)}`
-  const [{ rows, total, pageCount }, options, permissions, summaryFields] = await Promise.all([
+  const [{ rows, total, pageCount }, options, permissions, summaryFields, refreshStatus] = await Promise.all([
     listWorkOrders(filters),
     getWorkOrderFilterOptions(),
     getCurrentWorkOrderPermissions(),
     getWorkOrderSummaryConfig(),
+    getWorkOrderRefreshStatus(),
   ])
 
   return (
@@ -41,21 +45,18 @@ export default async function WorkOrdersPage({
           </a>
           {permissions.canManage && (
             <form action={refreshWorkOrdersAction}>
-              <button
-                type="submit"
-                className="rounded bg-[#142B3A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d3d52]"
-              >
-                Refresh from ServiceM8
-              </button>
+              <WorkOrderRefreshButton />
             </form>
           )}
         </div>
       </div>
 
-      {refreshError && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+      <WorkOrderRefreshStatus status={refreshStatus} />
+
+      {refreshError && !refreshStatus.latestFailure && (
+        <DismissibleNotice tone="error" noticeKey={refreshError}>
           Work Orders could not refresh from ServiceM8: {refreshError}
-        </div>
+        </DismissibleNotice>
       )}
 
       <WorkOrdersTableControls
@@ -65,6 +66,7 @@ export default async function WorkOrdersPage({
         options={options}
         total={total}
         pageCount={pageCount}
+        canManage={permissions.canManage}
       />
     </div>
   )

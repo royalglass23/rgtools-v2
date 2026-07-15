@@ -41,7 +41,12 @@ describe('work order admin page', () => {
     expect(source).toContain('Maintenance Program')
     expect(source).toContain('Visible')
     expect(source).toContain('Filterable')
+    expect(editorSource()).toContain('>Editable<')
+    expect(editorSource()).toContain('canConfigureSummaryFieldAsEditable')
     expect(source).not.toContain('Display order')
+    expect(source).toMatch(/params\?\.summarySaved === ["']1["']/)
+    expect(source).toContain('Work Order summary fields saved.')
+    expect(source.indexOf('Work Order summary fields saved.')).toBeLessThan(source.indexOf('Work Order Configuration'))
   })
 
   it('reorders summary fields by dragging rows while preserving order form fields', () => {
@@ -52,5 +57,13 @@ describe('work order admin page', () => {
     expect(source).toContain('onDrop')
     expect(source).toContain('name={`order:${field.id}`}')
     expect(source).not.toContain('type="number"')
+  })
+
+  it('lets configure users maintain billing-line exclusions for the next refresh', () => {
+    const source = pageSource()
+
+    expect(source).toContain('Billing line exclusions')
+    expect(source).toContain('saveWorkOrderBillingExclusionsAction')
+    expect(source).toContain('One case-insensitive term per line')
   })
 })
