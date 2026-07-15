@@ -11,6 +11,7 @@ import {
   type DashboardTableMeta,
 } from '@/modules/dashboard/tables'
 import { saveDashboardTables, type SaveDashboardTablesResult } from './actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 const emptyResult: SaveDashboardTablesResult | null = null
 
@@ -72,14 +73,14 @@ export function DashboardTablesEditor({ initialConfig }: { initialConfig: Dashbo
       <input type="hidden" name="config" value={JSON.stringify(selected)} />
 
       {result && 'success' in result && (
-        <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <DismissibleNotice tone="success" noticeKey="dashboard-tables-saved">
           Dashboard tables saved.
-        </div>
+        </DismissibleNotice>
       )}
       {result && 'error' in result && (
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <DismissibleNotice tone="error" noticeKey={result.error}>
           {result.error}
-        </div>
+        </DismissibleNotice>
       )}
 
       <p className="text-sm text-gray-500">

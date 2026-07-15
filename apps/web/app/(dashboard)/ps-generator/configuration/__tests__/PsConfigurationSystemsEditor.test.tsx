@@ -27,7 +27,7 @@ describe('PsConfigurationSystemsEditor', () => {
         },
       }))
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
-    const createAction = vi.fn(async () => undefined)
+    const createAction = vi.fn(async (_formData: FormData) => undefined)
 
     render(
       <PsConfigurationSystemsEditor
@@ -41,6 +41,8 @@ describe('PsConfigurationSystemsEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add system' }))
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Face Fixed' } })
+    fireEvent.change(screen.getByLabelText('Height above floor'), { target: { value: '1.00' } })
+    fireEvent.change(screen.getByLabelText('Height above fixing'), { target: { value: '1.05' } })
     const templateInput = screen.getByLabelText('Template') as HTMLInputElement
     Object.defineProperty(templateInput, 'files', {
       value: [new File([new Uint8Array(8 * 1024 * 1024)], 'Face Fixed.pdf', { type: 'application/pdf' })],
@@ -73,6 +75,8 @@ describe('PsConfigurationSystemsEditor', () => {
     expect(formData.get('standardPs1Template')).toBeNull()
     expect(formData.get('standardPs1TemplateObjectKey')).toBe('drafts/ps-generator/templates/config-1/face-fixed/standard_ps1/Face-Fixed.pdf')
     expect(formData.get('standardPs1TemplateOriginalFilename')).toBe('Face Fixed.pdf')
+    expect(formData.get('defaultHeight')).toBe('1.00')
+    expect(formData.get('defaultHeightAboveFix')).toBe('1.05')
     expect(refreshMock).toHaveBeenCalled()
   })
 })

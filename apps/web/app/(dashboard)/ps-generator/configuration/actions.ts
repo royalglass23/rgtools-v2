@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { getStorage } from '@/lib/storage'
 import {
   buildConfigurationReadModel,
+  nextPsConfigurationDraftLabel,
   type PsConfigurationRows,
 } from '@/modules/ps-generator/configuration'
 import { generateProducerStatementPackage, type PsGenerationMode } from '@/modules/ps-generator/generation'
@@ -29,6 +30,7 @@ import {
 const fieldTypes = new Set(['text', 'checkbox'])
 const sourceTypes = new Set(['project_value', 'selected_option', 'system_rule', 'description_template', 'date', 'fixed_value'])
 const generationModes = new Set(['ps1_only', 'ps3_only', 'both'])
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export async function createPsConfigurationDraftAction(): Promise<void> {
   const actorId = await requireConfigEditor()
@@ -50,10 +52,16 @@ export async function createPsConfigurationDraftAction(): Promise<void> {
       .limit(1)
     if (existingDraft) return
 
+    const existingVersionLabels = (await tx
+      .select({ versionLabel: psConfigVersions.versionLabel })
+      .from(psConfigVersions))
+      .map((version) => version.versionLabel)
+    const draftVersionLabel = nextPsConfigurationDraftLabel(published.versionLabel, now, existingVersionLabels)
+
     const [draft] = await tx
       .insert(psConfigVersions)
       .values({
-        versionLabel: `${published.versionLabel}-draft-${now.toISOString().slice(0, 10)}`,
+        versionLabel: draftVersionLabel,
         state: 'draft',
         createdBy: actorId,
         createdAt: now,
@@ -204,92 +212,105 @@ export async function updatePsConfigurationOptionsAction(formData: FormData): Pr
   if (version?.state !== 'draft') throw new Error('Only draft PS configuration can be edited here.')
 
   await db.transaction(async (tx) => {
-    const now = new Date()
-    for (const optionValueId of optionValueIds) {
-      const label = String(formData.get(`label:${optionValueId}`) ?? '').trim()
-      const isActive = formData.get(`isActive:${optionValueId}`) === 'on'
-
-      if (!label) throw new Error('Option label is required.')
-
-      const [before] = await tx
-        .select()
-        .from(psOptionValues)
-        .where(and(
-          eq(psOptionValues.id, optionValueId),
-          eq(psOptionValues.configVersionId, configVersionId),
-        ))
-        .limit(1)
-      if (!before) throw new Error('Option value was not found.')
-
-      const sortOrder = parseInteger(formData.get(`sortOrder:${optionValueId}`), before.sortOrder)
-      const archivedAt = isActive ? before.archivedAt : now
-
-      if (before.label === label && before.isActive === isActive && before.sortOrder === sortOrder && before.archivedAt === archivedAt) continue
-
-      await tx
-        .update(psOptionValues)
-        .set({
-          label,
-          isActive,
-          sortOrder,
-          archivedAt,
-          updatedAt: now,
-        })
-        .where(eq(psOptionValues.id, optionValueId))
-
-      await tx.insert(psConfigurationAuditEntries).values({
-        actorId,
-        entityType: 'option_value',
-        entityId: optionValueId,
-        action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
-        configVersionId,
-        before,
-        after: {
-          ...before,
-          label,
-          isActive,
-          sortOrder,
-          archivedAt,
-        },
-      })
-    }
-
-    const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
-    const newLabel = String(formData.get('newOptionLabel') ?? '').trim()
-    const newSlug = slugify(newLabel)
-    if (newCategoryId && newSlug && newLabel) {
-      const [category] = await tx
-        .select({ id: psOptionCategories.id })
-        .from(psOptionCategories)
-        .where(and(eq(psOptionCategories.id, newCategoryId), eq(psOptionCategories.isActive, true)))
-        .limit(1)
-      if (!category) throw new Error('Option category is not available in this draft.')
-
-      const [inserted] = await tx.insert(psOptionValues).values({
-        configVersionId,
-        categoryId: newCategoryId,
-        slug: newSlug,
-        label: newLabel,
-        sortOrder: parseInteger(formData.get('newOptionSortOrder'), optionValueIds.length + 1),
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      }).returning({ id: psOptionValues.id })
-
-      await tx.insert(psConfigurationAuditEntries).values({
-        actorId,
-        entityType: 'option_value',
-        entityId: inserted.id,
-        action: 'draft_saved',
-        configVersionId,
-        before: null,
-        after: { categoryId: newCategoryId, slug: newSlug, label: newLabel },
-        createdAt: now,
-      })
-    }
+    await saveDraftOptions(tx, formData, actorId, configVersionId, optionValueIds)
   })
 
   revalidateConfigurationPaths()
+}
+
+async function saveDraftOptions(
+  tx: DbTransaction,
+  formData: FormData,
+  actorId: string,
+  configVersionId: string,
+  optionValueIds: string[],
+) {
+  const now = new Date()
+  for (const optionValueId of optionValueIds) {
+    const label = String(formData.get(`label:${optionValueId}`) ?? '').trim()
+    const isActive = formData.get(`isActive:${optionValueId}`) === 'on'
+
+    if (!label) throw new Error('Option label is required.')
+
+    const [before] = await tx
+      .select()
+      .from(psOptionValues)
+      .where(and(
+        eq(psOptionValues.id, optionValueId),
+        eq(psOptionValues.configVersionId, configVersionId),
+      ))
+      .limit(1)
+    if (!before) throw new Error('Option value was not found.')
+
+    const sortOrder = parseInteger(formData.get(`sortOrder:${optionValueId}`), before.sortOrder)
+    const archivedAt = isActive ? before.archivedAt : now
+
+    if (before.label === label && before.isActive === isActive && before.sortOrder === sortOrder && before.archivedAt === archivedAt) continue
+
+    await tx
+      .update(psOptionValues)
+      .set({
+        label,
+        isActive,
+        sortOrder,
+        archivedAt,
+        updatedAt: now,
+      })
+      .where(eq(psOptionValues.id, optionValueId))
+
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'option_value',
+      entityId: optionValueId,
+      action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
+      configVersionId,
+      before,
+      after: {
+        ...before,
+        label,
+        isActive,
+        sortOrder,
+        archivedAt,
+      },
+    })
+  }
+
+  const newCategoryId = String(formData.get('newOptionCategoryId') ?? '')
+  const newLabel = String(formData.get(`newOptionLabel:${newCategoryId}`) ?? formData.get('newOptionLabel') ?? '').trim()
+  const newSlug = slugify(newLabel)
+  if (newCategoryId && newSlug && newLabel) {
+    const [category] = await tx
+      .select({ id: psOptionCategories.id })
+      .from(psOptionCategories)
+      .where(and(eq(psOptionCategories.id, newCategoryId), eq(psOptionCategories.isActive, true)))
+      .limit(1)
+    if (!category) throw new Error('Option category is not available in this draft.')
+
+    const [inserted] = await tx.insert(psOptionValues).values({
+      configVersionId,
+      categoryId: newCategoryId,
+      slug: newSlug,
+      label: newLabel,
+      sortOrder: parseInteger(
+        formData.get(`newOptionSortOrder:${newCategoryId}`) ?? formData.get('newOptionSortOrder'),
+        optionValueIds.length + 1,
+      ),
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }).returning({ id: psOptionValues.id })
+
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'option_value',
+      entityId: inserted.id,
+      action: 'draft_saved',
+      configVersionId,
+      before: null,
+      after: { categoryId: newCategoryId, slug: newSlug, label: newLabel },
+      createdAt: now,
+    })
+  }
 }
 
 export async function updatePsConfigurationSystemsAction(formData: FormData): Promise<void> {
@@ -368,6 +389,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
   const slug = slugify(displayName)
   const standardFile = formData.get('standardPs1Template')
   const poolFile = formData.get('poolPs1Template')
+  const heightRules = heightRulesFromForm(formData)
 
   if (!displayName || !slug) throw new Error('System name is required.')
 
@@ -416,7 +438,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
       displayName,
       state: 'draft',
       sortOrder: (existingSystems.length + 1) * 10,
-      heightRules: {},
+      heightRules,
       metadata: {},
       createdAt: now,
       updatedAt: now,
@@ -484,7 +506,7 @@ export async function createPsConfigurationSystemAction(formData: FormData): Pro
         action: 'draft_saved',
         configVersionId,
         before: null,
-        after: { slug, displayName },
+        after: { slug, displayName, heightRules },
         createdAt: now,
       },
       {
@@ -575,8 +597,10 @@ export async function updatePsConfigurationSystemAction(formData: FormData): Pro
     if (!before) throw new Error('Draft system was not found.')
 
     const archivedAt = isActive ? null : before.archivedAt ?? now
+    const heightRules = heightRulesFromForm(formData, before.heightRules)
     await tx.update(psSystems).set({
       displayName,
+      heightRules,
       archivedAt,
       updatedAt: now,
     }).where(eq(psSystems.id, systemId))
@@ -631,7 +655,7 @@ export async function updatePsConfigurationSystemAction(formData: FormData): Pro
       action: archivedAt !== before.archivedAt ? 'archived' : 'draft_saved',
       configVersionId,
       before,
-      after: { ...before, displayName, archivedAt },
+      after: { ...before, displayName, heightRules, archivedAt },
       createdAt: now,
     })
     if (beforeOption && afterOption) {
@@ -836,6 +860,90 @@ export async function uploadPsConfigurationTemplateAction(formData: FormData): P
   revalidateConfigurationPaths()
 }
 
+export async function updatePsConfigurationGlobalTemplateAction(formData: FormData): Promise<void> {
+  const actorId = await requireConfigEditor()
+  const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
+  const templateVariantId = String(formData.get('templateVariantId') ?? '').trim()
+  const upload = await resolveGlobalPs3TemplateUpload(formData, configVersionId)
+  if (!upload) throw new Error('Choose a PS3 template PDF to upload.')
+
+  await db.transaction(async (tx) => {
+    const now = new Date()
+    let before: typeof psTemplateVariants.$inferSelect | undefined
+
+    if (templateVariantId) {
+      ;[before] = await tx
+        .select()
+        .from(psTemplateVariants)
+        .where(and(
+          eq(psTemplateVariants.id, templateVariantId),
+          eq(psTemplateVariants.configVersionId, configVersionId),
+          eq(psTemplateVariants.state, 'draft'),
+        ))
+        .limit(1)
+    }
+
+    if (!before) {
+      ;[before] = await tx
+        .select()
+        .from(psTemplateVariants)
+        .where(and(
+          eq(psTemplateVariants.configVersionId, configVersionId),
+          eq(psTemplateVariants.variantKind, 'ps3'),
+          eq(psTemplateVariants.state, 'draft'),
+          isNull(psTemplateVariants.archivedAt),
+        ))
+        .limit(1)
+    }
+
+    const values = {
+      systemId: null,
+      configVersionId,
+      documentKind: 'ps3' as const,
+      variantKind: 'ps3' as const,
+      label: 'Shared PS3',
+      r2ObjectKey: upload.objectKey,
+      originalFilename: upload.originalFilename,
+      fieldDiscovery: upload.fieldDiscovery,
+      state: 'draft' as const,
+      updatedAt: now,
+      archivedAt: null,
+    }
+
+    if (before) {
+      await tx.update(psTemplateVariants).set(values).where(eq(psTemplateVariants.id, before.id))
+      await tx.insert(psConfigurationAuditEntries).values({
+        actorId,
+        entityType: 'template_variant',
+        entityId: before.id,
+        action: 'draft_saved',
+        configVersionId,
+        before,
+        after: { ...before, ...values },
+        createdAt: now,
+      })
+      return
+    }
+
+    const [inserted] = await tx.insert(psTemplateVariants).values({
+      ...values,
+      createdAt: now,
+    }).returning({ id: psTemplateVariants.id })
+    await tx.insert(psConfigurationAuditEntries).values({
+      actorId,
+      entityType: 'template_variant',
+      entityId: inserted.id,
+      action: 'draft_saved',
+      configVersionId,
+      before: null,
+      after: values,
+      createdAt: now,
+    })
+  })
+
+  revalidateConfigurationPaths()
+}
+
 export async function updatePsConfigurationFieldMappingsAction(formData: FormData): Promise<void> {
   const actorId = await requireConfigEditor()
   const configVersionId = await requireDraftVersion(String(formData.get('configVersionId') ?? ''))
@@ -962,6 +1070,7 @@ export async function runPsConfigurationTestGenerationAction(formData: FormData)
 export async function publishPsConfigurationDraftAction(formData: FormData): Promise<void> {
   const actorId = await requireConfigPublisher()
   const configVersionId = String(formData.get('configVersionId') ?? '')
+  const optionValueIds = formData.getAll('optionValueId').map((value) => String(value)).filter(Boolean)
   if (!configVersionId) throw new Error('Missing draft.')
 
   const now = new Date()
@@ -972,6 +1081,10 @@ export async function publishPsConfigurationDraftAction(formData: FormData): Pro
       .where(and(eq(psConfigVersions.id, configVersionId), eq(psConfigVersions.state, 'draft')))
       .limit(1)
     if (!draft) throw new Error('Draft PS configuration was not found.')
+
+    if (optionValueIds.length > 0) {
+      await saveDraftOptions(tx, formData, actorId, configVersionId, optionValueIds)
+    }
 
     await tx
       .update(psConfigVersions)
@@ -1162,6 +1275,30 @@ function titleCase(value: FormDataEntryValue | string | null) {
     .replace(/\b[a-z0-9]/g, (letter) => letter.toUpperCase())
 }
 
+function heightRulesFromForm(formData: FormData, currentRules?: unknown) {
+  const height = String(formData.get('defaultHeight') ?? '').trim()
+  const heightAboveFix = String(formData.get('defaultHeightAboveFix') ?? '').trim()
+  if (!height || !heightAboveFix) {
+    throw new Error('Height above floor and height above fixing are required.')
+  }
+
+  const source = currentRules && typeof currentRules === 'object'
+    ? { ...(currentRules as Record<string, unknown>) }
+    : {}
+  const currentDefault = source.default && typeof source.default === 'object'
+    ? source.default as Record<string, unknown>
+    : {}
+
+  return {
+    ...source,
+    default: {
+      ...currentDefault,
+      height,
+      heightAboveFix,
+    },
+  }
+}
+
 function isUpload(value: FormDataEntryValue | null): value is File {
   return value instanceof File && value.size > 0
 }
@@ -1185,10 +1322,27 @@ async function resolveTemplateUpload(
   return null
 }
 
+async function resolveGlobalPs3TemplateUpload(
+  formData: FormData,
+  configVersionId: string,
+) {
+  const objectKey = String(formData.get('ps3TemplateObjectKey') ?? '').trim()
+  const originalFilename = String(formData.get('ps3TemplateOriginalFilename') ?? '').trim()
+  if (objectKey && originalFilename) {
+    return prepareStoredTemplateUpload(configVersionId, 'global', 'ps3', objectKey, originalFilename)
+  }
+
+  const file = formData.get('ps3Template')
+  if (isUpload(file)) {
+    return prepareTemplateUpload(configVersionId, 'global', 'ps3', file)
+  }
+  return null
+}
+
 async function prepareTemplateUpload(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
   file: File,
 ) {
   if (file.type && file.type !== 'application/pdf') throw new Error('Template upload must be a PDF.')
@@ -1206,12 +1360,12 @@ async function prepareTemplateUpload(
 async function prepareStoredTemplateUpload(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
   objectKey: string,
   originalFilename: string,
 ) {
   if (!objectKey.startsWith(templateObjectPrefix(configVersionId, systemPart, variantKind))) {
-    throw new Error('Uploaded template does not match this draft system.')
+    throw new Error('Uploaded template does not match this draft template slot.')
   }
   if (!originalFilename.toLowerCase().endsWith('.pdf')) throw new Error('Template upload must be a PDF.')
   const bytes = await getStorage().get(objectKey)
@@ -1227,7 +1381,7 @@ async function prepareStoredTemplateUpload(
 function templateObjectPrefix(
   configVersionId: string,
   systemPart: string,
-  variantKind: 'standard_ps1' | 'pool_ps1',
+  variantKind: 'standard_ps1' | 'pool_ps1' | 'ps3',
 ) {
   return `drafts/ps-generator/templates/${configVersionId}/${sanitizeObjectPart(systemPart)}/${variantKind}/`
 }

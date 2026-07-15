@@ -14,6 +14,7 @@ import {
   type PublishedPsSystem,
   type PublishedPsTemplateVariant,
 } from './configuration'
+import { legacyPs1FieldMappingsForDiscovery, legacyPs3FieldMappingsForDiscovery } from './seed-config'
 
 export type PsGenerationMode = 'ps1_only' | 'ps3_only' | 'both'
 export type PsGeneratedDocumentKind = 'ps1' | 'ps3'
@@ -43,6 +44,7 @@ export interface GenerateProducerStatementPackageDependencies {
   actor?: PsGenerationActor
   database?: PsGenerationDatabase
   retentionDays?: number
+  flattenGeneratedPdf?: boolean
 }
 
 export interface GeneratedProducerStatementPdf {
@@ -124,6 +126,10 @@ interface GenerationContext {
   now: Date
 }
 
+type PsResolvedFieldMapping = PublishedPsTemplateVariant['fieldMappings'][number] & {
+  legacyDefault?: boolean
+}
+
 export interface PsGenerationActor {
   id: string
   label: string
@@ -158,7 +164,7 @@ export async function generateProducerStatementPackage(
     })
   }
 
-  validateSelectedOptions(system, input.selections)
+  validateSelectedOptions(configuration, input.selections)
 
   const context: GenerationContext = { configuration, system, input, now }
   const operationId = dependencies.operationId ?? randomUUID()
@@ -167,12 +173,16 @@ export async function generateProducerStatementPackage(
   for (const documentKind of documentKindsForMode(input.mode)) {
     const template = selectTemplateVariant(configuration, system.slug, documentKind, input.selections)
     if (!template) {
-      throw new PsGenerationError('published_template_missing', `No published ${documentKind.toUpperCase()} template is available for ${system.displayName}.`, {
+      const message = documentKind === 'ps3'
+        ? 'No published PS3 template is available.'
+        : `No published ${documentKind.toUpperCase()} template is available for ${system.displayName}.`
+      throw new PsGenerationError('published_template_missing', message, {
         systemSlug: system.slug,
         documentKind,
       })
     }
-    if (template.fieldMappings.length === 0) {
+    const fieldMappings = fieldMappingsWithLegacyDefaults(template)
+    if (fieldMappings.length === 0) {
       throw new PsGenerationError('field_mappings_missing', `Published template "${template.label}" has no field mappings.`, {
         templateVariantId: template.id,
       })
@@ -195,7 +205,7 @@ export async function generateProducerStatementPackage(
       r2ObjectKey: dependencies.persistGeneratedOutputs ? buildGeneratedObjectKey(operationId, filename) : undefined,
       filename,
       contentType: 'application/pdf',
-      bytes: await fillTemplatePdf(templateBytes, template, context),
+      bytes: await fillTemplatePdf(templateBytes, template, fieldMappings, context, dependencies.flattenGeneratedPdf !== false),
     })
   }
 
@@ -303,7 +313,7 @@ function buildSelectionsSnapshot(
   for (const [categorySlug, selectedSlug] of Object.entries(selections)) {
     if (categorySlug === 'system') continue
     const category = categoriesBySlug.get(categorySlug)
-    const label = system.optionRules[categorySlug]?.find((value) => value.slug === selectedSlug)?.label ?? selectedSlug
+    const label = findGlobalOptionLabel(configuration, categorySlug, selectedSlug) ?? selectedSlug
     options[categorySlug] = {
       categoryLabel: category?.label ?? categorySlug,
       slug: selectedSlug,
@@ -360,12 +370,19 @@ function selectTemplateVariant(
   documentKind: PsGeneratedDocumentKind,
   selections: Record<string, string>,
 ): PublishedPsTemplateVariant | null {
+  if (documentKind === 'ps3') {
+    const candidates = configuration.templateVariants.filter((variant) => variant.documentKind === 'ps3')
+    return candidates.find((variant) => variant.systemSlug === null && variant.variantKind === 'ps3')
+      ?? candidates.find((variant) => variant.variantKind === 'ps3')
+      ?? candidates[0]
+      ?? null
+  }
+
   const candidates = configuration.templateVariants.filter((variant) => (
     variant.systemSlug === systemSlug && variant.documentKind === documentKind
   ))
-  if (documentKind === 'ps3') return candidates.find((variant) => variant.variantKind === 'ps3') ?? candidates[0] ?? null
 
-  const preferredKind = selections.structure_type === 'pool-fence'
+  const preferredKind = isPoolStructure(selections.structure_type)
     ? 'pool_ps1'
     : 'standard_ps1'
 
@@ -375,18 +392,18 @@ function selectTemplateVariant(
     ?? null
 }
 
-function validateSelectedOptions(system: PublishedPsSystem, selections: Record<string, string>) {
+function validateSelectedOptions(configuration: PublishedPsConfiguration, selections: Record<string, string>) {
   for (const [categorySlug, optionSlug] of Object.entries(selections)) {
-    const allowedValues = system.optionRules[categorySlug]
+    const allowedValues = categorySlug === 'system'
+      ? configuration.systems.map((system) => ({ slug: system.slug, label: system.displayName }))
+      : configuration.optionCategories.find((category) => category.slug === categorySlug)?.values
     if (!allowedValues) continue
     if (!allowedValues.some((value) => value.slug === optionSlug)) {
-      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not allowed for ${system.displayName}.`, {
+      throw new PsGenerationError('selected_option_not_allowed', `Option "${humanizePsIdentifier(optionSlug)}" is not available for ${humanizePsIdentifier(categorySlug)}.`, {
         categorySlug,
         categoryLabel: humanizePsIdentifier(categorySlug),
         optionSlug,
         optionLabel: humanizePsIdentifier(optionSlug),
-        systemSlug: system.slug,
-        systemLabel: system.displayName,
       })
     }
   }
@@ -395,17 +412,20 @@ function validateSelectedOptions(system: PublishedPsSystem, selections: Record<s
 async function fillTemplatePdf(
   templateBytes: Buffer,
   template: PublishedPsTemplateVariant,
+  fieldMappings: PsResolvedFieldMapping[],
   context: GenerationContext,
+  flattenGeneratedPdf: boolean,
 ): Promise<Buffer> {
   const pdf = await PDFDocument.load(toUint8Array(templateBytes))
   const form = pdf.getForm()
 
-  for (const mapping of template.fieldMappings) {
+  for (const mapping of fieldMappings) {
     if (mapping.fieldType === 'text') {
       const textValue = resolveTextValue(mapping, context)
-      const field = findTextField(form, mapping)
-      if (!field) {
-        if (isOptionalBlankProjectField(mapping, textValue)) continue
+      const fields = findTextFields(form, mapping, fieldMappings)
+      if (fields.length === 0) {
+        if (isOptionalProjectField(mapping)) continue
+        if (mapping.legacyDefault) continue
 
         const fieldLabel = fieldLabelForMapping(mapping)
         throw new PsGenerationError('pdf_text_field_missing', `Template "${template.label}" is missing text field "${fieldLabel}".`, {
@@ -415,13 +435,18 @@ async function fillTemplatePdf(
           availableFields: availableTextFields(form),
         })
       }
-      field.setText(textValue)
+      for (const field of fields) {
+        if (shouldWrapTextField(mapping)) field.enableMultiline()
+        field.setText(textValue)
+      }
       continue
     }
 
     if (mapping.fieldType === 'checkbox') {
       const checkbox = findCheckBox(form, mapping)
       if (!checkbox) {
+        if (mapping.legacyDefault) continue
+
         const fieldLabel = fieldLabelForMapping(mapping)
         throw new PsGenerationError('pdf_checkbox_field_missing', `Template "${template.label}" is missing checkbox field "${fieldLabel}".`, {
           templateVariantId: template.id,
@@ -443,7 +468,68 @@ async function fillTemplatePdf(
     })
   }
 
+  if (flattenGeneratedPdf) form.flatten({ updateFieldAppearances: true })
+
   return Buffer.from(await pdf.save())
+}
+
+function fieldMappingsWithLegacyDefaults(
+  template: PublishedPsTemplateVariant,
+): PsResolvedFieldMapping[] {
+  if (template.documentKind !== 'ps1' && template.documentKind !== 'ps3') return template.fieldMappings
+
+  const discovered = discoveredTemplateFields(template.fieldDiscovery)
+  if (discovered.size === 0) return template.fieldMappings
+
+  const existing = new Set(template.fieldMappings.map(mappingSemanticKey))
+  const legacyMappings = template.documentKind === 'ps3'
+    ? legacyPs3FieldMappingsForDiscovery(template.fieldDiscovery)
+    : legacyPs1FieldMappingsForDiscovery(template.fieldDiscovery)
+  const defaults = legacyMappings
+    .filter((mapping) => !existing.has(mappingSemanticKey(mapping)))
+    .map((mapping) => ({
+      fieldName: mapping.fieldName,
+      fieldType: mapping.fieldType,
+      sourceType: mapping.sourceType,
+      sourceKey: mapping.sourceKey ?? null,
+      fixedValue: mapping.fixedValue ?? null,
+      checkboxValue: mapping.checkboxValue ?? null,
+      legacyDefault: true,
+    }))
+
+  return defaults.length > 0 ? [...template.fieldMappings, ...defaults] : template.fieldMappings
+}
+
+function discoveredTemplateFields(fieldDiscovery: unknown): Set<string> {
+  if (!fieldDiscovery || typeof fieldDiscovery !== 'object') return new Set()
+
+  const discovery = fieldDiscovery as { text?: unknown; checkbox?: unknown; fields?: unknown }
+  return new Set([
+    ...arrayOfStrings(discovery.text),
+    ...arrayOfStrings(discovery.checkbox),
+    ...arrayOfStrings(discovery.fields),
+  ])
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function mappingSemanticKey(mapping: {
+  fieldName: string
+  fieldType: 'text' | 'checkbox'
+  sourceType: 'project_value' | 'selected_option' | 'system_rule' | 'description_template' | 'date' | 'fixed_value'
+  sourceKey?: string | null
+  fixedValue?: string | null
+  checkboxValue?: boolean | null
+}) {
+  return [
+    mapping.fieldType,
+    mapping.sourceType,
+    mapping.sourceKey ?? '',
+    mapping.fixedValue ?? '',
+    mapping.checkboxValue === null || mapping.checkboxValue === undefined ? '' : String(mapping.checkboxValue),
+  ].join(':')
 }
 
 function findTextField(
@@ -459,6 +545,36 @@ function findTextField(
   }
 
   return findNormalizedTextField(form, candidateFieldNames(mapping))
+}
+
+function findTextFields(
+  form: PDFForm,
+  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
+  fieldMappings: PsResolvedFieldMapping[],
+): PDFTextField[] {
+  const firstField = findTextField(form, mapping)
+  if (!firstField) return []
+
+  const normalizedNames = new Set(candidateFieldNames(mapping).map(normalizeFieldName))
+  const matchedFamily = normalizedFieldFamily(firstField.getName())
+  const normalizedMappingFieldName = normalizeFieldName(mapping.fieldName)
+  const fieldsClaimedByOtherMappings = new Set(fieldMappings
+    .filter((candidate) => candidate !== mapping && candidate.fieldType === 'text')
+    .map((candidate) => normalizeFieldName(candidate.fieldName)))
+
+  return form.getFields().filter((field): field is PDFTextField => (
+    field instanceof PDFTextField
+    && normalizedNames.has(normalizeFieldName(field.getName()))
+    && normalizedFieldFamily(field.getName()) === matchedFamily
+    && (
+      normalizeFieldName(field.getName()) === normalizedMappingFieldName
+      || !fieldsClaimedByOtherMappings.has(normalizeFieldName(field.getName()))
+    )
+  ))
+}
+
+function normalizedFieldFamily(value: string): string {
+  return normalizeFieldName(value).replace(/\d+$/, '')
 }
 
 function findCheckBox(
@@ -511,18 +627,19 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
   const key = mapping.sourceKey ?? mapping.fieldName
 
   if (mapping.sourceType === 'project_value') {
-    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name']
-    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address']
-    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber']
-    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription']
+    if (key === 'clientName') return ['client_name', 'clientName', 'ClientName', 'Client Name', 'Name', 'Name2', 'Name02', 'Name-2']
+    if (key === 'jobAddress') return ['job_address', 'jobAddress', 'JobAddress', 'Job Address', 'Address', 'Address2', 'Address02', 'Address-2', 'Address-4']
+    if (key === 'bcNumber') return ['bc_number', 'bcNumber', 'BC Number', 'BCNumber', 'BC']
+    if (key === 'jobNumber') return ['job_number', 'jobNumber', 'Job Number', 'JobNumber']
+    if (key === 'lotDescription') return ['lot_description', 'lotDescription', 'Lot Description', 'LotDescription', 'LotDescription2', 'LotDescription02', 'Legal']
   }
 
   if (mapping.sourceType === 'description_template') {
-    return ['description', 'Description', 'pool_description', 'Pool Description']
+    return ['description', 'Description', 'Description2', 'Description02', 'Description3', 'pool_description', 'Pool Description']
   }
 
   if (mapping.sourceType === 'date') {
-    return ['completion_date', 'Completion Date', 'Date0', 'Date']
+    return ['completion_date', 'Completion Date', 'Date0', 'Date', 'Date1', 'Date01', 'Date-4', 'Date03']
   }
 
   if (mapping.sourceType === 'selected_option') {
@@ -531,7 +648,7 @@ function legacyWordPressAliases(mapping: PublishedPsTemplateVariant['fieldMappin
 
   if (mapping.sourceType === 'system_rule') {
     if (key === 'heightRules.default.height') return ['height', 'Height']
-    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'HeightAboveFix', 'Height Above Fix']
+    if (key === 'heightRules.default.heightAboveFix') return ['height_above_fix', 'height_above', 'HeightAboveFix', 'HeightAbove', 'Height Above Fix', 'Height Above Fixing']
   }
 
   return []
@@ -541,24 +658,26 @@ function selectedOptionAliases(sourceKey: string | null): string[] {
   switch (sourceKey) {
     case 'thickness':
       return ['thickness', 'Thickness']
+    case 'structure_type':
+      return ['structure_type', 'Structure', 'Structure2', 'Structure02', 'Structure Type', 'Description3']
     case 'structure_material.timber':
-      return ['structure_material_timber', 'TimberTB']
+      return ['structure_material_timber', 'TimberTB', 'Timber']
     case 'structure_material.concrete':
-      return ['structure_material_concrete', 'ConcreteTB']
+      return ['structure_material_concrete', 'ConcreteTB', 'Concrete']
     case 'structure_material.steel':
-      return ['structure_material_steel', 'SteelTB']
+      return ['structure_material_steel', 'SteelTB', 'Steel']
     case 'location.internal':
-      return ['location_internal', 'InternalTB']
+      return ['location_internal', 'InternalTB', 'Internal']
     case 'location.external':
-      return ['location_external', 'ExternalTB']
+      return ['location_external', 'ExternalTB', 'External']
     case 'structure_built.new':
-      return ['structure_built_new', 'NewTB']
+      return ['structure_built_new', 'NewTB', 'New']
     case 'structure_built.existing':
-      return ['structure_built_existing', 'ExistingTB']
+      return ['structure_built_existing', 'ExistingTB', 'Existing']
     case 'glass_type.toughened':
-      return ['glass_type_toughened', 'ToughenedTB']
+      return ['glass_type_toughened', 'ToughenedTB', 'Toughened']
     case 'glass_type.laminated':
-      return ['glass_type_laminated', 'LaminatedTB']
+      return ['glass_type_laminated', 'LaminatedTB', 'Laminated']
     default:
       return []
   }
@@ -586,13 +705,14 @@ function normalizeFieldName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function isOptionalBlankProjectField(
-  mapping: PublishedPsTemplateVariant['fieldMappings'][number],
-  textValue: string,
-): boolean {
+function isOptionalProjectField(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): boolean {
   return mapping.sourceType === 'project_value'
     && (mapping.sourceKey === 'bcNumber' || mapping.sourceKey === 'lotDescription')
-    && textValue.trim().length === 0
+}
+
+function shouldWrapTextField(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): boolean {
+  return mapping.sourceType === 'description_template'
+    || (mapping.sourceType === 'project_value' && mapping.sourceKey === 'lotDescription')
 }
 
 function fieldLabelForMapping(mapping: PublishedPsTemplateVariant['fieldMappings'][number]): string {
@@ -609,7 +729,7 @@ function resolveTextValue(
     case 'selected_option':
       return selectedOptionLabel(context, mapping.sourceKey)
     case 'system_rule':
-      return stringify(readSystemRule(context.system, mapping.sourceKey))
+      return stringify(readSystemRule(context, mapping.sourceKey))
     case 'description_template':
       return resolveDescriptionTemplate(context, mapping.sourceKey)
     case 'date':
@@ -655,7 +775,7 @@ function tokenValue(context: GenerationContext, token: string): string {
 
   const selectedSlug = context.input.selections[token]
   if (!selectedSlug) return ''
-  return context.system.optionRules[token]?.find((value) => value.slug === selectedSlug)?.label ?? selectedSlug
+  return findGlobalOptionLabel(context.configuration, token, selectedSlug) ?? selectedSlug
 }
 
 function selectedOptionLabel(context: GenerationContext, sourceKey: string | null): string {
@@ -663,21 +783,53 @@ function selectedOptionLabel(context: GenerationContext, sourceKey: string | nul
   const [categorySlug, expectedSlug] = sourceKey.split('.')
   const selectedSlug = context.input.selections[categorySlug]
   const optionSlug = expectedSlug ?? selectedSlug
-  return context.system.optionRules[categorySlug]?.find((value) => value.slug === optionSlug)?.label ?? optionSlug ?? ''
+  return findGlobalOptionLabel(context.configuration, categorySlug, optionSlug) ?? optionSlug ?? ''
+}
+
+function findGlobalOptionLabel(
+  configuration: PublishedPsConfiguration,
+  categorySlug: string,
+  optionSlug: string | undefined,
+): string | null {
+  if (!optionSlug) return null
+  if (categorySlug === 'system') {
+    return configuration.systems.find((system) => system.slug === optionSlug)?.displayName ?? null
+  }
+  return configuration.optionCategories
+    .find((category) => category.slug === categorySlug)
+    ?.values.find((value) => value.slug === optionSlug)
+    ?.label ?? null
 }
 
 function selectedOptionMatches(selections: Record<string, string>, sourceKey: string | null): boolean {
   if (!sourceKey) return false
   const [categorySlug, expectedSlug] = sourceKey.split('.')
+  if (categorySlug === 'location' && selections.location === 'both') {
+    return expectedSlug === 'external' || expectedSlug === 'internal'
+  }
   return selections[categorySlug] === expectedSlug
 }
 
-function readSystemRule(system: PublishedPsSystem, sourceKey: string | null): unknown {
+function readSystemRule(context: GenerationContext, sourceKey: string | null): unknown {
   if (!sourceKey) return null
+  if (sourceKey.startsWith('heightRules.default.') && isPoolStructure(context.input.selections.structure_type)) {
+    const poolSourceKey = sourceKey.replace('heightRules.default.', 'heightRules.pool.')
+    const poolValue = readSystemRuleValue(context.system, poolSourceKey)
+    if (poolValue !== null && poolValue !== undefined && poolValue !== '') return poolValue
+  }
+
+  return readSystemRuleValue(context.system, sourceKey)
+}
+
+function readSystemRuleValue(system: PublishedPsSystem, sourceKey: string): unknown {
   const source = { heightRules: system.heightRules, metadata: system.metadata }
   return sourceKey.split('.').reduce<unknown>((value, key) => (
     value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : null
   ), source)
+}
+
+function isPoolStructure(structureType: string | null | undefined): boolean {
+  return structureType === 'pool' || structureType === 'pool-fence'
 }
 
 function buildFilename(input: GenerateProducerStatementPackageInput, documentKind: PsGeneratedDocumentKind): string {

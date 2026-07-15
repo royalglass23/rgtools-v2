@@ -1,8 +1,9 @@
 'use client'
 
-import { FormEvent, useMemo, useState, useTransition } from 'react'
+import { FormEvent, useRef, useState, useTransition } from 'react'
 
 import { PlacesAutocomplete } from '@/modules/lead-intake/PlacesAutocomplete'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 import type { PublishedPsConfiguration } from './configuration'
 import type { PsGenerationMode } from './generation'
@@ -23,6 +24,24 @@ interface GeneratedOutput {
   base64: string
 }
 
+type LotDescriptionLookupResult =
+  | {
+    ok: true
+    found: true
+    lotDescription: string
+    confidence: 'high' | 'needs_confirmation'
+    warning?: string
+  }
+  | {
+    ok: true
+    found: false
+    message?: string
+  }
+  | {
+    ok: false
+    error?: string
+  }
+
 const DEFAULT_SELECTIONS: Record<string, string> = {
   system: 'double-disc',
   structure_material: 'timber',
@@ -41,6 +60,7 @@ const MODE_OPTIONS: Array<{ value: PsGenerationMode; label: string; body: string
 ]
 
 export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [mode, setMode] = useState<PsGenerationMode>('ps1_only')
   const [projectDetails, setProjectDetails] = useState({
     jobNumber: '',
@@ -50,13 +70,10 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
     lotDescription: '',
   })
   const [selections, setSelections] = useState<Record<string, string>>(() => defaultsForConfiguration(configuration))
-  const [outputs, setOutputs] = useState<GeneratedOutput[]>([])
   const [message, setMessage] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [isLookingUpLot, setIsLookingUpLot] = useState(false)
   const [isPending, startTransition] = useTransition()
-
-  const selectedSystem = useMemo(() => (
-    configuration.systems.find((system) => system.slug === selections.system) ?? configuration.systems[0]
-  ), [configuration.systems, selections.system])
 
   function setProjectField(field: keyof typeof projectDetails, value: string) {
     setProjectDetails((current) => ({ ...current, [field]: value }))
@@ -97,28 +114,81 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
     })
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setMessage(null)
-    setOutputs([])
+  }
 
-    const response = await fetch('/api/ps-generator/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        mode,
-        projectDetails,
-        selections,
-      }),
-    })
-    const body = await response.json()
-    if (!response.ok || body.ok === false) {
-      setMessage(body.error?.message ?? body.error ?? 'Unable to generate Producer Statement PDFs.')
+  async function handleLookupLotDescription() {
+    const address = projectDetails.jobAddress.trim()
+    if (!address) {
+      setMessage('Enter a job address before looking up the lot description.')
       return
     }
 
-    setOutputs(body.outputs ?? [])
-    setMessage(`Generated ${body.outputs?.length ?? 0} document${body.outputs?.length === 1 ? '' : 's'}.`)
+    setMessage(null)
+    setIsLookingUpLot(true)
+
+    try {
+      const response = await fetch('/api/ps-generator/lot-description', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address }),
+      })
+      const body = await response.json() as LotDescriptionLookupResult
+      if (body.ok === false) {
+        setMessage(body.error ?? 'Unable to look up lot description from LINZ.')
+        return
+      }
+      if (!response.ok) {
+        setMessage('Unable to look up lot description from LINZ.')
+        return
+      }
+      if (!body.found) {
+        setMessage(body.message ?? 'No lot description found in LINZ. You can keep entering it manually.')
+        return
+      }
+
+      setProjectField('lotDescription', body.lotDescription)
+      setMessage(body.confidence === 'needs_confirmation'
+        ? body.warning ?? 'LINZ found a lot description, but review it before generating.'
+        : 'Loaded lot description from LINZ.')
+    } catch {
+      setMessage('Unable to look up lot description from LINZ.')
+    } finally {
+      setIsLookingUpLot(false)
+    }
+  }
+
+  async function handleGenerate() {
+    if (!formRef.current?.reportValidity()) return
+
+    setMessage(null)
+    setIsGenerating(true)
+
+    try {
+      const response = await fetch('/api/ps-generator/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          projectDetails,
+          selections,
+        }),
+      })
+      const body = await response.json()
+      if (!response.ok || body.ok === false) {
+        setMessage(body.error?.message ?? body.error ?? 'Unable to generate Producer Statement PDFs.')
+        return
+      }
+
+      const generatedOutputs = Array.isArray(body.outputs) ? body.outputs as GeneratedOutput[] : []
+      for (const output of generatedOutputs) downloadGeneratedOutput(output)
+      setMessage(`Generated and downloaded ${generatedOutputs.length} document${generatedOutputs.length === 1 ? '' : 's'}.`)
+    } catch {
+      setMessage('Unable to generate Producer Statement PDFs.')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   if (!configuration.versionLabel || configuration.systems.length === 0) {
@@ -130,14 +200,11 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-950">Generate PS</h1>
           <p className="mt-1 text-sm text-gray-500">Create PS1 and PS3 producer statement packages from the published configuration.</p>
-        </div>
-        <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
-          Published config: <span className="font-medium text-gray-950">{configuration.versionLabel}</span>
         </div>
       </div>
 
@@ -191,7 +258,25 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
             updateOnInput
           />
           <TextInput label="BC number" value={projectDetails.bcNumber} onChange={(value) => setProjectField('bcNumber', value)} />
-          <TextInput label="Lot description" value={projectDetails.lotDescription} onChange={(value) => setProjectField('lotDescription', value)} />
+          <label className="text-sm font-medium text-gray-700">
+            <span className="flex items-center gap-2">Lot description</span>
+            <div className="mt-1 flex gap-2">
+              <input
+                aria-label="Lot description"
+                value={projectDetails.lotDescription}
+                onChange={(event) => setProjectField('lotDescription', event.target.value)}
+                className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleLookupLotDescription}
+                disabled={isLookingUpLot || !projectDetails.jobAddress.trim()}
+                className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isLookingUpLot ? 'Finding...' : 'Find lot'}
+              </button>
+            </div>
+          </label>
         </div>
       </section>
 
@@ -211,7 +296,7 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
                 key={category.slug}
                 label={category.label}
                 value={selections[category.slug] ?? ''}
-                options={selectedSystem?.optionRules[category.slug] ?? []}
+                options={category.values}
                 onChange={(value) => setSelection(category.slug, value)}
               />
             ))}
@@ -219,36 +304,34 @@ export function GeneratePsForm({ configuration, lookupJob }: GeneratePsFormProps
       </section>
 
       {message ? (
-        <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">
+        <DismissibleNotice tone="info" noticeKey={message}>
           {message}
-        </div>
-      ) : null}
-
-      {outputs.length > 0 ? (
-        <section className="rounded border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-950">Generated documents</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {outputs.map((output) => (
-              <a
-                key={`${output.documentKind}:${output.filename}`}
-                href={`data:${output.contentType};base64,${output.base64}`}
-                download={output.filename}
-                className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white"
-              >
-                Download {output.documentKind.toUpperCase()}
-              </a>
-            ))}
-          </div>
-        </section>
+        </DismissibleNotice>
       ) : null}
 
       <div className="flex justify-end">
-        <button type="submit" className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white">
-          Generate PS
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {isGenerating ? 'Generating...' : 'Generate PS'}
         </button>
       </div>
     </form>
   )
+}
+
+function downloadGeneratedOutput(output: GeneratedOutput) {
+  const href = `data:${output.contentType};base64,${output.base64}`
+  const link = document.createElement('a')
+  link.href = href
+  link.download = output.filename
+  link.hidden = true
+  document.body.append(link)
+  link.click()
+  link.remove()
 }
 
 function TextInput({
@@ -322,7 +405,7 @@ function normalizeSelectionsForSystem(
   for (const category of configuration.optionCategories) {
     const values = category.slug === 'system'
       ? configuration.systems.map((candidate) => ({ slug: candidate.slug }))
-      : system.optionRules[category.slug] ?? []
+      : category.values
     if (!values.some((value) => value.slug === next[category.slug])) {
       next[category.slug] = values[0]?.slug ?? ''
     }

@@ -50,11 +50,10 @@ export function PsConfigurationOptionsEditor({ categories, isDraft }: PsConfigur
   return (
     <>
       {orderedCategories.map((category) => {
-        if (category.values.length === 0) return null
         const showTemplateColumn = category.slug === 'system'
 
         return (
-          <details key={category.id} className="rounded border border-gray-200 bg-white shadow-sm">
+          <details key={category.id} data-testid={`option-category-${category.slug}`} className="rounded border border-gray-200 bg-white shadow-sm">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-gray-100 px-4 py-3">
               <span>
                 <span className="block text-base font-semibold text-gray-950">{category.label}</span>
@@ -126,6 +125,28 @@ export function PsConfigurationOptionsEditor({ categories, isDraft }: PsConfigur
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <input type="hidden" name={`newOptionSortOrder:${category.id}`} value={(category.values.length + 1) * 10} />
+                <label className="text-sm font-medium text-gray-700">
+                  New {category.label} option
+                  <input
+                    name={`newOptionLabel:${category.id}`}
+                    disabled={!isDraft}
+                    className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 disabled:bg-gray-100 disabled:text-gray-500"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  name="newOptionCategoryId"
+                  value={category.id}
+                  disabled={!isDraft}
+                  className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  Add {category.label} option
+                </button>
+              </div>
             </div>
           </details>
         )

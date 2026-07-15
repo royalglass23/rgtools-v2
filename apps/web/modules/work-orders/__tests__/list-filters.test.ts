@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseWorkOrderListFilters } from '../list-filters'
 
 describe('parseWorkOrderListFilters', () => {
+  it('pages the grouped dashboard by five parent Work Orders by default', () => {
+    expect(parseWorkOrderListFilters({}).size).toBe(5)
+    expect(parseWorkOrderListFilters({ size: '5' }).size).toBe(5)
+    expect(parseWorkOrderListFilters({ size: '50' }).size).toBe(50)
+    expect(parseWorkOrderListFilters({ size: '100' }).size).toBe(5)
+  })
+
   it('supports prefixed dashboard params and admin defaults', () => {
     expect(parseWorkOrderListFilters(
       {
@@ -35,5 +42,11 @@ describe('parseWorkOrderListFilters', () => {
     expect(parseWorkOrderListFilters({ sort: 'risk' }).sort).toBe('risk_desc')
     expect(parseWorkOrderListFilters({ sort: 'install_date' }).sort).toBe('install_date_asc')
     expect(parseWorkOrderListFilters({ sort: 'job_number' }).sort).toBe('job_number_asc')
+  })
+
+  it('shows removed items only when the dashboard option is explicitly enabled', () => {
+    expect(parseWorkOrderListFilters({}).showRemovedItems).toBe(false)
+    expect(parseWorkOrderListFilters({ showRemovedItems: '1' }).showRemovedItems).toBe(true)
+    expect(parseWorkOrderListFilters({ showRemovedItems: 'false' }).showRemovedItems).toBe(false)
   })
 })

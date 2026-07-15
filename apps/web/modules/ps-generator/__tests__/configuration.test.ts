@@ -4,8 +4,11 @@ import {
   buildPublishedPsConfigurationReadModel,
   buildPsConfigurationSystemRows,
   createPsGeneratorSeedRows,
+  formatPsConfigurationVersionLabel,
+  nextPsConfigurationDraftLabel,
+  normalizePsSystemHeightRules,
 } from '../configuration'
-import { legacyPs1FieldMappingsForDiscovery } from '../seed-config'
+import { legacyPs1FieldMappingsForDiscovery, legacyPs3FieldMappingsForDiscovery } from '../seed-config'
 import {
   createConfigurationDraft,
   createDraftSystemRow,
@@ -37,6 +40,40 @@ describe('published PS Generator configuration', () => {
     ])
   })
 
+  it('maps numbered PDF field aliases from newer templates', () => {
+    expect(legacyPs1FieldMappingsForDiscovery({
+      text: ['Name-2', 'Address02', 'Date01', 'Description02', 'LotDescription02', 'Structure02', 'HeightAbove'],
+      checkbox: [],
+    })).toEqual([
+      expect.objectContaining({ fieldName: 'Name-2', sourceType: 'project_value', sourceKey: 'clientName', sortOrder: 10 }),
+      expect.objectContaining({ fieldName: 'Address02', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 }),
+      expect.objectContaining({ fieldName: 'Description02', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 30 }),
+      expect.objectContaining({ fieldName: 'Date01', sourceType: 'date', sourceKey: 'today', sortOrder: 40 }),
+      expect.objectContaining({ fieldName: 'HeightAbove', sourceType: 'system_rule', sourceKey: 'heightRules.default.heightAboveFix', sortOrder: 50 }),
+      expect.objectContaining({ fieldName: 'LotDescription02', sourceType: 'project_value', sourceKey: 'lotDescription', sortOrder: 60 }),
+      expect.objectContaining({ fieldName: 'Structure02', sourceType: 'selected_option', sourceKey: 'structure_type', sortOrder: 70 }),
+    ])
+  })
+
+  it('maps legacy WordPress PS3 PDF fields from discovery output', () => {
+    expect(legacyPs3FieldMappingsForDiscovery({
+      text: ['BC', 'Address02', 'Description3', 'Description2', 'Date03', 'Legal'],
+      checkbox: ['B1TB', 'B2TB', 'F4TB', 'GlassTB', 'PS1TB'],
+    })).toEqual([
+      expect.objectContaining({ fieldName: 'BC', sourceType: 'project_value', sourceKey: 'bcNumber', sortOrder: 10 }),
+      expect.objectContaining({ fieldName: 'Address02', sourceType: 'project_value', sourceKey: 'jobAddress', sortOrder: 20 }),
+      expect.objectContaining({ fieldName: 'Description3', sourceType: 'selected_option', sourceKey: 'structure_type', sortOrder: 30 }),
+      expect.objectContaining({ fieldName: 'Description2', sourceType: 'description_template', sourceKey: 'standard-balustrade', sortOrder: 40 }),
+      expect.objectContaining({ fieldName: 'Date03', sourceType: 'date', sourceKey: 'today', sortOrder: 50 }),
+      expect.objectContaining({ fieldName: 'Legal', sourceType: 'project_value', sourceKey: 'lotDescription', sortOrder: 60 }),
+      expect.objectContaining({ fieldName: 'B1TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 70 }),
+      expect.objectContaining({ fieldName: 'B2TB', sourceType: 'fixed_value', fixedValue: 'false', checkboxValue: false, sortOrder: 80 }),
+      expect.objectContaining({ fieldName: 'F4TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 90 }),
+      expect.objectContaining({ fieldName: 'GlassTB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 100 }),
+      expect.objectContaining({ fieldName: 'PS1TB', sourceType: 'fixed_value', fixedValue: 'true', checkboxValue: true, sortOrder: 110 }),
+    ])
+  })
+
   it('exposes the seeded WordPress configuration through the application read model', () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
 
@@ -53,6 +90,8 @@ describe('published PS Generator configuration', () => {
       { slug: 'concrete', label: 'Concrete' },
       { slug: 'steel', label: 'Steel' },
     ])
+    expect(configuration.optionCategories.find((category) => category.slug === 'structure_type')?.values).toHaveLength(7)
+    expect(configuration.optionCategories.find((category) => category.slug === 'location')?.values).toHaveLength(3)
     expect(configuration.systems.find((system) => system.slug === 'double-disc')?.optionRules).toMatchObject({
       system: [{ slug: 'double-disc', label: 'Double Disc' }],
       structure_material: [
@@ -117,6 +156,86 @@ describe('published PS Generator configuration', () => {
     ])
   })
 
+  it('keeps repeated draft dates compact for display and future draft labels', () => {
+    const longLabel = 'wordpress-plugin-v1-draft-2026-07-01-draft-2026-07-01-draft-2026-07-02-draft-2026-07-13-draft-2026-07-13'
+
+    expect(formatPsConfigurationVersionLabel(longLabel)).toBe('wordpress-plugin-v1-draft-2026-07-13')
+    expect(nextPsConfigurationDraftLabel(longLabel, new Date('2026-07-14T00:00:00.000Z'))).toBe('wordpress-plugin-v1-draft-2026-07-14')
+    expect(nextPsConfigurationDraftLabel('wordpress-plugin-v1-draft-2026-07-14', new Date('2026-07-14T00:00:00.000Z'), [
+      'wordpress-plugin-v1-draft-2026-07-14',
+    ])).toBe('wordpress-plugin-v1-draft-2026-07-14-2')
+  })
+
+  it('keeps Structure type and Location aligned with form defaults when persisted rows are stale', () => {
+    const rows = createPsGeneratorSeedRows()
+    const categoryIdBySlug = new Map(rows.optionCategories.map((category) => [category.slug, category.id]))
+    rows.optionValues = rows.optionValues.filter((value) => {
+      if (value.categoryId === categoryIdBySlug.get('structure_type')) {
+        return ['deck', 'balcony', 'pool', 'stair'].includes(value.slug)
+      }
+      if (value.categoryId === categoryIdBySlug.get('location')) {
+        return ['external', 'internal'].includes(value.slug)
+      }
+      return true
+    })
+
+    const configuration = buildPublishedPsConfigurationReadModel(rows)
+
+    expect(configuration.optionCategories.find((category) => category.slug === 'structure_type')?.values).toEqual([
+      { slug: 'deck', label: 'Deck' },
+      { slug: 'balcony', label: 'Balcony' },
+      { slug: 'pool', label: 'Pool Area' },
+      { slug: 'stair', label: 'Stair Area' },
+      { slug: 'landing', label: 'Landing' },
+      { slug: 'stair-and-landing', label: 'Stair and Landing' },
+      { slug: 'stair-and-balcony', label: 'Stair and Balcony Area' },
+    ])
+    expect(configuration.optionCategories.find((category) => category.slug === 'location')?.values).toEqual([
+      { slug: 'external', label: 'External' },
+      { slug: 'internal', label: 'Internal' },
+      { slug: 'both', label: 'External and Internal' },
+    ])
+  })
+
+  it('prefills floor and fixing heights from legacy or empty system height rules', () => {
+    expect(normalizePsSystemHeightRules({ maxHeightMm: 1000 }, { slug: 'double-disc', displayName: 'Double Disc' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    })
+    expect(normalizePsSystemHeightRules({ maxHeightMm: 1200 }, { slug: 'frameless-spigot', displayName: 'Hidden Face' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+    expect(normalizePsSystemHeightRules({}, { slug: 'jh-clamp', displayName: 'Jh Clamp' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+    expect(normalizePsSystemHeightRules({}, { slug: 'lugano', displayName: 'Lugano' })).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+  })
+
+  it('publishes normalized height rules when persisted systems still use old shapes', () => {
+    const rows = createPsGeneratorSeedRows()
+    rows.systems = rows.systems.map((system) => {
+      if (system.slug === 'double-disc') return { ...system, heightRules: { maxHeightMm: 1000 } }
+      if (system.slug === 'frameless-spigot') return { ...system, displayName: 'Hidden Face', heightRules: {} }
+      return system
+    })
+
+    const configuration = buildPublishedPsConfigurationReadModel(rows)
+
+    expect(configuration.systems.find((system) => system.slug === 'double-disc')?.heightRules).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    })
+    expect(configuration.systems.find((system) => system.slug === 'frameless-spigot')?.heightRules).toEqual({
+      default: { height: '1.00', heightAboveFix: '1.00' },
+      pool: { height: '1.20', heightAboveFix: '1.20' },
+    })
+  })
+
   it('does not treat archived systems or disabled option values as staff-facing choices', () => {
     const configuration = buildPublishedPsConfigurationReadModel(createPsGeneratorSeedRows())
 
@@ -139,6 +258,10 @@ describe('published PS Generator configuration', () => {
         slug: 'double-disc',
         displayName: 'Double Disc',
         isActive: true,
+        heightRules: {
+          default: { height: '1.00', heightAboveFix: '1.05' },
+          pool: { height: '1.20', heightAboveFix: '1.25' },
+        },
         standardPs1Template: {
           id: 'seed-template:double-disc-standard-ps1',
           label: 'Double Disc PS1',
@@ -152,6 +275,10 @@ describe('published PS Generator configuration', () => {
         slug: 'frameless-spigot',
         displayName: 'Frameless Spigot',
         isActive: true,
+        heightRules: {
+          default: { height: '1.00', heightAboveFix: '1.00' },
+          pool: { height: '1.20', heightAboveFix: '1.20' },
+        },
         standardPs1Template: null,
         poolPs1Template: {
           id: 'seed-template:frameless-spigot-pool-ps1',
@@ -331,6 +458,9 @@ describe('published PS Generator configuration', () => {
         originalFilename: 'Face Fixed.pdf',
         fieldDiscovery: { fields: ['client_name'] },
       },
+      heightRules: {
+        default: { height: '1.10', heightAboveFix: '1.15' },
+      },
       poolPs1Template: {
         r2ObjectKey: 'drafts/face-fixed/pool.pdf',
         originalFilename: 'Face Fixed Pool.pdf',
@@ -345,6 +475,9 @@ describe('published PS Generator configuration', () => {
     expect(system).toMatchObject({
       slug: 'face-fixed',
       displayName: 'Face Fixed',
+      heightRules: {
+        default: { height: '1.10', heightAboveFix: '1.15' },
+      },
       optionRules: expect.objectContaining({
         system: [{ slug: 'face-fixed', label: 'Face Fixed' }],
         structure_material: [],

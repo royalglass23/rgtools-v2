@@ -62,13 +62,17 @@ export async function getRetainedGeneratedPdfDownload(
 
 export function buildPsGenerationHistory(
   records: PsHistoryGenerationRecord[],
-  filters: { jobNumber?: string | null; now?: Date } = {},
+  filters: { jobNumber?: string | null; search?: string | null; now?: Date } = {},
 ): PsHistoryListItem[] {
-  const normalizedJobNumber = normalizeText(filters.jobNumber)?.toUpperCase()
+  const normalizedSearch = normalizeText(filters.search ?? filters.jobNumber)?.toUpperCase()
   const now = filters.now ?? new Date()
 
   return records
-    .filter((record) => !normalizedJobNumber || record.jobNumber?.toUpperCase() === normalizedJobNumber)
+    .filter((record) => !normalizedSearch || [
+      record.jobNumber,
+      record.jobAddress,
+      record.clientName,
+    ].some((value) => value?.toUpperCase().includes(normalizedSearch)))
     .toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((record) => ({
       id: record.id,

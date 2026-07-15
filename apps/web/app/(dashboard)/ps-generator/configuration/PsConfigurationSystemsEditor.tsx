@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 import { type FormEvent, useState } from 'react'
 
 export type PsConfigurationSystemRow = {
@@ -8,6 +9,16 @@ export type PsConfigurationSystemRow = {
   slug: string
   displayName: string
   isActive: boolean
+  heightRules: {
+    default: {
+      height: string
+      heightAboveFix: string
+    }
+    pool: {
+      height: string
+      heightAboveFix: string
+    }
+  }
   standardPs1Template: {
     id: string
     label: string
@@ -65,6 +76,8 @@ export function PsConfigurationSystemsEditor({
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Height above floor</th>
+              <th className="px-4 py-3">Height above fixing</th>
               <th className="px-4 py-3">Template</th>
               <th className="px-4 py-3">Pool template</th>
               <th className="w-28 px-4 py-3">Active</th>
@@ -88,6 +101,8 @@ export function PsConfigurationSystemsEditor({
               ) : (
                 <tr key={system.id} className="bg-white">
                   <td className="px-4 py-3 font-medium text-gray-950">{system.displayName}</td>
+                  <td className="px-4 py-3 text-gray-700">{heightText(system.heightRules.default.height)}</td>
+                  <td className="px-4 py-3 text-gray-700">{heightText(system.heightRules.default.heightAboveFix)}</td>
                   <td className="px-4 py-3 text-gray-700">{templateText(system.standardPs1Template)}</td>
                   <td className="px-4 py-3 text-gray-700">{templateText(system.poolPs1Template)}</td>
                   <td className="px-4 py-3 text-gray-700">{system.isActive ? 'Yes' : 'No'}</td>
@@ -138,7 +153,7 @@ function NewSystemRow({
 
   return (
     <tr className="bg-sky-50 align-top">
-      <td colSpan={5} className="px-4 py-3">
+      <td colSpan={7} className="px-4 py-3">
         <form
           onSubmit={(event) => void submitSystemForm({
             event,
@@ -149,13 +164,15 @@ function NewSystemRow({
             setError,
             onSubmitted,
           })}
-          className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end"
+          className="grid gap-3 md:grid-cols-[1.2fr_0.8fr_0.8fr_1fr_1fr_auto_auto] md:items-end"
         >
           <input type="hidden" name="configVersionId" value={configVersionId} />
           <label className="text-sm font-medium text-gray-700">
             Name
             <input name="displayName" required disabled={saving} className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
           </label>
+          <HeightInput name="defaultHeight" label="Height above floor" disabled={saving} />
+          <HeightInput name="defaultHeightAboveFix" label="Height above fixing" disabled={saving} />
           <label className="text-sm font-medium text-gray-700">
             Template
             <input name="standardPs1Template" type="file" accept="application/pdf,.pdf" required disabled={saving} className="mt-1 block w-full text-sm text-gray-700" />
@@ -172,7 +189,11 @@ function NewSystemRow({
             <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
             <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
-          {error ? <p className="text-sm font-medium text-red-700 md:col-span-5">{error}</p> : null}
+          {error ? (
+            <div className="md:col-span-7">
+              <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>
+            </div>
+          ) : null}
         </form>
       </td>
     </tr>
@@ -197,7 +218,7 @@ function EditableSystemRow({
 
   return (
     <tr className="bg-sky-50 align-top">
-      <td colSpan={5} className="px-4 py-3">
+      <td colSpan={7} className="px-4 py-3">
         <form
           onSubmit={(event) => void submitSystemForm({
             event,
@@ -208,7 +229,7 @@ function EditableSystemRow({
             setError,
             onSubmitted,
           })}
-          className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto_auto] md:items-end"
+          className="grid gap-3 md:grid-cols-[1.2fr_0.8fr_0.8fr_1fr_1fr_auto_auto] md:items-end"
         >
           <input type="hidden" name="configVersionId" value={configVersionId} />
           <input type="hidden" name="systemId" value={system.id} />
@@ -216,6 +237,8 @@ function EditableSystemRow({
             Name
             <input name="displayName" required defaultValue={system.displayName} disabled={saving} className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950" />
           </label>
+          <HeightInput name="defaultHeight" label="Height above floor" defaultValue={system.heightRules.default.height} disabled={saving} />
+          <HeightInput name="defaultHeightAboveFix" label="Height above fixing" defaultValue={system.heightRules.default.heightAboveFix} disabled={saving} />
           <label className="text-sm font-medium text-gray-700">
             Template
             <span className="mt-1 block text-xs font-normal text-gray-500">{templateText(system.standardPs1Template)}</span>
@@ -234,7 +257,11 @@ function EditableSystemRow({
             <button type="submit" disabled={saving} className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{saving ? 'Saving' : 'Save'}</button>
             <button type="button" disabled={saving} onClick={onCancel} className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-100">Cancel</button>
           </span>
-          {error ? <p className="text-sm font-medium text-red-700 md:col-span-5">{error}</p> : null}
+          {error ? (
+            <div className="md:col-span-7">
+              <DismissibleNotice tone="error" noticeKey={error}>{error}</DismissibleNotice>
+            </div>
+          ) : null}
         </form>
       </td>
     </tr>
@@ -346,4 +373,35 @@ function slugify(value: string) {
 
 function templateText(template: PsConfigurationSystemRow['standardPs1Template']) {
   return template?.originalFilename ?? template?.label ?? 'Not uploaded'
+}
+
+function heightText(value: string) {
+  return value || 'Not set'
+}
+
+function HeightInput({
+  name,
+  label,
+  defaultValue = '',
+  disabled,
+}: {
+  name: string
+  label: string
+  defaultValue?: string
+  disabled: boolean
+}) {
+  return (
+    <label className="text-sm font-medium text-gray-700">
+      {label}
+      <input
+        name={name}
+        aria-label={label}
+        defaultValue={defaultValue}
+        required
+        disabled={disabled}
+        inputMode="decimal"
+        className="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950"
+      />
+    </label>
+  )
 }

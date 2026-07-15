@@ -8,6 +8,7 @@ import { submitLeadIntake, computeLeadDistance, type LeadIntakeInput, type LeadI
 import { PROJECT_TYPES, SOURCES } from './display-labels'
 import { PlacesAutocomplete } from './PlacesAutocomplete'
 import { ScorePanel } from './ScorePanel'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 const initialState: LeadIntakeInput = {
   editReason: '',
@@ -112,12 +113,12 @@ export function LeadIntakeForm({
 
       <div className="space-y-5 rounded border border-gray-200 bg-white p-5 shadow-sm">
         {result && 'error' in result && (
-          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <DismissibleNotice tone="error" noticeKey={result.error}>
             {result.error}
-          </div>
+          </DismissibleNotice>
         )}
         {result && 'success' in result && (
-          <div className="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <DismissibleNotice tone="success" noticeKey={`${result.leadId}:${result.score}`}>
             <div className="font-medium">Tier {result.tier} · {result.score} points</div>
             <div className="mt-1">{result.reason}</div>
             {result.flagNote && (
@@ -131,7 +132,7 @@ export function LeadIntakeForm({
             <div className="mt-1 text-xs text-green-700">
               ServiceM8 {result.servicem8Sync.ok ? 'sent to inbox' : `queued for retry: ${result.servicem8Sync.error}`}
             </div>
-          </div>
+          </DismissibleNotice>
         )}
 
         <div className="grid gap-4 md:grid-cols-2">

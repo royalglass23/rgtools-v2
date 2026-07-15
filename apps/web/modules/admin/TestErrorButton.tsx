@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createTestError } from './actions'
+import { DismissibleNotice } from '@/modules/ui/DismissibleNotice'
 
 export function TestErrorButton() {
   const [isPending, startTransition] = useTransition()
@@ -31,7 +32,11 @@ export function TestErrorButton() {
       >
         {isPending ? 'Creating...' : 'Create Test Error'}
       </button>
-      {message && <span className="text-xs text-gray-500 font-mono">{message}</span>}
+      {message && (
+        <DismissibleNotice tone={message.startsWith('Created') ? 'success' : 'error'} noticeKey={message}>
+          <span className="font-mono text-xs">{message}</span>
+        </DismissibleNotice>
+      )}
     </div>
   )
 }

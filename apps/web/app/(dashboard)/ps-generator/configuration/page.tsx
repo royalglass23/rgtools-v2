@@ -9,15 +9,22 @@ import {
   psSystems,
   psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
+import { formatPsConfigurationVersionLabel, normalizePsSystemHeightRules } from '@/modules/ps-generator/configuration'
 import {
   createPsConfigurationSystemAction,
   createPsConfigurationDraftAction,
   publishPsConfigurationDraftAction,
+  updatePsConfigurationGlobalTemplateAction,
   updatePsConfigurationSystemAction,
   updatePsConfigurationOptionsAction,
 } from './actions'
+import { PsConfigurationGlobalTemplatesEditor } from './PsConfigurationGlobalTemplatesEditor'
 import { PsConfigurationOptionsEditor } from './PsConfigurationOptionsEditor'
 import { PsConfigurationSystemsEditor, type PsConfigurationSystemRow } from './PsConfigurationSystemsEditor'
+import {
+  PS_CONFIGURATION_OPTIONS_FORM_ID,
+  PsConfigurationVersionActions,
+} from './PsConfigurationVersionActions'
 
 const visibleOptionCategorySlugs = new Set([
   'system',
@@ -59,6 +66,8 @@ export default async function PsConfigurationPage() {
 
   const version = draftVersion ?? publishedVersion
   const isDraft = version?.state === 'draft'
+  const activeEditorLabel = formatPsConfigurationVersionLabel(version?.versionLabel)
+  const publishedVersionLabel = formatPsConfigurationVersionLabel(publishedVersion?.versionLabel)
 
   const categories = version ? await db
     .select({
@@ -96,6 +105,7 @@ export default async function PsConfigurationPage() {
       id: psSystems.id,
       slug: psSystems.slug,
       displayName: psSystems.displayName,
+      heightRules: psSystems.heightRules,
       sortOrder: psSystems.sortOrder,
       archivedAt: psSystems.archivedAt,
     })
@@ -127,10 +137,12 @@ export default async function PsConfigurationPage() {
         slug: system.slug,
         displayName: system.displayName,
         isActive: !system.archivedAt,
+        heightRules: normalizePsSystemHeightRules(system.heightRules, system),
         standardPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'standard_ps1')),
         poolPs1Template: templateSummary(systemTemplates.find((template) => template.variantKind === 'pool_ps1')),
       }
     })
+  const ps3Template = templateSummary(templateVariants.find((template) => template.variantKind === 'ps3' && !template.archivedAt))
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -147,31 +159,34 @@ export default async function PsConfigurationPage() {
         <>
           <div className="flex flex-col gap-3 rounded border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 md:flex-row md:items-center md:justify-between">
             <div>
-              Active editor: <span className="font-medium text-gray-950">{version?.versionLabel}</span>
+              Active editor: <span className="font-medium text-gray-950" title={version?.versionLabel}>{activeEditorLabel}</span>
               <span className="ml-2 rounded border border-gray-200 px-2 py-0.5 text-xs uppercase text-gray-500">{isDraft ? 'Draft' : 'Published'}</span>
               {publishedVersion ? (
                 <span className="mt-1 block text-xs text-gray-500">
-                  Generate PS uses {publishedVersion.versionLabel} until a draft is published.
+                  Published config: <span title={publishedVersion.versionLabel}>{publishedVersionLabel}</span>. Generate PS uses this until a draft is published.
+                </span>
+              ) : null}
+              {version?.versionLabel && activeEditorLabel !== version.versionLabel ? (
+                <span className="mt-1 block break-all text-xs text-gray-400">
+                  Full label: {version.versionLabel}
                 </span>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              {!isDraft ? (
-                <form action={createPsConfigurationDraftAction}>
-                  <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">
-                    Create draft
-                  </button>
-                </form>
-              ) : (
-                <form action={publishPsConfigurationDraftAction}>
-                  <input type="hidden" name="configVersionId" value={version.id} />
-                  <button type="submit" className="rounded bg-gray-950 px-3 py-2 text-sm font-semibold text-white">
-                    Publish draft
-                  </button>
-                </form>
-              )}
+              <PsConfigurationVersionActions
+                isDraft={isDraft}
+                createDraftAction={createPsConfigurationDraftAction}
+                saveDraftAction={publishPsConfigurationDraftAction}
+              />
             </div>
           </div>
+
+          <PsConfigurationGlobalTemplatesEditor
+            configVersionId={version.id}
+            ps3Template={ps3Template}
+            isDraft={isDraft}
+            updateAction={updatePsConfigurationGlobalTemplateAction}
+          />
 
           {systemCategory ? (
             <PsConfigurationSystemsEditor
@@ -183,7 +198,11 @@ export default async function PsConfigurationPage() {
             />
           ) : null}
 
-          <form action={updatePsConfigurationOptionsAction} className="space-y-4">
+          <form
+            id={PS_CONFIGURATION_OPTIONS_FORM_ID}
+            action={updatePsConfigurationOptionsAction}
+            className="space-y-4"
+          >
             <input type="hidden" name="configVersionId" value={version.id} />
             <PsConfigurationOptionsEditor
               categories={optionCategories.map((category) => ({
@@ -192,33 +211,6 @@ export default async function PsConfigurationPage() {
               }))}
               isDraft={isDraft}
             />
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h2 className="text-base font-semibold text-gray-950">Add option value</h2>
-              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_2fr]">
-                <label className="text-sm font-medium text-gray-700">
-                  Category
-                  <select name="newOptionCategoryId" disabled={!isDraft} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm">
-                    <option value="">Choose</option>
-                    {optionCategories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm font-medium text-gray-700">
-                  Name
-                  <input name="newOptionLabel" disabled={!isDraft} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm" />
-                </label>
-              </div>
-            </div>
-            <div className="sticky bottom-0 flex justify-end border-t border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
-              <button
-                type="submit"
-                disabled={!isDraft}
-                className="rounded bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-              >
-                Save draft
-              </button>
-            </div>
           </form>
         </>
       )}

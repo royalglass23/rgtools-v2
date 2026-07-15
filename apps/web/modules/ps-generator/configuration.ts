@@ -9,7 +9,7 @@ import {
   psSystems,
   psTemplateVariants,
 } from '@rgtools/db/schema-ps-generator'
-import { PS_GENERATOR_OPTION_CATEGORIES } from './config'
+import { PS_GENERATOR_COMPATIBILITY_OPTIONS, PS_GENERATOR_OPTION_CATEGORIES } from './config'
 import { PS_GENERATOR_WORDPRESS_SEED, type PsConfigState } from './seed-config'
 
 type MaybeDate = Date | string | null
@@ -177,6 +177,7 @@ export interface PsConfigurationSystemRow {
   slug: string
   displayName: string
   isActive: boolean
+  heightRules: PsSystemHeightRules
   standardPs1Template: {
     id: string
     label: string
@@ -189,6 +190,17 @@ export interface PsConfigurationSystemRow {
     originalFilename: string | null
     r2ObjectKey: string
   } | null
+}
+
+export interface PsSystemHeightRules {
+  default: {
+    height: string
+    heightAboveFix: string
+  }
+  pool: {
+    height: string
+    heightAboveFix: string
+  }
 }
 
 export interface PublishedPsDescriptionTemplate {
@@ -212,6 +224,36 @@ const EMPTY_CONFIGURATION: PublishedPsConfiguration = {
   optionCategories: [],
   templateVariants: [],
   descriptionTemplates: [],
+}
+
+const DRAFT_LABEL_TOKEN_PATTERN = /-draft-\d{4}-\d{2}-\d{2}(?:-\d+)?/g
+
+export function formatPsConfigurationVersionLabel(versionLabel: string | null | undefined): string {
+  if (!versionLabel) return ''
+  const draftTokens = versionLabel.match(DRAFT_LABEL_TOKEN_PATTERN)
+  if (!draftTokens?.length) return versionLabel
+
+  const baseLabel = versionLabel.replace(DRAFT_LABEL_TOKEN_PATTERN, '')
+  return `${baseLabel}${draftTokens.at(-1)}`
+}
+
+export function nextPsConfigurationDraftLabel(
+  publishedVersionLabel: string,
+  now: Date,
+  existingVersionLabels: string[] = [],
+): string {
+  const baseLabel = publishedVersionLabel.replace(DRAFT_LABEL_TOKEN_PATTERN, '')
+  const draftToken = `draft-${now.toISOString().slice(0, 10)}`
+  const usedLabels = new Set(existingVersionLabels)
+  let candidate = `${baseLabel}-${draftToken}`
+  let suffix = 2
+
+  while (usedLabels.has(candidate)) {
+    candidate = `${baseLabel}-${draftToken}-${suffix}`
+    suffix += 1
+  }
+
+  return candidate
 }
 
 export function createPsGeneratorSeedRows(): PsConfigurationRows {
@@ -345,9 +387,12 @@ export function buildConfigurationReadModel(
   const optionCategories = categories.map((category) => ({
     slug: category.slug,
     label: category.label,
-    values: values
-      .filter((value) => value.categoryId === category.id)
-      .map((value) => ({ slug: value.slug, label: value.label })),
+    values: withCompatibilityOptions(
+      category.slug,
+      values
+        .filter((value) => value.categoryId === category.id)
+        .map((value) => ({ slug: value.slug, label: value.label })),
+    ),
   }))
 
   const systems = systemRows.map((system) => {
@@ -367,9 +412,9 @@ export function buildConfigurationReadModel(
       id: system.id,
       slug: system.slug,
       displayName: system.displayName,
-      heightRules: system.heightRules,
+      heightRules: normalizePsSystemHeightRules(system.heightRules, system),
       metadata: system.metadata,
-      optionRules,
+      optionRules: withCompatibilityOptionRules(optionRules),
     }
   })
 
@@ -424,6 +469,36 @@ export function buildConfigurationReadModel(
   }
 }
 
+function withCompatibilityOptions(
+  categorySlug: string,
+  values: PublishedPsOptionValue[],
+): PublishedPsOptionValue[] {
+  const additions = PS_GENERATOR_COMPATIBILITY_OPTIONS[categorySlug as keyof typeof PS_GENERATOR_COMPATIBILITY_OPTIONS] ?? []
+  const baseValues = categorySlug === 'structure_type'
+    ? values.filter((value) => value.slug !== 'pool-fence')
+    : values
+  if (additions.length === 0) return baseValues
+
+  const bySlug = new Map(baseValues.map((value) => [value.slug, value]))
+  for (const option of additions) {
+    bySlug.set(option.slug, {
+      slug: option.slug,
+      label: option.label,
+    })
+  }
+  return [...bySlug.values()]
+}
+
+function withCompatibilityOptionRules(
+  optionRules: Record<string, PublishedPsOptionValue[]>,
+): Record<string, PublishedPsOptionValue[]> {
+  const next: Record<string, PublishedPsOptionValue[]> = {}
+  for (const [categorySlug, values] of Object.entries(optionRules)) {
+    next[categorySlug] = withCompatibilityOptions(categorySlug, values)
+  }
+  return next
+}
+
 export function buildPsConfigurationSystemRows(configuration: PublishedPsConfiguration): PsConfigurationSystemRow[] {
   return configuration.systems.map((system) => {
     const templates = configuration.templateVariants.filter((template) => template.systemSlug === system.slug)
@@ -432,10 +507,71 @@ export function buildPsConfigurationSystemRows(configuration: PublishedPsConfigu
       slug: system.slug,
       displayName: system.displayName,
       isActive: true,
+      heightRules: normalizePsSystemHeightRules(system.heightRules, system),
       standardPs1Template: templateSummary(templates.find((template) => template.variantKind === 'standard_ps1')),
       poolPs1Template: templateSummary(templates.find((template) => template.variantKind === 'pool_ps1')),
     }
   })
+}
+
+export function normalizePsSystemHeightRules(
+  value: unknown,
+  system?: { slug?: string | null; displayName?: string | null },
+): PsSystemHeightRules {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const fallback = defaultHeightRulesForSystem(system, source)
+  const normalized = {
+    default: normalizeHeightRule(source.default),
+    pool: normalizeHeightRule(source.pool),
+  }
+
+  return {
+    default: {
+      height: normalized.default.height || fallback.default.height,
+      heightAboveFix: normalized.default.heightAboveFix || fallback.default.heightAboveFix,
+    },
+    pool: {
+      height: normalized.pool.height || fallback.pool.height,
+      heightAboveFix: normalized.pool.heightAboveFix || fallback.pool.heightAboveFix,
+    },
+  }
+}
+
+function normalizeHeightRule(value: unknown): PsSystemHeightRules['default'] {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return {
+    height: stringifyHeightRuleValue(source.height),
+    heightAboveFix: stringifyHeightRuleValue(source.heightAboveFix),
+  }
+}
+
+function stringifyHeightRuleValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+function defaultHeightRulesForSystem(
+  system: { slug?: string | null; displayName?: string | null } | undefined,
+  source: Record<string, unknown>,
+): PsSystemHeightRules {
+  const key = normalizeSystemKey(system?.slug ?? system?.displayName ?? '')
+  const maxHeightMm = stringifyHeightRuleValue(source.maxHeightMm)
+
+  if (key === 'doubledisc' || maxHeightMm === '1000') {
+    return {
+      default: { height: '1.00', heightAboveFix: '1.05' },
+      pool: { height: '1.20', heightAboveFix: '1.25' },
+    }
+  }
+
+  return {
+    default: { height: '1.00', heightAboveFix: '1.00' },
+    pool: { height: '1.20', heightAboveFix: '1.20' },
+  }
+}
+
+function normalizeSystemKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 export async function getPublishedPsConfiguration(database?: Awaited<ReturnType<typeof loadDefaultDb>>): Promise<PublishedPsConfiguration> {
