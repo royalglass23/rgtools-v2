@@ -7,18 +7,15 @@ import {
   getDashboardChartData,
   getDashboardKpis,
 } from "@/modules/dashboard/kpis";
-import type { SparkPoint } from "@/modules/dashboard/kpis";
 import { SERVER_TABLES } from "@/modules/dashboard/registry";
-import { SparkLine } from "@/modules/dashboard/SparkLine";
 import { getTableMeta } from "@/modules/dashboard/tables";
 import { auth } from "@/lib/auth";
 import {
   DataPanel,
   FeedbackState,
-  KpiCard,
   PageHeader,
-  PriorityItem,
   SectionHeading,
+  StatusBadge,
 } from "@/components/precision-ui/PrecisionUI";
 import styles from "./dashboard.module.css";
 import { DismissibleNotice } from "@/modules/ui/DismissibleNotice";
@@ -85,13 +82,24 @@ export default async function DashboardPage({
 
       <ActionsNeededSection counts={actionCounts} />
 
-      {isAdmin && <BusinessOverviewSection kpis={kpis} />}
-      {isAdmin && (
-        <ChartSection
-          leadsPerWeek={chartData.leadsPerWeek}
-          pipelineByWeek={chartData.pipelineByWeek}
-        />
-      )}
+      <div className={styles.dashboardFocusGrid}>
+        {isAdmin ? (
+          <ChartSection
+            metrics={businessMetrics(kpis)}
+            leadsPerWeek={chartData.leadsPerWeek}
+            pipelineByWeek={chartData.pipelineByWeek}
+          />
+        ) : (
+          <DataPanel title="Business performance" eyebrow="Manager view">
+            <div className={styles.restrictedPanel}>
+              Business performance is available to administrators.
+            </div>
+          </DataPanel>
+        )}
+        <NextActionsSection counts={actionCounts} />
+      </div>
+
+      <RecommendationsSection counts={actionCounts} />
 
       {visibleSections.length === 0 ? (
         <FeedbackState tone="empty">
@@ -118,12 +126,9 @@ type DashboardKpis = {
   conversionRate: number;
   volumeTrend: number;
   leadVolume: number;
-  pipelineSparkline: SparkPoint[];
-  conversionSparkline: SparkPoint[];
-  volumeSparkline: SparkPoint[];
 };
 
-function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
+function businessMetrics(kpis: DashboardKpis) {
   const formattedPipeline =
     kpis.pipelineValue >= 1_000_000
       ? `$${(kpis.pipelineValue / 1_000_000).toFixed(1)}m`
@@ -131,78 +136,30 @@ function BusinessOverviewSection({ kpis }: { kpis: DashboardKpis }) {
 
   const trendPositive = kpis.volumeTrend > 0;
   const trendNeutral = kpis.volumeTrend === 0;
-  const trendValue = trendNeutral
-    ? `${kpis.leadVolume} leads`
-    : `${trendPositive ? "+" : ""}${kpis.volumeTrend}%`;
-  const trendSub = trendNeutral
-    ? "this 30 days (no prior data)"
-    : "vs prior 30 days";
+  const leadTrend = trendNeutral
+    ? "Current 30-day volume"
+    : `${trendPositive ? "+" : ""}${kpis.volumeTrend}% vs previous 30 days`;
 
-  return (
-    <section className={styles.section}>
-      <SectionHeading title="Business overview" eyebrow="Performance" />
-      <div className={styles.overviewGrid}>
-        <OverviewCard
-          label="Pipeline Value"
-          value={formattedPipeline}
-          sub="Active hot/warm quotes"
-          sparkline={kpis.pipelineSparkline}
-          color="var(--brand-primary)"
-          marker="$"
-        />
-        <OverviewCard
-          label="Conversion Rate"
-          value={`${kpis.conversionRate}%`}
-          sub="Won quotes out of all closed quotes"
-          sparkline={kpis.conversionSparkline}
-          color="var(--state-positive)"
-          marker="%"
-        />
-        <OverviewCard
-          label="Lead Volume Trend"
-          value={trendValue}
-          sub={trendSub}
-          sparkline={kpis.volumeSparkline}
-          color={
-            trendPositive
-              ? "var(--state-positive)"
-              : trendNeutral
-                ? "var(--text-muted)"
-                : "var(--state-critical)"
-          }
-          marker="↗"
-        />
-      </div>
-    </section>
-  );
-}
-
-function OverviewCard({
-  label,
-  value,
-  sub,
-  sparkline,
-  color,
-  marker,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  sparkline: SparkPoint[];
-  color: string;
-  marker: string;
-}) {
-  return (
-    <KpiCard label={label} value={value} detail={sub} marker={marker}>
-      <div className={styles.sparkline}>
-        {sparkline.length > 0 ? (
-          <SparkLine data={sparkline} color={color} />
-        ) : (
-          <span>No trend data yet</span>
-        )}
-      </div>
-    </KpiCard>
-  );
+  return [
+    {
+      label: "Pipeline value",
+      value: formattedPipeline,
+      detail: "Active hot and warm quotes",
+      tone: "brand" as const,
+    },
+    {
+      label: "Conversion rate",
+      value: `${kpis.conversionRate}%`,
+      detail: "Won quotes out of all closed quotes",
+      tone: "positive" as const,
+    },
+    {
+      label: "Lead volume",
+      value: kpis.leadVolume.toLocaleString("en-AU"),
+      detail: leadTrend,
+      tone: trendPositive ? ("positive" as const) : ("neutral" as const),
+    },
+  ];
 }
 
 type ActionCounts = {
@@ -216,92 +173,204 @@ type ActionCounts = {
 
 type ActionTone = "critical" | "warning" | "info" | "muted";
 
-function ActionsNeededSection({ counts }: { counts: ActionCounts }) {
-  const cards: Array<{
-    label: string;
-    count: number;
-    href: string;
-    tone: ActionTone;
-  }> = [
+type DashboardAction = {
+  id: string;
+  label: string;
+  count: number;
+  href: string;
+  tone: ActionTone;
+  area: "Leads" | "Quote Tracker";
+  recommendation: string;
+  recommendationDetail: string;
+};
+
+function dashboardActions(counts: ActionCounts): DashboardAction[] {
+  return [
     {
-      label: "Tier A/B — No SM8 Job",
+      id: "unsynced",
+      label: "No ServiceM8 job",
       count: counts.unsynced,
       href: "/leads?sm8=pending",
       tone: "critical",
+      area: "Leads",
+      recommendation: "Link high-priority leads to ServiceM8",
+      recommendationDetail:
+        "Tier A and B leads are waiting for an operational job record.",
     },
     {
-      label: "Stale Leads (7d+)",
+      id: "stale",
+      label: "Stale leads",
       count: counts.staleLeads,
       href: "/leads?stale=true",
       tone: "warning",
+      area: "Leads",
+      recommendation: "Clear the stale-lead queue",
+      recommendationDetail:
+        "Review ownership and record the next follow-up for leads older than seven days.",
     },
     {
-      label: "Expiring Soon",
+      id: "expiring",
+      label: "Quotes expiring soon",
       count: counts.expiringSoon,
       href: "/quote-tracker?activity=expiring",
       tone: "warning",
+      area: "Quote Tracker",
+      recommendation: "Contact clients before their quote expires",
+      recommendationDetail:
+        "Prioritise active hot and warm quotes approaching their expiry date.",
     },
     {
-      label: "Never Opened",
+      id: "never-opened",
+      label: "Quotes never opened",
       count: counts.neverOpened,
       href: "/quote-tracker?activity=never_opened",
       tone: "info",
+      area: "Quote Tracker",
+      recommendation: "Check delivery for unopened quotes",
+      recommendationDetail:
+        "Confirm the client received the quote and resend it when necessary.",
     },
     {
-      label: "Forwarding Suspected",
+      id: "forwarding",
+      label: "Forwarding suspected",
       count: counts.forwarding,
       href: "/quote-tracker?activity=forwarding",
       tone: "info",
+      area: "Quote Tracker",
+      recommendation: "Review forwarded quote activity",
+      recommendationDetail:
+        "Check whether another decision-maker needs to be added to the follow-up.",
     },
     {
-      label: "Gone Cold (14d+)",
+      id: "gone-cold",
+      label: "Quotes gone cold",
       count: counts.goneCold,
       href: "/quote-tracker?activity=gone_cold",
       tone: "muted",
+      area: "Quote Tracker",
+      recommendation: "Re-engage hot and warm quotes",
+      recommendationDetail:
+        "Create a clear follow-up for quotes without recent engagement.",
     },
   ];
+}
+
+function ActionsNeededSection({ counts }: { counts: ActionCounts }) {
+  const actions = dashboardActions(counts);
+  const total = actions.reduce((sum, action) => sum + action.count, 0);
 
   return (
     <section className={styles.section}>
-      <SectionHeading title="Actions Needed" eyebrow="Priority queue" />
-      <div className={styles.actionGrid}>
-        {cards.map(({ label, count, href, tone }) => (
-          <ActionCard
-            key={label}
-            label={label}
-            count={count}
-            href={href}
-            tone={tone}
-          />
+      <div className={styles.sectionTitleRow}>
+        <div>
+          <SectionHeading title="Needs attention" eyebrow="Priority queue" />
+          <p>Sorted by operational urgency across active modules.</p>
+        </div>
+        <span className={styles.attentionSummary}>
+          {total > 0 ? `${total} items to review` : "All queues clear"}
+        </span>
+      </div>
+      <div className={styles.attentionRail}>
+        {actions.map((action) => (
+          <Link
+            key={action.id}
+            href={action.href}
+            className={styles.attentionItem}
+            data-tone={action.count > 0 ? action.tone : "clear"}
+          >
+            <span className={styles.attentionDot} aria-hidden="true" />
+            <strong>{action.count}</strong>
+            <span className={styles.attentionCopy}>
+              <span>{action.label}</span>
+              <small>{action.area}</small>
+            </span>
+            <span className={styles.attentionArrow} aria-hidden="true">
+              →
+            </span>
+          </Link>
         ))}
       </div>
     </section>
   );
 }
 
-function ActionCard({
-  label,
-  count,
-  href,
-  tone,
-}: {
-  label: string;
-  count: number;
-  href: string;
-  tone: ActionTone;
-}) {
-  const hasAction = count > 0;
+function NextActionsSection({ counts }: { counts: ActionCounts }) {
+  const activeActions = dashboardActions(counts)
+    .filter((action) => action.count > 0)
+    .slice(0, 4);
 
   return (
-    <Link href={href} className={styles.actionCard}>
-      <PriorityItem
-        tone={hasAction ? tone : "clear"}
-        status={hasAction ? "Needs review" : "Up to date"}
-        value={count}
-        label={label}
-      >
-        Review queue <span aria-hidden="true">→</span>
-      </PriorityItem>
-    </Link>
+    <DataPanel title="Next actions" eyebrow="Active modules">
+      {activeActions.length > 0 ? (
+        <div className={styles.nextActionList}>
+          {activeActions.map((action) => (
+            <Link
+              key={action.id}
+              href={action.href}
+              className={styles.nextActionRow}
+            >
+              <span
+                className={styles.nextActionDot}
+                data-tone={action.tone}
+                aria-hidden="true"
+              />
+              <span className={styles.nextActionCopy}>
+                <strong>{action.recommendation}</strong>
+                <small>{action.area}</small>
+              </span>
+              <StatusBadge tone={action.tone}>{action.count} due</StatusBadge>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.clearState}>
+          <strong>No immediate actions</strong>
+          <span>All monitored queues are currently clear.</span>
+        </div>
+      )}
+    </DataPanel>
+  );
+}
+
+function RecommendationsSection({ counts }: { counts: ActionCounts }) {
+  const recommendations = dashboardActions(counts)
+    .filter((action) => action.count > 0)
+    .slice(0, 3);
+
+  return (
+    <DataPanel title="Recommendations" eyebrow="Suggested focus">
+      {recommendations.length > 0 ? (
+        <div className={styles.recommendationList}>
+          {recommendations.map((action, index) => (
+            <Link
+              key={action.id}
+              href={action.href}
+              className={styles.recommendationItem}
+            >
+              <span className={styles.recommendationNumber} aria-hidden="true">
+                {index + 1}
+              </span>
+              <span>
+                <strong>{action.recommendation}</strong>
+                <small>
+                  {action.count} {action.label.toLowerCase()}.{" "}
+                  {action.recommendationDetail}
+                </small>
+              </span>
+              <span className={styles.recommendationArrow} aria-hidden="true">
+                →
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.clearState}>
+          <strong>Keep the current rhythm</strong>
+          <span>
+            No exception-based recommendations are required right now.
+          </span>
+        </div>
+      )}
+    </DataPanel>
   );
 }

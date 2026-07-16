@@ -231,12 +231,18 @@
 }
 
 .account {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  min-height: 5rem;
-  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.72rem;
+  padding: 0.85rem 1rem 0.95rem;
   border-top: 1px solid var(--shell-border);
+}
+
+.accountIdentity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
 .avatar,
@@ -254,15 +260,8 @@
   font-weight: 800;
 }
 
-.accountBody {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 0.45rem;
-}
-
 .accountCopy {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -280,16 +279,42 @@
   font-size: 0.68rem;
 }
 
+.appearance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--shell-border);
+}
+
+.appearanceLabel {
+  color: var(--shell-text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.appearance :global([role="group"]) {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .signOut :global(button) {
-  padding: 0.35rem;
-  border: 0;
+  min-height: 1.9rem;
+  padding: 0.3rem 0.42rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--shell-text-muted);
   font-size: 0.68rem;
+  font-weight: 650;
   cursor: pointer;
 }
 
 .signOut :global(button):hover {
+  border-color: var(--shell-border-strong);
+  background: var(--shell-surface);
   color: var(--shell-text-primary);
 }
 
@@ -331,7 +356,8 @@
 .shell[data-collapsed] .navigationLabel,
 .shell[data-collapsed] .navigationText,
 .shell[data-collapsed] .chevron,
-.shell[data-collapsed] .accountBody,
+.shell[data-collapsed] .accountCopy,
+.shell[data-collapsed] .appearance,
 .shell[data-collapsed] .signOut,
 .shell[data-collapsed] .subNavigation {
   display: none;
@@ -348,8 +374,12 @@
 }
 
 .shell[data-collapsed] .account {
-  justify-content: center;
   padding-inline: 0.6rem;
+}
+
+.shell[data-collapsed] .accountIdentity {
+  display: flex;
+  justify-content: center;
 }
 
 @media (max-width: 1023px) {
