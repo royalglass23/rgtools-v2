@@ -30,7 +30,6 @@ vi.mock('@/modules/dashboard/kpis', () => ({
   })),
 }))
 vi.mock('@/modules/dashboard/ChartSection', () => ({ ChartSection: () => <div data-testid="chart-section" /> }))
-vi.mock('@/modules/dashboard/SparkLine', () => ({ SparkLine: () => <div data-testid="sparkline" /> }))
 
 import DashboardPage from '../page'
 
@@ -45,6 +44,8 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Operations dashboard' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Quick Capture' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Actions Needed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Next actions' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Recommendations' })).toBeInTheDocument()
   })
 })
