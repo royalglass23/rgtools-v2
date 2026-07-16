@@ -1,10 +1,9 @@
 "use client";
 
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14,171 +13,180 @@ import type { WeekLeads, WeekPipeline } from "./kpis";
 import { SectionHeading } from "@/components/precision-ui/PrecisionUI";
 import styles from "./ChartSection.module.css";
 
+type PerformanceMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "brand" | "positive" | "neutral";
+};
+
 function shortWeek(week: string) {
   return week.split("-")[1] ?? week;
 }
 
-function LeadsPerWeekChart({ data }: { data: WeekLeads[] }) {
-  return (
-    <article className={styles.chartCard} aria-label="Lead volume trend">
-      <div className={styles.chartHeader}>
-        <div>
-          <div className={styles.chartTitle}>Lead volume</div>
-          <p>New leads received each week</p>
-        </div>
-        <div className={styles.chartKey}>
-          <span data-series="leads" aria-hidden="true" /> Lead count
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart
-          data={data}
-          margin={{ top: 4, right: 4, left: 8, bottom: 10 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-          <XAxis
-            dataKey="week"
-            tickFormatter={shortWeek}
-            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-            axisLine={false}
-            tickLine={false}
-            height={32}
-            label={{
-              value: "Week",
-              position: "insideBottomRight",
-              offset: -6,
-              fill: "var(--text-muted)",
-              fontSize: 11,
-            }}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-            axisLine={false}
-            tickLine={false}
-            width={44}
-            label={{
-              value: "Leads",
-              angle: -90,
-              position: "insideLeft",
-              fill: "var(--text-muted)",
-              fontSize: 11,
-            }}
-          />
-          <Tooltip
-            formatter={(value) => [value, "Leads"]}
-            labelFormatter={(label) => shortWeek(String(label))}
-          />
-          <Bar
-            dataKey="count"
-            name="Leads"
-            fill="var(--brand-accent)"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </article>
+function buildWeeklyPerformance(
+  leadsPerWeek: WeekLeads[],
+  pipelineByWeek: WeekPipeline[],
+) {
+  const quotesByWeek = new Map(
+    pipelineByWeek.map((week) => [
+      week.week,
+      week.hot + week.warm + week.cold + week.dead,
+    ]),
   );
-}
 
-function QuotePipelineChart({ data }: { data: WeekPipeline[] }) {
-  return (
-    <article
-      className={styles.chartCard}
-      aria-label="ServiceM8 quote pipeline trend"
-    >
-      <div className={styles.chartHeader}>
-        <div>
-          <div className={styles.chartTitle}>ServiceM8 quote pipeline</div>
-          <p>Tracked quotes grouped by current status</p>
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart
-          data={data}
-          margin={{ top: 4, right: 4, left: 8, bottom: 10 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-          <XAxis
-            dataKey="week"
-            tickFormatter={shortWeek}
-            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-            axisLine={false}
-            tickLine={false}
-            height={32}
-            label={{
-              value: "Week",
-              position: "insideBottomRight",
-              offset: -6,
-              fill: "var(--text-muted)",
-              fontSize: 11,
-            }}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-            axisLine={false}
-            tickLine={false}
-            width={44}
-            label={{
-              value: "Quotes",
-              angle: -90,
-              position: "insideLeft",
-              fill: "var(--text-muted)",
-              fontSize: 11,
-            }}
-          />
-          <Tooltip labelFormatter={(label) => shortWeek(String(label))} />
-          <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-          <Bar
-            dataKey="hot"
-            name="Hot"
-            stackId="a"
-            fill="var(--state-critical)"
-          />
-          <Bar
-            dataKey="warm"
-            name="Warm"
-            stackId="a"
-            fill="var(--state-warning)"
-          />
-          <Bar
-            dataKey="cold"
-            name="Cold"
-            stackId="a"
-            fill="var(--state-info)"
-          />
-          <Bar
-            dataKey="dead"
-            name="Dead"
-            stackId="a"
-            fill="var(--text-muted)"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </article>
-  );
+  return leadsPerWeek.map((week) => ({
+    week: week.week,
+    leads: week.count,
+    quotes: quotesByWeek.get(week.week) ?? 0,
+  }));
 }
 
 export function ChartSection({
+  metrics,
   leadsPerWeek,
   pipelineByWeek,
 }: {
+  metrics: PerformanceMetric[];
   leadsPerWeek: WeekLeads[];
   pipelineByWeek: WeekPipeline[];
 }) {
+  const weeklyPerformance = buildWeeklyPerformance(
+    leadsPerWeek,
+    pipelineByWeek,
+  );
+
   return (
-    <section className={styles.section}>
-      <div>
-        <SectionHeading title="Business performance" />
-        <p className={styles.sectionDescription}>
-          Weekly activity across the last eight weeks.
-        </p>
+    <section className={styles.performancePanel}>
+      <div className={styles.panelHeader}>
+        <div>
+          <SectionHeading title="Business performance" />
+          <p>Rolling 30-day metrics with an eight-week activity trend.</p>
+        </div>
+        <span className={styles.periodLabel}>Updated from live records</span>
       </div>
-      <div className={styles.chartGrid}>
-        <LeadsPerWeekChart data={leadsPerWeek} />
-        <QuotePipelineChart data={pipelineByWeek} />
+
+      <div className={styles.metricRow}>
+        {metrics.map((metric) => (
+          <article
+            key={metric.label}
+            className={styles.metric}
+            data-tone={metric.tone}
+          >
+            <span>{metric.label}</span>
+            <strong>{metric.value}</strong>
+            <small>{metric.detail}</small>
+          </article>
+        ))}
+      </div>
+
+      <div
+        className={styles.chartFrame}
+        role="img"
+        aria-label="Eight-week line chart comparing weekly lead volume with tracked ServiceM8 quotes"
+      >
+        <div className={styles.chartLegend} aria-hidden="true">
+          <span>
+            <i data-series="leads" /> Lead volume
+          </span>
+          <span>
+            <i data-series="quotes" /> Tracked quotes
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={230}>
+          <LineChart
+            data={weeklyPerformance}
+            margin={{ top: 12, right: 18, left: 8, bottom: 12 }}
+          >
+            <CartesianGrid
+              vertical={false}
+              strokeDasharray="3 3"
+              stroke="var(--border-default)"
+            />
+            <XAxis
+              dataKey="week"
+              tickFormatter={shortWeek}
+              tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+              axisLine={false}
+              tickLine={false}
+              height={34}
+              label={{
+                value: "Week",
+                position: "insideBottomRight",
+                offset: -8,
+                fill: "var(--text-muted)",
+                fontSize: 11,
+              }}
+            />
+            <YAxis
+              yAxisId="leads"
+              allowDecimals={false}
+              tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+              axisLine={false}
+              tickLine={false}
+              width={42}
+              label={{
+                value: "Leads",
+                angle: -90,
+                position: "insideLeft",
+                fill: "var(--text-muted)",
+                fontSize: 11,
+              }}
+            />
+            <YAxis
+              yAxisId="quotes"
+              orientation="right"
+              allowDecimals={false}
+              tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+              axisLine={false}
+              tickLine={false}
+              width={46}
+              label={{
+                value: "Quotes",
+                angle: 90,
+                position: "insideRight",
+                fill: "var(--text-muted)",
+                fontSize: 11,
+              }}
+            />
+            <Tooltip
+              labelFormatter={(label) => `Week ${shortWeek(String(label))}`}
+              formatter={(value, name) => [
+                value,
+                name === "leads" ? "Lead volume" : "Tracked quotes",
+              ]}
+              contentStyle={{
+                border: "1px solid var(--border-strong)",
+                borderRadius: "var(--radius-control)",
+                background: "var(--surface-elevated)",
+                color: "var(--text-primary)",
+                boxShadow: "var(--shadow-raised)",
+                fontSize: 12,
+              }}
+              labelStyle={{ color: "var(--text-primary)", fontWeight: 700 }}
+            />
+            <Line
+              yAxisId="leads"
+              type="monotone"
+              dataKey="leads"
+              name="leads"
+              stroke="var(--brand-primary)"
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+            <Line
+              yAxisId="quotes"
+              type="monotone"
+              dataKey="quotes"
+              name="quotes"
+              stroke="var(--brand-highlight)"
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </section>
   );

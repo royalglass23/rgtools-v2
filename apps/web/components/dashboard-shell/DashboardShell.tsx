@@ -220,19 +220,22 @@ export function DashboardShell({
         </nav>
 
         <div className={styles.account}>
-          <div className={styles.avatar} aria-hidden="true">
-            {initialsFor(user.name)}
-          </div>
-          <div className={styles.accountBody}>
+          <div className={styles.accountIdentity}>
+            <div className={styles.avatar} aria-hidden="true">
+              {initialsFor(user.name)}
+            </div>
             <div className={styles.accountCopy}>
               <strong>{user.name || "RG Tools user"}</strong>
               <span>
                 {user.role === "admin" ? "Administrator" : "Team member"}
               </span>
             </div>
+            <div className={styles.signOut}>{signOutControl}</div>
+          </div>
+          <div className={styles.appearance}>
+            <span className={styles.appearanceLabel}>Appearance</span>
             <ThemeControl />
           </div>
-          <div className={styles.signOut}>{signOutControl}</div>
         </div>
       </aside>
 
